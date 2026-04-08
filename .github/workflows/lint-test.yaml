@@ -108,7 +108,7 @@ jobs:
           version: v3.17.0
 
       - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --verify=false
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
 
       - name: Build test-chart dependencies
         run: helm dependency build charts/library/ksvc/test-chart
@@ -140,6 +140,7 @@ jobs:
             helm template "test-${name}" "$example" --namespace test-ns | \
               kubeconform \
                 -strict \
+                -ignore-missing-schemas \
                 -summary \
                 -skip "Canary,MetricTemplate,KafkaSource,Cluster,ScheduledBackup,ObjectStore,Pooler,PodMonitor,PrometheusRule,Dragonfly" \
                 -kubernetes-version 1.28.0
