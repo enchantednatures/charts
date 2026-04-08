@@ -1,18 +1,19 @@
+{{/*
+ksvc.class.knativeService — Render a Knative Service.
+Expects context: dict with "root" (top-level context), "key" (service map key),
+and "svc" (the merged service config dict).
+*/}}
 {{- define "ksvc.class.knativeService" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
-{{- $svc := .Values.knativeService -}}
+{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key) -}}
+{{- $svc := .svc -}}
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: {{ $fullname }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ $serviceName }}
+  namespace: {{ .root.Release.Namespace }}
   labels:
-    {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: api
-    {{- with $svc.labels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+    {{- include "ksvc.serviceLabels" (dict "root" .root "key" .key "svc" $svc) | nindent 4 }}
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
   {{- if or $globalAnnotations $svc.annotations }}
   annotations:
     {{- with $globalAnnotations }}

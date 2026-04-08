@@ -1,36 +1,32 @@
-knativeService:
-  image:
-    repository: ghcr.io/example-org/event-processor
-    tag: "v3.0.0"
-  scaling:
-    minScale: 0
-    maxScale: 50
-    target: 10
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "64Mi"
-    limits:
-      cpu: "500m"
-      memory: "256Mi"
-  env:
-    - name: APP__REDIS__URL
-      value: "redis://redis:6379"
+services:
+  processor:
+    image:
+      repository: ghcr.io/example-org/event-processor
+      tag: "v3.0.0"
+    scaling:
+      minScale: 0
+      maxScale: 50
+      target: 10
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+    env:
+      - name: APP__REDIS__URL
+        value: "redis://redis:6379"
 
 kafka:
-  enabled: true
-  source:
-    topic: "incoming-events"
-    consumerGroup: "event-processor-group"
-    bootstrapServers:
-      - kafka.kafka.svc.cluster.local:9092
-    consumers: 5
-    initialOffset: earliest
-  dlq:
-    enabled: true
-
-postgres:
-  enabled: false
-
-flagger:
-  enabled: false
+  sources:
+    events:
+      topic: "incoming-events"
+      consumerGroup: "event-processor-group"
+      sink: processor
+      bootstrapServers:
+        - kafka.kafka.svc.cluster.local:9092
+      consumers: 5
+      initialOffset: earliest
+      dlq:
+        enabled: true

@@ -98,8 +98,8 @@ jobs:
           helm dependency update charts/app/ksvc
           helm template test-app charts/app/ksvc \
             --namespace test-ns \
-            --set knativeService.image.repository=ghcr.io/test/app \
-            --set knativeService.image.tag=v1.0.0 > /tmp/rendered-app.yaml
+            --set services.api.image.repository=ghcr.io/test/app \
+            --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
           yamllint -d relaxed /tmp/rendered-app.yaml
           echo "Resources rendered for app chart:"
           grep -E "^kind:" /tmp/rendered-app.yaml | sort | uniq -c

@@ -2,7 +2,7 @@ suite: dragonfly tests
 templates:
   - templates/common.yaml
 set:
-  knativeService.image.repository: test/image
+  services.api.image.repository: test/image
   dragonfly.enabled: true
 release:
   name: test-release

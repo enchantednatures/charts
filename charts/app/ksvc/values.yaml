@@ -4,5 +4,5 @@
 ##
 ## Quick start:
 ##   helm install my-svc oci://ghcr.io/enchantednatures/charts/ksvc-app \
-##     --set knativeService.image.repository=ghcr.io/my-org/my-app \
-##     --set knativeService.image.tag=v1.0.0
+##     --set services.api.image.repository=ghcr.io/my-org/my-app \
+##     --set services.api.image.tag=v1.0.0

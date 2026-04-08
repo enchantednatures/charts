@@ -2,7 +2,7 @@ suite: cnpg pooler tests
 templates:
   - templates/common.yaml
 set:
-  knativeService.image.repository: test/image
+  services.api.image.repository: test/image
   postgres.enabled: true
   postgres.pooler.enabled: true
   postgres.backup.enabled: false
@@ -12,7 +12,7 @@ release:
   namespace: test-ns
 tests:
   # With postgres enabled + pooler enabled (no backup, no monitoring):
-  # doc 0 = Knative Service, doc 1 = CNPG Cluster, doc 2 = Pooler
+  # doc 0 = Knative Service (api), doc 1 = CNPG Cluster, doc 2 = Pooler
   - it: should render Pooler when enabled
     documentIndex: 2
     asserts:

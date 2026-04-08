@@ -142,7 +142,7 @@ jobs:
           helm install test-app charts/app/ksvc \
             --namespace test-ns \
             --create-namespace \
-            --set knativeService.image.repository=ghcr.io/test/app \
-            --set knativeService.image.tag=v1.0.0 \
+            --set services.api.image.repository=ghcr.io/test/app \
+            --set services.api.image.tag=v1.0.0 \
             --dry-run=server \
             --timeout 120s
