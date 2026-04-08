@@ -140,7 +140,7 @@ The chart follows a library pattern to ensure consistency across multiple servic
 
 ## Examples
 
-The [examples/](./examples/) directory contains several reference implementations:
+The [examples/](../../../examples/) directory contains several reference implementations:
 
 *   **minimal**: A basic Knative service with environment variables and resource limits.
 *   **full-stack**: A complete deployment including PostgreSQL (with backups), Kafka event source (with DLQ), and Flagger canary analysis.
