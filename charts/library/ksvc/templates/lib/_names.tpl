@@ -27,3 +27,13 @@ Chart label value.
 {{- define "ksvc.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
+
+{{/*
+ksvc.serviceName — Derive resource name for a service entry.
+Expects context: dict with "root" (top-level context) and "key" (service map key).
+Returns: <fullname>-<key>
+*/}}
+{{- define "ksvc.serviceName" -}}
+{{- $fullname := include "ksvc.fullname" .root -}}
+{{- printf "%s-%s" $fullname .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}

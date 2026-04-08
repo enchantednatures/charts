@@ -2,8 +2,8 @@ suite: knative service tests
 templates:
   - templates/common.yaml
 set:
-  knativeService.image.repository: test/image
-  knativeService.image.tag: "v1.0.0"
+  services.api.image.repository: test/image
+  services.api.image.tag: "v1.0.0"
 release:
   name: test-release
   namespace: test-ns
@@ -22,7 +22,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: test-release
+          value: test-release-api
 
   - it: should set the correct namespace
     documentIndex: 0
@@ -33,9 +33,9 @@ tests:
 
   - it: should set scaling annotations
     set:
-      knativeService.scaling.minScale: 2
-      knativeService.scaling.maxScale: 20
-      knativeService.scaling.target: 50
+      services.api.scaling.minScale: 2
+      services.api.scaling.maxScale: 20
+      services.api.scaling.target: 50
     documentIndex: 0
     asserts:
       - equal:
@@ -50,8 +50,8 @@ tests:
 
   - it: should set resource limits
     set:
-      knativeService.resources.limits.cpu: "2"
-      knativeService.resources.limits.memory: "1Gi"
+      services.api.resources.limits.cpu: "2"
+      services.api.resources.limits.memory: "1Gi"
     documentIndex: 0
     asserts:
       - equal:
@@ -80,7 +80,7 @@ tests:
 
   - it: should include flux image policy comment when set
     set:
-      knativeService.image.fluxImagePolicy: "flux-system:my-service"
+      services.api.image.fluxImagePolicy: "flux-system:my-service"
     documentIndex: 0
     asserts:
       - matchRegex:
@@ -103,7 +103,7 @@ tests:
 
   - it: should set env vars when provided
     set:
-      knativeService.env:
+      services.api.env:
         - name: MY_VAR
           value: "hello"
     documentIndex: 0
@@ -112,7 +112,22 @@ tests:
           path: spec.template.spec.containers[0].env[0].name
           value: MY_VAR
 
-  - it: should render only one document when no features enabled
+  - it: should render only one document when single service and no features enabled
     asserts:
       - hasDocuments:
           count: 1
+
+  - it: should include component label
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: api
+
+  - it: should render multiple services
+    set:
+      services.api.image.repository: test/api
+      services.worker.image.repository: test/worker
+    asserts:
+      - hasDocuments:
+          count: 2

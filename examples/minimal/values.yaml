@@ -1,28 +1,20 @@
-knativeService:
-  image:
-    repository: ghcr.io/example-org/minimal-service
-    tag: "v1.0.0"
-  scaling:
-    minScale: 1
-    maxScale: 5
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "64Mi"
-    limits:
-      cpu: "500m"
-      memory: "256Mi"
-  env:
-    - name: APP__REDIS__URL
-      value: "redis://redis:6379"
-    - name: APP__TELEMETRY__OTLP_ENDPOINT
-      value: "http://otel-collector.observability.svc.cluster.local:4317"
-
-postgres:
-  enabled: false
-
-kafka:
-  enabled: false
-
-flagger:
-  enabled: false
+services:
+  api:
+    image:
+      repository: ghcr.io/example-org/minimal-service
+      tag: "v1.0.0"
+    scaling:
+      minScale: 1
+      maxScale: 5
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+    env:
+      - name: APP__REDIS__URL
+        value: "redis://redis:6379"
+      - name: APP__TELEMETRY__OTLP_ENDPOINT
+        value: "http://otel-collector.observability.svc.cluster.local:4317"

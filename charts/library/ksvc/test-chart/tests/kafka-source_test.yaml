@@ -2,14 +2,17 @@ suite: kafka source tests
 templates:
   - templates/common.yaml
 set:
-  knativeService.image.repository: test/image
-  kafka.enabled: true
-  kafka.dlq.enabled: true
+  services.api.image.repository: test/image
+  kafka.sources.events.topic: "events"
+  kafka.sources.events.sink: api
+  kafka.sources.events.dlq.enabled: true
 release:
   name: test-release
   namespace: test-ns
 tests:
-  - it: should render KafkaSource when kafka enabled
+  # With one kafka source 'events' (+ DLQ enabled):
+  # doc 0 = Knative Service (api), doc 1 = KafkaSource (events), doc 2 = DLQ Service (events)
+  - it: should render KafkaSource when kafka source defined
     documentIndex: 1
     asserts:
       - isKind:
@@ -23,18 +26,18 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: test-release-kafka-source
+          value: test-release-events-kafka-source
 
   - it: should reference the knative service as sink
     documentIndex: 1
     asserts:
       - equal:
           path: spec.sink.ref.name
-          value: test-release
+          value: test-release-api
 
   - it: should set topic
     set:
-      kafka.source.topic: "my-events"
+      kafka.sources.events.topic: "my-events"
     documentIndex: 1
     asserts:
       - contains:
@@ -46,11 +49,11 @@ tests:
     asserts:
       - equal:
           path: spec.consumerGroup
-          value: test-release-consumers
+          value: test-release-events-consumers
 
   - it: should set custom consumer group
     set:
-      kafka.source.consumerGroup: "my-custom-group"
+      kafka.sources.events.consumerGroup: "my-custom-group"
     documentIndex: 1
     asserts:
       - equal:
@@ -64,18 +67,18 @@ tests:
           of: Service
       - equal:
           path: metadata.name
-          value: test-release-dlq
+          value: test-release-events-dlq
 
   - it: should set dead letter sink when DLQ enabled
     documentIndex: 1
     asserts:
       - equal:
           path: spec.delivery.deadLetterSink.ref.name
-          value: test-release-dlq
+          value: test-release-events-dlq
 
-  - it: should not render KafkaSource when kafka disabled
+  - it: should render only the service when no kafka sources defined
     set:
-      kafka.enabled: false
+      kafka.sources: null
     asserts:
       - hasDocuments:
           count: 1

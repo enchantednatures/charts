@@ -13,93 +13,129 @@ global:
   annotations: {}
 
 # =============================================================================
-# Knative Service
+# Services — Map of Knative Services (one or more)
+#
+# Each key becomes a name suffix: <release-name>-<key>
+# Example:
+#   services:
+#     api:
+#       image: { repository: ghcr.io/org/api, tag: v1.0.0 }
+#     worker:
+#       image: { repository: ghcr.io/org/worker, tag: v1.0.0 }
 # =============================================================================
-knativeService:
-  # Container image configuration
-  image:
-    repository: ""
-    tag: "latest"
-    pullPolicy: IfNotPresent
-    # Flux image policy annotation
-    fluxImagePolicy: ""
+services:
+  api:
+    # Container image configuration
+    image:
+      repository: ""
+      tag: "latest"
+      pullPolicy: IfNotPresent
+      # Flux image policy annotation
+      fluxImagePolicy: ""
 
-  # Knative autoscaling
-  scaling:
-    minScale: 1
-    maxScale: 10
-    target: 100
-    containerConcurrency: 100
-    timeoutSeconds: 300
-    class: ""
+    # Knative autoscaling
+    scaling:
+      minScale: 1
+      maxScale: 10
+      target: 100
+      containerConcurrency: 100
+      timeoutSeconds: 300
+      class: ""
 
-  # Container resources
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "64Mi"
-    limits:
-      cpu: "500m"
-      memory: "256Mi"
+    # Container resources
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
 
-  # Container port
-  port: 8080
+    # Container port
+    port: 8080
 
-  # Health probes
-  probes:
-    liveness:
-      path: /health/live
-      port: 8080
-      initialDelaySeconds: 3
-      periodSeconds: 10
-      timeoutSeconds: 2
-      failureThreshold: 3
-    readiness:
-      path: /health/ready
-      port: 8080
-      initialDelaySeconds: 5
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 2
+    # Health probes
+    probes:
+      liveness:
+        path: /health/live
+        port: 8080
+        initialDelaySeconds: 3
+        periodSeconds: 10
+        timeoutSeconds: 2
+        failureThreshold: 3
+      readiness:
+        path: /health/ready
+        port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 2
 
-  # Environment variables
-  env: []
+    # Environment variables
+    env: []
 
-  # Environment variables from ConfigMaps or Secrets
-  envFrom: []
+    # Environment variables from ConfigMaps or Secrets
+    envFrom: []
 
-  # Security context for the container
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 10001
-    readOnlyRootFilesystem: true
-    allowPrivilegeEscalation: false
-    seccompProfile:
-      type: RuntimeDefault
-    capabilities:
-      drop:
-        - ALL
+    # Security context for the container
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        drop:
+          - ALL
 
-  # Additional volume mounts
-  volumeMounts: []
+    # Additional volume mounts
+    volumeMounts: []
 
-  # Additional volumes
-  volumes: []
+    # Additional volumes
+    volumes: []
 
-  # Pod-level annotations
-  podAnnotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "8080"
-    prometheus.io/path: "/metrics"
+    # Pod-level annotations
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/metrics"
 
-  # Service-level annotations
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "8080"
-    prometheus.io/path: "/metrics"
+    # Service-level annotations
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/metrics"
 
-  # Service-level labels
-  labels: {}
+    # Service-level labels
+    labels: {}
+
+    # Flagger Canary Release (per-service opt-in)
+    flagger:
+      enabled: false
+
+      analysis:
+        interval: 1m
+        threshold: 5
+        maxWeight: 50
+        stepWeight: 10
+        progressDeadlineSeconds: 120
+
+      metrics:
+        successRateThreshold: 99
+        latencyP99ThresholdMs: 500
+        prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
+
+      loadTest:
+        enabled: true
+        # URL of the k6 webhook service (grafana/flagger-k6-webhook)
+        webhookUrl: http://k6-loadtester.flagger-system/launch-test
+        vus: 10
+        duration: 1m
+        p95ThresholdMs: 500
+        errorRateThreshold: 0.01
+        # Optional: override the entire k6 script
+        script: ""
 
 # =============================================================================
 # CloudNativePG PostgreSQL
@@ -192,39 +228,22 @@ postgres:
       highConnectionCount: 50
 
 # =============================================================================
-# Kafka Event Source
+# Kafka Event Sources — Map of KafkaSource entries
+#
+# Each key becomes a name suffix: <release-name>-<key>-kafka-source
+# The "sink" field must reference a key in the services map.
+# Example:
+#   kafka:
+#     sources:
+#       events:
+#         topic: my-events
+#         sink: api
+#       commands:
+#         topic: my-commands
+#         sink: worker
 # =============================================================================
 kafka:
-  enabled: false
-
-  source:
-    topic: "events"
-    consumerGroup: ""
-    bootstrapServers:
-      - kafka.kafka.svc.cluster.local:9092
-    consumers: 3
-    initialOffset: latest
-
-  delivery:
-    retry: 5
-    backoffPolicy: exponential
-    backoffDelay: PT1S
-
-  dlq:
-    enabled: true
-    image:
-      repository: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display
-      tag: latest
-    scaling:
-      minScale: 0
-      maxScale: 2
-    resources:
-      requests:
-        cpu: "50m"
-        memory: "32Mi"
-      limits:
-        cpu: "200m"
-        memory: "128Mi"
+  sources: {}
 
 # =============================================================================
 # DragonflyDB Cache Cluster
@@ -310,32 +329,3 @@ dragonfly:
 
   # Priority class
   priorityClassName: ""
-
-# =============================================================================
-# Flagger Canary Release
-# =============================================================================
-flagger:
-  enabled: false
-
-  analysis:
-    interval: 1m
-    threshold: 5
-    maxWeight: 50
-    stepWeight: 10
-    progressDeadlineSeconds: 120
-
-  metrics:
-    successRateThreshold: 99
-    latencyP99ThresholdMs: 500
-    prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
-
-  loadTest:
-    enabled: true
-    # URL of the k6 webhook service (grafana/flagger-k6-webhook)
-    webhookUrl: http://k6-loadtester.flagger-system/launch-test
-    vus: 10
-    duration: 1m
-    p95ThresholdMs: 500
-    errorRateThreshold: 0.01
-    # Optional: override the entire k6 script
-    script: ""

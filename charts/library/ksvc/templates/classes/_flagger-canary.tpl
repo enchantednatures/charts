@@ -1,20 +1,25 @@
+{{/*
+ksvc.class.flaggerCanary — Render a Flagger Canary for a specific service.
+Expects context: dict with "root" (top-level context), "key" (service map key),
+and "svc" (the merged service config dict containing flagger sub-config).
+*/}}
 {{- define "ksvc.class.flaggerCanary" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
-{{- $flagger := .Values.flagger -}}
+{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key) -}}
+{{- $flagger := .svc.flagger -}}
 {{- $lt := $flagger.loadTest -}}
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
-  name: {{ $fullname }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ $serviceName }}
+  namespace: {{ .root.Release.Namespace }}
   labels:
-    {{- include "ksvc.labels" . | nindent 4 }}
+    {{- include "ksvc.serviceLabels" (dict "root" .root "key" .key "svc" .svc) | nindent 4 }}
 spec:
   provider: knative
   targetRef:
     apiVersion: serving.knative.dev/v1
     kind: Service
-    name: {{ $fullname }}
+    name: {{ $serviceName }}
   progressDeadlineSeconds: {{ $flagger.analysis.progressDeadlineSeconds }}
   analysis:
     interval: {{ $flagger.analysis.interval }}
@@ -57,7 +62,7 @@ spec:
 
             export default function () {
               const res = http.get(
-                'http://{{ $fullname }}-canary.{{ .Release.Namespace }}.svc.cluster.local/health/live'
+                'http://{{ $serviceName }}-canary.{{ .root.Release.Namespace }}.svc.cluster.local/health/live'
               );
               check(res, {
                 'smoke: status is 200': (r) => r.status === 200,
@@ -92,7 +97,7 @@ spec:
 
             export default function () {
               const res = http.get(
-                'http://{{ $fullname }}-canary.{{ .Release.Namespace }}.svc.cluster.local/'
+                'http://{{ $serviceName }}-canary.{{ .root.Release.Namespace }}.svc.cluster.local/'
               );
               const ok = check(res, {
                 'status is 2xx': (r) => r.status >= 200 && r.status < 300,

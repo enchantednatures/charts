@@ -1,36 +1,45 @@
+{{/*
+ksvc.class.kafkaSource — Render a KafkaSource for a specific source entry.
+Expects context: dict with "root" (top-level context), "key" (source map key),
+and "source" (the merged kafka source config dict).
+The source.sink field must reference a valid key in .Values.services.
+*/}}
 {{- define "ksvc.class.kafkaSource" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
-{{- $kafka := .Values.kafka -}}
+{{- $fullname := include "ksvc.fullname" .root -}}
+{{- $source := .source -}}
+{{- $sinkServiceName := include "ksvc.serviceName" (dict "root" .root "key" $source.sink) -}}
+{{- $sourceName := printf "%s-%s-kafka-source" $fullname .key | trunc 63 | trimSuffix "-" -}}
+{{- $dlqName := printf "%s-%s-dlq" $fullname .key | trunc 63 | trimSuffix "-" -}}
 apiVersion: sources.knative.dev/v1beta1
 kind: KafkaSource
 metadata:
-  name: {{ $fullname }}-kafka-source
-  namespace: {{ .Release.Namespace }}
+  name: {{ $sourceName }}
+  namespace: {{ .root.Release.Namespace }}
   labels:
-    {{- include "ksvc.labels" . | nindent 4 }}
+    {{- include "ksvc.labels" .root | nindent 4 }}
     app.kubernetes.io/component: event-source
 spec:
-  consumerGroup: {{ default (printf "%s-consumers" $fullname) $kafka.source.consumerGroup }}
-  consumers: {{ $kafka.source.consumers }}
+  consumerGroup: {{ default (printf "%s-%s-consumers" $fullname .key) $source.consumerGroup }}
+  consumers: {{ $source.consumers }}
   bootstrapServers:
-    {{- toYaml $kafka.source.bootstrapServers | nindent 4 }}
+    {{- toYaml $source.bootstrapServers | nindent 4 }}
   topics:
-    - {{ $kafka.source.topic }}
+    - {{ $source.topic }}
   sink:
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
-      name: {{ $fullname }}
+      name: {{ $sinkServiceName }}
   delivery:
-    retry: {{ $kafka.delivery.retry }}
-    backoffPolicy: {{ $kafka.delivery.backoffPolicy }}
-    backoffDelay: {{ $kafka.delivery.backoffDelay }}
-    {{- if $kafka.dlq.enabled }}
+    retry: {{ $source.delivery.retry }}
+    backoffPolicy: {{ $source.delivery.backoffPolicy }}
+    backoffDelay: {{ $source.delivery.backoffDelay }}
+    {{- if and $source.dlq $source.dlq.enabled }}
     deadLetterSink:
       ref:
         apiVersion: serving.knative.dev/v1
         kind: Service
-        name: {{ $fullname }}-dlq
+        name: {{ $dlqName }}
     {{- end }}
-  initialOffset: {{ $kafka.source.initialOffset }}
+  initialOffset: {{ $source.initialOffset }}
 {{- end }}

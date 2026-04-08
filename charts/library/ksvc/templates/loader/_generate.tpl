@@ -16,9 +16,22 @@ merged. We must apply defaults explicitly before rendering.
   {{- include "ksvc.validate" . -}}
 
   {{/* ============================================================ */}}
-  {{/* Knative Service (always rendered)                            */}}
+  {{/* Knative Services (iterate the services map)                  */}}
   {{/* ============================================================ */}}
-  {{- include "ksvc.class.knativeService" . | nindent 0 }}
+  {{- $isFirst := true -}}
+  {{- range $key, $svc := .Values.services }}
+    {{- if $isFirst -}}
+      {{- $isFirst = false -}}
+    {{- else }}
+---
+    {{- end }}
+  {{- include "ksvc.class.knativeService" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
+    {{/* Flagger Canary (per-service opt-in) */}}
+    {{- if and $svc.flagger $svc.flagger.enabled }}
+---
+  {{- include "ksvc.class.flaggerCanary" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
+    {{- end }}
+  {{- end }}
 
   {{/* ============================================================ */}}
   {{/* CloudNativePG PostgreSQL                                     */}}
@@ -45,14 +58,16 @@ merged. We must apply defaults explicitly before rendering.
   {{- end }}
 
   {{/* ============================================================ */}}
-  {{/* Kafka Event Source                                           */}}
+  {{/* Kafka Event Sources (iterate the kafka.sources map)          */}}
   {{/* ============================================================ */}}
-  {{- if and .Values.kafka .Values.kafka.enabled }}
+  {{- if and .Values.kafka .Values.kafka.sources }}
+    {{- range $key, $source := .Values.kafka.sources }}
 ---
-  {{- include "ksvc.class.kafkaSource" . | nindent 0 }}
-    {{- if and .Values.kafka.dlq .Values.kafka.dlq.enabled }}
+  {{- include "ksvc.class.kafkaSource" (dict "root" $ "key" $key "source" $source) | nindent 0 }}
+      {{- if and $source.dlq $source.dlq.enabled }}
 ---
-  {{- include "ksvc.class.kafkaDlq" . | nindent 0 }}
+  {{- include "ksvc.class.kafkaDlq" (dict "root" $ "key" $key "source" $source) | nindent 0 }}
+      {{- end }}
     {{- end }}
   {{- end }}
 
@@ -64,14 +79,6 @@ merged. We must apply defaults explicitly before rendering.
   {{- include "ksvc.class.dragonfly" . | nindent 0 }}
   {{- end }}
 
-  {{/* ============================================================ */}}
-  {{/* Flagger Canary Release                                      */}}
-  {{/* ============================================================ */}}
-  {{- if and .Values.flagger .Values.flagger.enabled }}
----
-  {{- include "ksvc.class.flaggerCanary" . | nindent 0 }}
-  {{- end }}
-
 {{- end }}
 
 {{/*
@@ -80,7 +87,8 @@ This compensates for Helm not merging library chart values.yaml automatically.
 Uses mustMergeOverwrite: consumer values take precedence over defaults.
 */}}
 {{- define "ksvc.loader.applyDefaults" -}}
-  {{/* --- knativeService defaults --- */}}
+
+  {{/* --- service defaults (applied to each entry in the services map) --- */}}
   {{- $svcDefaults := dict
     "image" (dict "repository" "" "tag" "latest" "pullPolicy" "IfNotPresent" "fluxImagePolicy" "")
     "scaling" (dict "minScale" 1 "maxScale" 10 "target" 100 "containerConcurrency" 100 "timeoutSeconds" 300 "class" "")
@@ -106,8 +114,49 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "annotations" (dict "prometheus.io/scrape" "true" "prometheus.io/port" "8080" "prometheus.io/path" "/metrics")
     "labels" (dict)
   -}}
-  {{- $svc := .Values.knativeService | default dict -}}
-  {{- $_ := set .Values "knativeService" (mustMergeOverwrite $svcDefaults $svc) -}}
+
+  {{- $flaggerDefaults := dict
+    "enabled" false
+    "analysis" (dict "interval" "1m" "threshold" 5 "maxWeight" 50 "stepWeight" 10 "progressDeadlineSeconds" 120)
+    "metrics" (dict "successRateThreshold" 99 "latencyP99ThresholdMs" 500 "prometheusAddress" "http://prometheus.observability.svc.cluster.local:9090")
+    "loadTest" (dict "enabled" true "webhookUrl" "http://k6-loadtester.flagger-system/launch-test" "vus" 10 "duration" "1m" "p95ThresholdMs" 500 "errorRateThreshold" 0.01 "script" "")
+  -}}
+
+  {{- $services := .Values.services | default dict -}}
+  {{- range $key, $svc := $services }}
+    {{- $merged := mustMergeOverwrite (deepCopy $svcDefaults) $svc -}}
+    {{/* Merge flagger defaults into the service's flagger config */}}
+    {{- $svcFlagger := $merged.flagger | default dict -}}
+    {{- $_ := set $merged "flagger" (mustMergeOverwrite (deepCopy $flaggerDefaults) $svcFlagger) -}}
+    {{- $_ := set $services $key $merged -}}
+  {{- end }}
+  {{- $_ := set .Values "services" $services -}}
+
+  {{/* --- kafka source defaults (applied to each entry in kafka.sources map) --- */}}
+  {{- $kafkaSourceDefaults := dict
+    "topic" "events"
+    "consumerGroup" ""
+    "bootstrapServers" (list "kafka.kafka.svc.cluster.local:9092")
+    "consumers" 3
+    "initialOffset" "latest"
+    "sink" ""
+    "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
+    "dlq" (dict "enabled" true
+      "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "latest")
+      "scaling" (dict "minScale" 0 "maxScale" 2)
+      "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
+    )
+  -}}
+
+  {{- $kafka := .Values.kafka | default dict -}}
+  {{- if or (not (hasKey $kafka "sources")) (not $kafka.sources) -}}
+    {{- $_ := set $kafka "sources" dict -}}
+  {{- end -}}
+  {{- range $key, $source := $kafka.sources }}
+    {{- $merged := mustMergeOverwrite (deepCopy $kafkaSourceDefaults) $source -}}
+    {{- $_ := set $kafka.sources $key $merged -}}
+  {{- end }}
+  {{- $_ := set .Values "kafka" $kafka -}}
 
   {{/* --- postgres defaults --- */}}
   {{- $pgDefaults := dict
@@ -134,30 +183,6 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   -}}
   {{- $pg := .Values.postgres | default dict -}}
   {{- $_ := set .Values "postgres" (mustMergeOverwrite $pgDefaults $pg) -}}
-
-  {{/* --- kafka defaults --- */}}
-  {{- $kafkaDefaults := dict
-    "enabled" false
-    "source" (dict "topic" "events" "consumerGroup" "" "bootstrapServers" (list "kafka.kafka.svc.cluster.local:9092") "consumers" 3 "initialOffset" "latest")
-    "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
-    "dlq" (dict "enabled" true
-      "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "latest")
-      "scaling" (dict "minScale" 0 "maxScale" 2)
-      "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
-    )
-  -}}
-  {{- $kafka := .Values.kafka | default dict -}}
-  {{- $_ := set .Values "kafka" (mustMergeOverwrite $kafkaDefaults $kafka) -}}
-
-  {{/* --- flagger defaults --- */}}
-  {{- $flaggerDefaults := dict
-    "enabled" false
-    "analysis" (dict "interval" "1m" "threshold" 5 "maxWeight" 50 "stepWeight" 10 "progressDeadlineSeconds" 120)
-    "metrics" (dict "successRateThreshold" 99 "latencyP99ThresholdMs" 500 "prometheusAddress" "http://prometheus.observability.svc.cluster.local:9090")
-    "loadTest" (dict "enabled" true "webhookUrl" "http://k6-loadtester.flagger-system/launch-test" "vus" 10 "duration" "1m" "p95ThresholdMs" 500 "errorRateThreshold" 0.01 "script" "")
-  -}}
-  {{- $flagger := .Values.flagger | default dict -}}
-  {{- $_ := set .Values "flagger" (mustMergeOverwrite $flaggerDefaults $flagger) -}}
 
   {{/* --- dragonfly defaults --- */}}
   {{- $dfDefaults := dict

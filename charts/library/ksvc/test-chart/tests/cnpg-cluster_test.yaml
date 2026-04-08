@@ -2,7 +2,7 @@ suite: cnpg cluster tests
 templates:
   - templates/common.yaml
 set:
-  knativeService.image.repository: test/image
+  services.api.image.repository: test/image
   postgres.enabled: true
   postgres.pooler.enabled: false
   postgres.backup.enabled: false
