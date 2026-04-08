@@ -1,5 +1,5 @@
 apiVersion: v2
-name: ksvc
+name: ksvc-app
 description: >-
   A ksvc library powered chart template for deploying Knative Services with
   optional CloudNativePG PostgreSQL, Kafka event sources, DragonflyDB cache
