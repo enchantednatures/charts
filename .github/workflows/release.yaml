@@ -35,6 +35,14 @@ jobs:
       - name: Helm lint
         run: helm lint ${{ env.CHART_PATH }}
 
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
+
+      - name: Run unit tests
+        run: |
+          helm dependency build ${{ env.CHART_PATH }}/test-chart
+          helm unittest ${{ env.CHART_PATH }}/test-chart
+
       - name: Login to OCI registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \

@@ -1,6 +1,11 @@
 name: Integration Test
 
 on:
+  pull_request:
+    paths:
+      - 'charts/**'
+      - 'examples/**'
+      - '.github/workflows/integration-test.yaml'
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
@@ -12,24 +17,38 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [minimal, full-stack, postgres-only, kafka-consumer]
+        example: [minimal, full-stack, postgres-only, kafka-consumer, dragonfly-cache]
         include:
           - example: minimal
             install_cnpg_crds: false
             install_kafka_crds: false
             install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
           - example: full-stack
             install_cnpg_crds: true
             install_kafka_crds: true
             install_flagger_crds: true
+            install_dragonfly_crds: true
+            install_monitoring_crds: true
           - example: postgres-only
             install_cnpg_crds: true
             install_kafka_crds: false
             install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: true
           - example: kafka-consumer
             install_cnpg_crds: false
             install_kafka_crds: true
             install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+          - example: dragonfly-cache
+            install_cnpg_crds: false
+            install_kafka_crds: false
+            install_flagger_crds: false
+            install_dragonfly_crds: true
+            install_monitoring_crds: false
     steps:
       - uses: actions/checkout@v4
 
@@ -44,26 +63,37 @@ jobs:
 
       - name: Install Knative Serving CRDs
         run: |
-          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml
+          kubectl apply --server-side -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml
           kubectl wait --for=condition=Established crd/services.serving.knative.dev --timeout=60s
 
       - name: Install CNPG CRDs
         if: matrix.install_cnpg_crds
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_clusters.yaml
-          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_poolers.yaml
-          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_scheduledbackups.yaml
-          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml || true
+          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_clusters.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_poolers.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_scheduledbackups.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/main/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml
+
+      - name: Install Prometheus Operator CRDs
+        if: matrix.install_monitoring_crds
+        run: |
+          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 
       - name: Install Flagger CRDs
         if: matrix.install_flagger_crds
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
 
       - name: Install Kafka CRDs
         if: matrix.install_kafka_crds
         run: |
-          kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.17.0/eventing-kafka-source.yaml || true
+          kubectl apply --server-side -f https://raw.githubusercontent.com/knative-extensions/eventing-kafka-broker/knative-v1.17.0/control-plane/config/eventing-kafka-broker/100-source/100-kafka-source.yaml
+
+      - name: Install DragonflyDB CRDs
+        if: matrix.install_dragonfly_crds
+        run: |
+          kubectl apply --server-side -f https://raw.githubusercontent.com/dragonflydb/dragonfly-operator/main/config/crd/bases/dragonflydb.io_dragonflies.yaml
 
       - name: Helm dependency update
         run: helm dependency update examples/${{ matrix.example }}
