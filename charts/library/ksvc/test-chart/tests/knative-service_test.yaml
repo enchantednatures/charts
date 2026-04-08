@@ -1,0 +1,118 @@
+suite: knative service tests
+templates:
+  - templates/common.yaml
+set:
+  knativeService.image.repository: test/image
+  knativeService.image.tag: "v1.0.0"
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should render a Knative Service
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: apiVersion
+          value: serving.knative.dev/v1
+
+  - it: should set the correct name
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release
+
+  - it: should set the correct namespace
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+
+  - it: should set scaling annotations
+    set:
+      knativeService.scaling.minScale: 2
+      knativeService.scaling.maxScale: 20
+      knativeService.scaling.target: 50
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/min-scale"]
+          value: "2"
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/max-scale"]
+          value: "20"
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/target"]
+          value: "50"
+
+  - it: should set resource limits
+    set:
+      knativeService.resources.limits.cpu: "2"
+      knativeService.resources.limits.memory: "1Gi"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: "2"
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: "1Gi"
+
+  - it: should use default port 8080
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+
+  - it: should enforce security context
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+
+  - it: should include flux image policy comment when set
+    set:
+      knativeService.image.fluxImagePolicy: "flux-system:my-service"
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "test/image:v1.0.0"
+
+  - it: should always mount tmp volume
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: {}
+
+  - it: should set env vars when provided
+    set:
+      knativeService.env:
+        - name: MY_VAR
+          value: "hello"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: MY_VAR
+
+  - it: should render only one document when no features enabled
+    asserts:
+      - hasDocuments:
+          count: 1

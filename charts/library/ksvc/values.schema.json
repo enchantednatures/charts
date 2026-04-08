@@ -1,0 +1,511 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ksvc Helm Chart Values",
+  "description": "Schema for ksvc Helm library chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nameOverride": {
+          "type": "string"
+        },
+        "fullnameOverride": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object"
+        },
+        "annotations": {
+          "type": "object"
+        }
+      }
+    },
+    "knativeService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image"],
+      "properties": {
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository"],
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["Always", "IfNotPresent", "Never"]
+            },
+            "fluxImagePolicy": {
+              "type": "string"
+            }
+          }
+        },
+        "scaling": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minScale": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxScale": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "target": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "containerConcurrency": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "class": {
+              "type": "string"
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            }
+          }
+        },
+        "port": {
+          "type": "integer",
+          "const": 8080
+        },
+        "probes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "liveness": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": { "type": "string" },
+                "port": { "type": "integer" },
+                "initialDelaySeconds": { "type": "integer", "minimum": 0 },
+                "periodSeconds": { "type": "integer", "minimum": 1 },
+                "timeoutSeconds": { "type": "integer", "minimum": 1 },
+                "failureThreshold": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "readiness": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": { "type": "string" },
+                "port": { "type": "integer" },
+                "initialDelaySeconds": { "type": "integer", "minimum": 0 },
+                "periodSeconds": { "type": "integer", "minimum": 1 },
+                "timeoutSeconds": { "type": "integer", "minimum": 1 },
+                "failureThreshold": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        },
+        "env": {
+          "type": "array"
+        },
+        "envFrom": {
+          "type": "array"
+        },
+        "securityContext": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "runAsNonRoot": { "type": "boolean" },
+            "runAsUser": { "type": "integer" },
+            "readOnlyRootFilesystem": { "type": "boolean" },
+            "allowPrivilegeEscalation": { "type": "boolean" },
+            "seccompProfile": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["RuntimeDefault", "Localhost", "Unconfined"]
+                },
+                "localhostProfile": { "type": "string" }
+              }
+            },
+            "capabilities": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "drop": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "add": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "volumeMounts": {
+          "type": "array"
+        },
+        "volumes": {
+          "type": "array"
+        },
+        "podAnnotations": {
+          "type": "object"
+        },
+        "annotations": {
+          "type": "object"
+        },
+        "labels": {
+          "type": "object"
+        }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string",
+          "enum": ["14", "15", "16", "17"]
+        },
+        "instances": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "sharedPreloadLibraries": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "postInitSQL": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "pattern": "^[0-9]+[KMGT]i$"
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
+        },
+        "pooler": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "instances": { "type": "integer", "minimum": 1 },
+            "type": {
+              "type": "string",
+              "enum": ["rw", "ro"]
+            },
+            "poolMode": {
+              "type": "string",
+              "enum": ["transaction", "session", "statement"]
+            },
+            "parameters": {
+              "type": "object"
+            },
+            "resources": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "cpu": { "type": "string" },
+                    "memory": { "type": "string" }
+                  }
+                },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "cpu": { "type": "string" },
+                    "memory": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "backup": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "schedule": { "type": "string" },
+            "target": {
+              "type": "string",
+              "enum": ["prefer-standby", "primary"]
+            },
+            "retentionPolicy": { "type": "string" },
+            "objectStore": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "destinationPath": { "type": "string" },
+                "endpointURL": { "type": "string" },
+                "s3Credentials": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "secretName": { "type": "string" },
+                    "accessKeyIdKey": { "type": "string" },
+                    "secretAccessKeyKey": { "type": "string" }
+                  }
+                },
+                "data": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "compression": {
+                      "type": "string",
+                      "enum": ["gzip", "bzip2", "snappy", "zstd"]
+                    },
+                    "jobs": { "type": "integer", "minimum": 1 }
+                  }
+                },
+                "wal": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "compression": {
+                      "type": "string",
+                      "enum": ["gzip", "bzip2", "snappy", "zstd"]
+                    },
+                    "maxParallel": { "type": "integer", "minimum": 1 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "monitoring": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "alerts": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "replicationLagWarning": { "type": "integer", "minimum": 0 },
+                "replicationLagCritical": { "type": "integer", "minimum": 0 },
+                "highConnectionCount": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "kafka": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "topic": { "type": "string" },
+            "consumerGroup": { "type": "string" },
+            "bootstrapServers": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string" }
+            },
+            "consumers": { "type": "integer", "minimum": 1 },
+            "initialOffset": {
+              "type": "string",
+              "enum": ["latest", "earliest"]
+            }
+          }
+        },
+        "delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "retry": { "type": "integer", "minimum": 0 },
+            "backoffPolicy": {
+              "type": "string",
+              "enum": ["linear", "exponential"]
+            },
+            "backoffDelay": { "type": "string" }
+          }
+        },
+        "dlq": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag": { "type": "string" }
+              }
+            },
+            "scaling": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "minScale": { "type": "integer", "minimum": 0 },
+                "maxScale": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "resources": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "cpu": { "type": "string" },
+                    "memory": { "type": "string" }
+                  }
+                },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "cpu": { "type": "string" },
+                    "memory": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "flagger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "analysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "interval": { "type": "string" },
+            "threshold": { "type": "integer", "minimum": 1 },
+            "maxWeight": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 100
+            },
+            "stepWeight": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "progressDeadlineSeconds": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "successRateThreshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "latencyP99ThresholdMs": { "type": "integer", "minimum": 1 },
+            "prometheusAddress": { "type": "string" }
+          }
+        },
+        "loadTest": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "webhookUrl": { "type": "string" },
+            "vus": { "type": "integer", "minimum": 1 },
+            "duration": { "type": "string" },
+            "p95ThresholdMs": { "type": "integer", "minimum": 1 },
+            "errorRateThreshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "script": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "required": ["knativeService"]
+}

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ksvc-test
+description: Test wrapper chart for ksvc library chart unit tests
+type: application
+version: 0.0.1
+dependencies:
+  - name: ksvc
+    repository: file://..
+    version: ">0.0.0-0"

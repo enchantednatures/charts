@@ -1,0 +1,256 @@
+# =============================================================================
+# Global Settings
+# =============================================================================
+global:
+  # Override the chart fullname (default: Release.Name)
+  nameOverride: ""
+  fullnameOverride: ""
+
+  # Labels applied to ALL resources
+  labels: {}
+
+  # Annotations applied to ALL resources
+  annotations: {}
+
+# =============================================================================
+# Knative Service
+# =============================================================================
+knativeService:
+  # Container image configuration
+  image:
+    repository: ""
+    tag: "latest"
+    pullPolicy: IfNotPresent
+    # Flux image policy annotation
+    fluxImagePolicy: ""
+
+  # Knative autoscaling
+  scaling:
+    minScale: 1
+    maxScale: 10
+    target: 100
+    containerConcurrency: 100
+    timeoutSeconds: 300
+    class: ""
+
+  # Container resources
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "64Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  # Container port
+  port: 8080
+
+  # Health probes
+  probes:
+    liveness:
+      path: /health/live
+      port: 8080
+      initialDelaySeconds: 3
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    readiness:
+      path: /health/ready
+      port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 2
+
+  # Environment variables
+  env: []
+
+  # Environment variables from ConfigMaps or Secrets
+  envFrom: []
+
+  # Security context for the container
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    capabilities:
+      drop:
+        - ALL
+
+  # Additional volume mounts
+  volumeMounts: []
+
+  # Additional volumes
+  volumes: []
+
+  # Pod-level annotations
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+
+  # Service-level annotations
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+
+  # Service-level labels
+  labels: {}
+
+# =============================================================================
+# CloudNativePG PostgreSQL
+# =============================================================================
+postgres:
+  enabled: false
+
+  version: "16"
+  instances: 3
+
+  parameters:
+    ssl: "on"
+    ssl_min_protocol_version: "TLSv1.3"
+    ssl_max_protocol_version: "TLSv1.3"
+    shared_buffers: "2Gi"
+    max_connections: "300"
+    synchronous_commit: "remote_apply"
+    synchronous_standby_names: "ANY 1 (*)"
+    archive_timeout: "5min"
+    wal_compression: "on"
+
+  sharedPreloadLibraries:
+    - pg_stat_statements
+
+  postInitSQL:
+    - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+    - "ALTER SYSTEM SET log_statement = 'all';"
+    - "ALTER SYSTEM SET log_min_duration_statement = '1000';"
+
+  resources:
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  storage:
+    size: "200Gi"
+    storageClassName: "standard"
+
+  pooler:
+    enabled: true
+    instances: 3
+    type: rw
+    poolMode: transaction
+    parameters:
+      max_client_conn: "300"
+      default_pool_size: "25"
+      reserve_pool_size: "5"
+      reserve_pool_timeout: "5"
+      max_db_connections: "100"
+      server_lifetime: "3600"
+      server_idle_timeout: "600"
+      log_connections: "1"
+      log_disconnections: "1"
+      log_pooler_errors: "1"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"
+    target: prefer-standby
+    retentionPolicy: "30d"
+    objectStore:
+      destinationPath: ""
+      endpointURL: ""
+      s3Credentials:
+        secretName: postgres-backup-storage
+        accessKeyIdKey: ACCESS_KEY_ID
+        secretAccessKeyKey: ACCESS_SECRET_KEY
+      data:
+        compression: zstd
+        jobs: 2
+      wal:
+        compression: gzip
+        maxParallel: 4
+
+  monitoring:
+    enabled: true
+    alerts:
+      replicationLagWarning: 10
+      replicationLagCritical: 60
+      highConnectionCount: 50
+
+# =============================================================================
+# Kafka Event Source
+# =============================================================================
+kafka:
+  enabled: false
+
+  source:
+    topic: "events"
+    consumerGroup: ""
+    bootstrapServers:
+      - kafka.kafka.svc.cluster.local:9092
+    consumers: 3
+    initialOffset: latest
+
+  delivery:
+    retry: 5
+    backoffPolicy: exponential
+    backoffDelay: PT1S
+
+  dlq:
+    enabled: true
+    image:
+      repository: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display
+      tag: latest
+    scaling:
+      minScale: 0
+      maxScale: 2
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "32Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+
+# =============================================================================
+# Flagger Canary Release
+# =============================================================================
+flagger:
+  enabled: false
+
+  analysis:
+    interval: 1m
+    threshold: 5
+    maxWeight: 50
+    stepWeight: 10
+    progressDeadlineSeconds: 120
+
+  metrics:
+    successRateThreshold: 99
+    latencyP99ThresholdMs: 500
+    prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
+
+  loadTest:
+    enabled: true
+    # URL of the k6 webhook service (grafana/flagger-k6-webhook)
+    webhookUrl: http://k6-loadtester.flagger-system/launch-test
+    vus: 10
+    duration: 1m
+    p95ThresholdMs: 500
+    errorRateThreshold: 0.01
+    # Optional: override the entire k6 script
+    script: ""

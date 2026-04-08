@@ -1,0 +1,54 @@
+suite: cnpg pooler tests
+templates:
+  - templates/common.yaml
+set:
+  knativeService.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: true
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: false
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # With postgres enabled + pooler enabled (no backup, no monitoring):
+  # doc 0 = Knative Service, doc 1 = CNPG Cluster, doc 2 = Pooler
+  - it: should render Pooler when enabled
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: Pooler
+      - equal:
+          path: apiVersion
+          value: postgresql.cnpg.io/v1
+
+  - it: should set correct pooler name
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-pooler
+
+  - it: should reference the correct cluster
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.cluster.name
+          value: test-release-postgres
+
+  - it: should set pooler parameters
+    set:
+      postgres.pooler.instances: 5
+      postgres.pooler.type: ro
+      postgres.pooler.poolMode: session
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.instances
+          value: 5
+      - equal:
+          path: spec.type
+          value: ro
+      - equal:
+          path: spec.pgbouncer.poolMode
+          value: session

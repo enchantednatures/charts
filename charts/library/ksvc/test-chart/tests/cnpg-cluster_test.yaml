@@ -1,0 +1,75 @@
+suite: cnpg cluster tests
+templates:
+  - templates/common.yaml
+set:
+  knativeService.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: false
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: false
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should render CNPG Cluster when postgres enabled
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Cluster
+      - equal:
+          path: apiVersion
+          value: postgresql.cnpg.io/v1
+
+  - it: should set correct cluster name
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-postgres
+
+  - it: should set instance count
+    set:
+      postgres.instances: 5
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.instances
+          value: 5
+
+  - it: should set storage size
+    set:
+      postgres.storage.size: "500Gi"
+      postgres.storage.storageClassName: "gp3"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.storage.size
+          value: "500Gi"
+      - equal:
+          path: spec.storage.storageClassName
+          value: "gp3"
+
+  - it: should include barman plugin when backup enabled
+    set:
+      postgres.backup.enabled: true
+      postgres.backup.objectStore.destinationPath: "s3://test/"
+      postgres.backup.objectStore.endpointURL: "http://minio:9000"
+    documentIndex: 1
+    asserts:
+      - isNotNull:
+          path: spec.plugins
+
+  - it: should not include barman plugin when backup disabled
+    set:
+      postgres.backup.enabled: false
+    documentIndex: 1
+    asserts:
+      - isNull:
+          path: spec.plugins
+
+  - it: should not render Cluster when postgres disabled
+    set:
+      postgres.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1

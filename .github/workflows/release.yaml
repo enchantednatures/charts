@@ -1,0 +1,60 @@
+name: Release Chart
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  CHART_PATH: charts/library/ksvc
+
+jobs:
+  release:
+    name: Package and Push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update chart version
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ${{ env.CHART_PATH }}/Chart.yaml
+
+      - name: Helm lint
+        run: helm lint ${{ env.CHART_PATH }}
+
+      - name: Login to OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ${{ env.REGISTRY }} \
+              --username ${{ github.actor }} \
+              --password-stdin
+
+      - name: Package chart
+        run: helm package ${{ env.CHART_PATH }} --destination /tmp/charts
+
+      - name: Push to OCI registry
+        run: |
+          helm push /tmp/charts/ksvc-${{ steps.version.outputs.version }}.tgz \
+            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref }}
+          name: "ksvc v${{ steps.version.outputs.version }}"
+          generate_release_notes: true
+          files: |
+            /tmp/charts/ksvc-${{ steps.version.outputs.version }}.tgz

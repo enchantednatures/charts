@@ -1,0 +1,83 @@
+suite: flagger canary tests
+templates:
+  - templates/common.yaml
+set:
+  knativeService.image.repository: test/image
+  flagger.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # With flagger enabled:
+  # doc 0 = Knative Service, doc 1 = Canary
+  - it: should render Canary when flagger enabled
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Canary
+      - equal:
+          path: apiVersion
+          value: flagger.app/v1beta1
+
+  - it: should set correct canary name
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release
+
+  - it: should reference the knative service
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.targetRef.name
+          value: test-release
+
+  - it: should set analysis parameters
+    set:
+      flagger.analysis.interval: 2m
+      flagger.analysis.threshold: 10
+      flagger.analysis.maxWeight: 80
+      flagger.analysis.stepWeight: 20
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.analysis.interval
+          value: 2m
+      - equal:
+          path: spec.analysis.threshold
+          value: 10
+      - equal:
+          path: spec.analysis.maxWeight
+          value: 80
+      - equal:
+          path: spec.analysis.stepWeight
+          value: 20
+
+  - it: should set metric thresholds
+    set:
+      flagger.metrics.successRateThreshold: 95
+      flagger.metrics.latencyP99ThresholdMs: 1000
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.analysis.metrics[0].thresholdRange.min
+          value: 95
+      - equal:
+          path: spec.analysis.metrics[1].thresholdRange.max
+          value: 1000
+
+  - it: should include webhooks when loadTest enabled
+    set:
+      flagger.loadTest.enabled: true
+    documentIndex: 1
+    asserts:
+      - isNotNull:
+          path: spec.analysis.webhooks
+
+  - it: should not render Canary when flagger disabled
+    set:
+      flagger.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1

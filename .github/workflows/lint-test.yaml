@@ -1,0 +1,146 @@
+name: Lint and Test
+
+on:
+  pull_request:
+    paths:
+      - 'charts/**'
+      - 'examples/**'
+      - '.github/workflows/lint-test.yaml'
+
+jobs:
+  lint:
+    name: Helm Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Lint library chart
+        run: helm lint charts/library/ksvc
+
+      - name: Lint all examples
+        run: |
+          for example in examples/*/; do
+            echo "--- Linting $example ---"
+            helm dependency update "$example"
+            helm lint "$example"
+          done
+
+  schema-validation:
+    name: Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install jsonschema pyyaml
+
+      - name: Validate values.schema.json syntax
+        run: python3 -c "import json; json.load(open('charts/library/ksvc/values.schema.json')); print('Schema JSON is valid')"
+
+      - name: Validate example values against schema
+        run: |
+          python3 << 'EOF'
+          import json, yaml, jsonschema, sys, glob
+          with open('charts/library/ksvc/values.schema.json') as f:
+            schema = json.load(f)
+          failed = False
+          for vf in sorted(glob.glob('examples/*/values.yaml')):
+            with open(vf) as f:
+              values = yaml.safe_load(f)
+            try:
+              jsonschema.validate(values, schema)
+              print(f'PASS: {vf}')
+            except jsonschema.ValidationError as e:
+              print(f'FAIL: {vf}: {e.message}')
+              failed = True
+          if failed:
+            sys.exit(1)
+          EOF
+
+  template-render:
+    name: Template Rendering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Render and validate all examples
+        run: |
+          for example in examples/*/; do
+            name=$(basename "$example")
+            echo "--- Rendering $name ---"
+            helm dependency update "$example"
+            helm template "test-${name}" "$example" \
+              --namespace test-ns > "/tmp/rendered-${name}.yaml"
+            yamllint -d relaxed "/tmp/rendered-${name}.yaml"
+            echo "Resources rendered for $name:"
+            grep -E "^kind:" "/tmp/rendered-${name}.yaml" | sort | uniq -c
+          done
+
+  unit-tests:
+    name: Helm Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --verify=false
+
+      - name: Build test-chart dependencies
+        run: helm dependency build charts/library/ksvc/test-chart
+
+      - name: Run unit tests
+        run: helm unittest charts/library/ksvc/test-chart
+
+  kubeconform:
+    name: Kubernetes Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
+            tar xz -C /usr/local/bin
+
+      - name: Validate rendered manifests
+        run: |
+          for example in examples/*/; do
+            name=$(basename "$example")
+            echo "--- Validating $name ---"
+            helm dependency update "$example"
+            helm template "test-${name}" "$example" --namespace test-ns | \
+              kubeconform \
+                -strict \
+                -summary \
+                -skip "Canary,MetricTemplate,KafkaSource,Cluster,ScheduledBackup,ObjectStore,Pooler,PodMonitor,PrometheusRule" \
+                -kubernetes-version 1.28.0
+          done

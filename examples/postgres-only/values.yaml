@@ -1,0 +1,45 @@
+knativeService:
+  image:
+    repository: ghcr.io/example-org/api-service
+    tag: "v1.5.0"
+  scaling:
+    minScale: 1
+    maxScale: 10
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "128Mi"
+    limits:
+      cpu: "800m"
+      memory: "384Mi"
+  env:
+    - name: APP__REDIS__URL
+      valueFrom:
+        secretKeyRef:
+          name: api-service-secrets
+          key: redis-url
+    - name: APP__TELEMETRY__OTLP_ENDPOINT
+      value: "http://otel-collector.observability.svc.cluster.local:4317"
+
+postgres:
+  enabled: true
+  version: "16"
+  instances: 2
+  storage:
+    size: "100Gi"
+    storageClassName: "standard"
+  backup:
+    enabled: true
+    schedule: "0 3 * * *"
+    retentionPolicy: "14d"
+    objectStore:
+      destinationPath: "s3://api-service-backups/"
+      endpointURL: "http://minio.minio.svc.cluster.local:9000"
+  monitoring:
+    enabled: true
+
+kafka:
+  enabled: false
+
+flagger:
+  enabled: false

@@ -1,0 +1,16 @@
+# Helm
+charts/library/ksvc/charts/
+charts/library/ksvc/test-chart/charts/
+examples/*/charts/
+*.tgz
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+.debug/

@@ -1,0 +1,101 @@
+knativeService:
+  image:
+    repository: ghcr.io/example-org/full-stack-service
+    tag: "v2.0.0"
+    fluxImagePolicy: "flux-system:full-stack-service"
+  scaling:
+    minScale: 2
+    maxScale: 20
+    target: 100
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+  env:
+    - name: APP__REDIS__URL
+      valueFrom:
+        secretKeyRef:
+          name: full-stack-service-secrets
+          key: redis-url
+    - name: APP__TELEMETRY__OTLP_ENDPOINT
+      value: "http://otel-collector.observability.svc.cluster.local:4317"
+    - name: APP__TELEMETRY__SERVICE_NAME
+      value: "full-stack-service"
+
+postgres:
+  enabled: true
+  version: "16"
+  instances: 3
+  parameters:
+    ssl: "on"
+    ssl_min_protocol_version: "TLSv1.3"
+    ssl_max_protocol_version: "TLSv1.3"
+    shared_buffers: "2Gi"
+    max_connections: "300"
+    synchronous_commit: "remote_apply"
+    synchronous_standby_names: "ANY 1 (*)"
+  storage:
+    size: "200Gi"
+    storageClassName: "gp3"
+  pooler:
+    enabled: true
+    instances: 3
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"
+    retentionPolicy: "30d"
+    objectStore:
+      destinationPath: "s3://full-stack-service-postgres-backups/prod/"
+      endpointURL: "https://s3.amazonaws.com"
+      s3Credentials:
+        secretName: postgres-backup-storage
+        accessKeyIdKey: ACCESS_KEY_ID
+        secretAccessKeyKey: ACCESS_SECRET_KEY
+      data:
+        compression: zstd
+        jobs: 4
+      wal:
+        compression: zstd
+        maxParallel: 8
+  monitoring:
+    enabled: true
+    alerts:
+      replicationLagWarning: 10
+      replicationLagCritical: 60
+      highConnectionCount: 50
+
+kafka:
+  enabled: true
+  source:
+    topic: "full-stack-events"
+    consumerGroup: "full-stack-service-consumers"
+    bootstrapServers:
+      - kafka.prod.svc.cluster.local:9092
+    consumers: 10
+    initialOffset: latest
+  delivery:
+    retry: 10
+    backoffPolicy: exponential
+    backoffDelay: PT2S
+  dlq:
+    enabled: true
+
+flagger:
+  enabled: true
+  analysis:
+    interval: 1m
+    threshold: 5
+    maxWeight: 50
+    stepWeight: 10
+  metrics:
+    successRateThreshold: 99
+    latencyP99ThresholdMs: 500
+    prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
+  loadTest:
+    enabled: true
+    webhookUrl: http://k6-loadtester.flagger-system/launch-test
+    vus: 10
+    duration: 1m

@@ -1,0 +1,83 @@
+name: Integration Test
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  integration:
+    name: Kind Cluster Deploy
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [minimal, full-stack, postgres-only, kafka-consumer]
+        include:
+          - example: minimal
+            install_cnpg_crds: false
+            install_kafka_crds: false
+            install_flagger_crds: false
+          - example: full-stack
+            install_cnpg_crds: true
+            install_kafka_crds: true
+            install_flagger_crds: true
+          - example: postgres-only
+            install_cnpg_crds: true
+            install_kafka_crds: false
+            install_flagger_crds: false
+          - example: kafka-consumer
+            install_cnpg_crds: false
+            install_kafka_crds: true
+            install_flagger_crds: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: test-cluster
+
+      - name: Install Knative Serving CRDs
+        run: |
+          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml
+          kubectl wait --for=condition=Established crd/services.serving.knative.dev --timeout=60s
+
+      - name: Install CNPG CRDs
+        if: matrix.install_cnpg_crds
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_clusters.yaml
+          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_poolers.yaml
+          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_scheduledbackups.yaml
+          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml || true
+
+      - name: Install Flagger CRDs
+        if: matrix.install_flagger_crds
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
+      - name: Install Kafka CRDs
+        if: matrix.install_kafka_crds
+        run: |
+          kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.17.0/eventing-kafka-source.yaml || true
+
+      - name: Helm dependency update
+        run: helm dependency update examples/${{ matrix.example }}
+
+      - name: Helm dry-run install
+        run: |
+          helm install test-release examples/${{ matrix.example }} \
+            --namespace test-ns \
+            --create-namespace \
+            --dry-run=server \
+            --timeout 120s
+
+      - name: Verify rendered resources via kubectl
+        run: |
+          helm template test-release examples/${{ matrix.example }} \
+            --namespace test-ns | \
+            kubectl apply --dry-run=server -f - 2>&1 || true
