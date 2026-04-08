@@ -1,6 +1,12 @@
 name: Integration Test
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**'
+      - 'examples/**'
+      - '.github/workflows/integration-test.yaml'
   pull_request:
     paths:
       - 'charts/**'

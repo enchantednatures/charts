@@ -1,6 +1,12 @@
 name: Lint and Test
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**'
+      - 'examples/**'
+      - '.github/workflows/lint-test.yaml'
   pull_request:
     paths:
       - 'charts/**'
