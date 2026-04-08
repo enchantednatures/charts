@@ -8,12 +8,12 @@ type: library
 version: 0.2.0
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
-home: https://github.com/your-org/helm-charts
+home: https://github.com/enchantednatures/charts
 sources:
-  - https://github.com/your-org/helm-charts
+  - https://github.com/enchantednatures/charts
 maintainers:
-  - name: your-org
-    url: https://github.com/your-org
+  - name: enchantednatures
+    url: https://github.com/enchantednatures
 keywords:
   - knative
   - serverless
