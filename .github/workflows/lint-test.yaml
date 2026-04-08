@@ -6,6 +6,7 @@ on:
       - 'charts/**'
       - 'examples/**'
       - '.github/workflows/lint-test.yaml'
+  workflow_dispatch:
 
 jobs:
   lint:
