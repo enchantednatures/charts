@@ -11,7 +11,8 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  CHART_PATH: charts/library/ksvc
+  LIBRARY_CHART_PATH: charts/library/ksvc
+  APP_CHART_PATH: charts/app/ksvc
 
 jobs:
   release:
@@ -30,18 +31,18 @@ jobs:
 
       - name: Update chart version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ${{ env.CHART_PATH }}/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ${{ env.LIBRARY_CHART_PATH }}/Chart.yaml
 
       - name: Helm lint
-        run: helm lint ${{ env.CHART_PATH }}
+        run: helm lint ${{ env.LIBRARY_CHART_PATH }}
 
       - name: Install helm-unittest plugin
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
 
       - name: Run unit tests
         run: |
-          helm dependency build ${{ env.CHART_PATH }}/test-chart
-          helm unittest ${{ env.CHART_PATH }}/test-chart
+          helm dependency update ${{ env.LIBRARY_CHART_PATH }}/test-chart
+          helm unittest ${{ env.LIBRARY_CHART_PATH }}/test-chart
 
       - name: Login to OCI registry
         run: |
@@ -50,12 +51,24 @@ jobs:
               --username ${{ github.actor }} \
               --password-stdin
 
-      - name: Package chart
-        run: helm package ${{ env.CHART_PATH }} --destination /tmp/charts
+      - name: Package library chart
+        run: helm package ${{ env.LIBRARY_CHART_PATH }} --destination /tmp/charts
 
-      - name: Push to OCI registry
+      - name: Push library chart to OCI registry
         run: |
           helm push /tmp/charts/ksvc-${{ steps.version.outputs.version }}.tgz \
+            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+
+      - name: Update and package app chart
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ${{ env.APP_CHART_PATH }}/Chart.yaml
+          sed -i "s/    version:.*/    version: ${{ steps.version.outputs.version }}/" ${{ env.APP_CHART_PATH }}/Chart.yaml
+          helm dependency update ${{ env.APP_CHART_PATH }}
+          helm package ${{ env.APP_CHART_PATH }} --destination /tmp/charts
+
+      - name: Push app chart to OCI registry
+        run: |
+          helm push /tmp/charts/ksvc-app-${{ steps.version.outputs.version }}.tgz \
             oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
 
       - name: Create GitHub Release
@@ -66,3 +79,4 @@ jobs:
           generate_release_notes: true
           files: |
             /tmp/charts/ksvc-${{ steps.version.outputs.version }}.tgz
+            /tmp/charts/ksvc-app-${{ steps.version.outputs.version }}.tgz
