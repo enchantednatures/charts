@@ -1,0 +1,8 @@
+## This chart wraps the ksvc library chart so it can be installed directly.
+## All values are passed through to the library — see the library chart's
+## values.yaml for the full reference.
+##
+## Quick start:
+##   helm install my-svc oci://ghcr.io/enchantednatures/charts/ksvc \
+##     --set knativeService.image.repository=ghcr.io/my-org/my-app \
+##     --set knativeService.image.tag=v1.0.0

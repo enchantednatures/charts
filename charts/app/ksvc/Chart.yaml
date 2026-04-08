@@ -1,0 +1,30 @@
+apiVersion: v2
+name: ksvc
+description: >-
+  A ksvc library powered chart template for deploying Knative Services with
+  optional CloudNativePG PostgreSQL, Kafka event sources, DragonflyDB cache
+  clusters, and Flagger canary releases.
+type: application
+version: 0.2.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.28.0"
+home: https://github.com/enchantednatures/charts
+sources:
+  - https://github.com/enchantednatures/charts
+maintainers:
+  - name: enchantednatures
+    url: https://github.com/enchantednatures
+keywords:
+  - knative
+  - serverless
+  - cloudnativepg
+  - dragonfly
+  - flagger
+  - kafka
+dependencies:
+  - name: ksvc
+    version: 0.2.0
+    repository: oci://ghcr.io/enchantednatures/charts
+annotations:
+  artifacthub.io/category: integration-delivery
+  artifacthub.io/license: MIT
