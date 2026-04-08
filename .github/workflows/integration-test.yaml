@@ -111,3 +111,38 @@ jobs:
           helm template test-release examples/${{ matrix.example }} \
             --namespace test-ns | \
             kubectl apply --dry-run=server -f - 2>&1 || true
+
+  app-chart:
+    name: App Chart Dry-Run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: test-cluster
+
+      - name: Install Knative Serving CRDs
+        run: |
+          kubectl apply --server-side -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml
+          kubectl wait --for=condition=Established crd/services.serving.knative.dev --timeout=60s
+
+      - name: Resolve app chart dependency locally
+        run: |
+          sed -i 's|repository: oci://ghcr.io/enchantednatures/charts|repository: "file://../../library/ksvc"|' charts/app/ksvc/Chart.yaml
+          helm dependency update charts/app/ksvc
+
+      - name: Helm dry-run install app chart
+        run: |
+          helm install test-app charts/app/ksvc \
+            --namespace test-ns \
+            --create-namespace \
+            --set services.api.image.repository=ghcr.io/test/app \
+            --set services.api.image.tag=v1.0.0 \
+            --dry-run=server \
+            --timeout 120s
