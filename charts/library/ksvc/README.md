@@ -51,6 +51,7 @@ The chart follows a library pattern to ensure consistency across multiple servic
 | **Base** | Knative Service |
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule |
 | **Kafka** | KafkaSource, Knative Service (DLQ) |
+| **DragonflyDB** | Dragonfly |
 | **Flagger** | Canary |
 
 ## Values Reference
@@ -138,14 +139,46 @@ The chart follows a library pattern to ensure consistency across multiple servic
 | `flagger.loadTest.enabled` | Enable k6 load testing | `true` |
 | `flagger.loadTest.webhookUrl` | k6 loadtester service URL | `""` |
 
+### DragonflyDB Cache Cluster
+| Key | Description | Default |
+|-----|-------------|---------|
+| `dragonfly.enabled` | Enable DragonflyDB cluster | `false` |
+| `dragonfly.replicas` | Total instances including master | `3` |
+| `dragonfly.image` | Dragonfly container image | `docker.dragonflydb.io/dragonflydb/dragonfly` |
+| `dragonfly.imageTag` | Container image tag | `"v1.21.2"` |
+| `dragonfly.args` | Extra CLI args (e.g. `--cluster_mode=emulated`) | `[]` |
+| `dragonfly.env` | Environment variables | `[]` |
+| `dragonfly.resources` | Container CPU/Memory resources | 500m/512Mi requests |
+| `dragonfly.authentication.passwordFromSecret.name` | Secret name for auth password | `""` |
+| `dragonfly.authentication.passwordFromSecret.key` | Secret key for auth password | `password` |
+| `dragonfly.authentication.clientCaCertSecret.name` | Secret name for mTLS client CA | `""` |
+| `dragonfly.tls.secretName` | TLS Secret (tls.crt/tls.key) | `""` |
+| `dragonfly.snapshot.enabled` | Enable snapshot persistence | `false` |
+| `dragonfly.snapshot.cron` | Snapshot cron schedule | `"0 */6 * * *"` |
+| `dragonfly.snapshot.enableOnMasterOnly` | Snapshot only on master | `true` |
+| `dragonfly.snapshot.dir` | S3 backup path (mutually exclusive with PVC) | `""` |
+| `dragonfly.snapshot.existingPersistentVolumeClaimName` | Use existing PVC | `""` |
+| `dragonfly.snapshot.storage.size` | PVC size (when dir/existingPVC empty) | `"10Gi"` |
+| `dragonfly.snapshot.storage.storageClassName` | PVC storage class | `""` |
+| `dragonfly.serviceSpec.type` | Kubernetes Service type | `ClusterIP` |
+| `dragonfly.pdb.minAvailable` | Min available pods for PDB | `2` |
+| `dragonfly.pdb.maxUnavailable` | Max unavailable pods for PDB | `0` |
+| `dragonfly.affinity` | Pod affinity rules | `{}` |
+| `dragonfly.tolerations` | Pod tolerations | `[]` |
+| `dragonfly.topologySpreadConstraints` | Topology spread constraints | `[]` |
+| `dragonfly.nodeSelector` | Node selector | `{}` |
+| `dragonfly.serviceAccountName` | Service account name | `""` |
+| `dragonfly.priorityClassName` | Priority class name | `""` |
+
 ## Examples
 
 The [examples/](../../../examples/) directory contains several reference implementations:
 
 *   **minimal**: A basic Knative service with environment variables and resource limits.
-*   **full-stack**: A complete deployment including PostgreSQL (with backups), Kafka event source (with DLQ), and Flagger canary analysis.
+*   **full-stack**: A complete deployment including PostgreSQL (with backups), Kafka event source (with DLQ), DragonflyDB cache, and Flagger canary analysis.
 *   **postgres-only**: Focuses on the CloudNativePG integration for API services requiring state.
 *   **kafka-consumer**: Demonstrates scaling a consumer service based on Kafka topic throughput.
+*   **dragonfly-cache**: Demonstrates a Knative service with DragonflyDB for caching, including auth, TLS, and PVC snapshots.
 
 ## CI/CD
 

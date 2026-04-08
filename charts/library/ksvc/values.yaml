@@ -227,6 +227,91 @@ kafka:
         memory: "128Mi"
 
 # =============================================================================
+# DragonflyDB Cache Cluster
+# =============================================================================
+dragonfly:
+  enabled: false
+
+  # Dragonfly container image
+  image: docker.dragonflydb.io/dragonflydb/dragonfly
+  imageTag: "v1.21.2"
+
+  # Total instances including master
+  replicas: 3
+
+  # Extra Dragonfly CLI args (e.g. --cluster_mode=emulated)
+  args: []
+
+  # Environment variables
+  env: []
+
+  # Container resources
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+  # Authentication — reference a Secret containing the password
+  authentication:
+    passwordFromSecret:
+      name: ""
+      key: password
+    # Optional mTLS client CA cert
+    clientCaCertSecret:
+      name: ""
+      key: ca.crt
+
+  # TLS — reference a Secret containing tls.crt / tls.key
+  tls:
+    secretName: ""
+
+  # Snapshot / persistence configuration
+  snapshot:
+    enabled: false
+    cron: "0 */6 * * *"
+    enableOnMasterOnly: true
+    # S3 backup: set dir to "s3://bucket/path" (mutually exclusive with PVC)
+    dir: ""
+    # Use an existing PVC instead of creating one
+    existingPersistentVolumeClaimName: ""
+    # PVC storage (used only when dir and existingPVC are empty)
+    storage:
+      size: "10Gi"
+      storageClassName: ""
+
+  # Kubernetes Service configuration
+  serviceSpec:
+    type: ClusterIP
+    name: ""
+    nodePort: 0
+    annotations: {}
+    labels: {}
+
+  # PodDisruptionBudget (minAvailable and maxUnavailable are mutually exclusive)
+  pdb:
+    minAvailable: 2
+    maxUnavailable: 0
+
+  # Scheduling
+  affinity: {}
+  tolerations: []
+  topologySpreadConstraints: []
+  nodeSelector: {}
+
+  # Security contexts
+  podSecurityContext: {}
+  containerSecurityContext: {}
+
+  # Service account
+  serviceAccountName: ""
+
+  # Priority class
+  priorityClassName: ""
+
+# =============================================================================
 # Flagger Canary Release
 # =============================================================================
 flagger:

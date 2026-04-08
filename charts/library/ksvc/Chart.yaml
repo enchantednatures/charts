@@ -2,9 +2,10 @@ apiVersion: v2
 name: ksvc
 description: >-
   Helm library chart for deploying Knative Services with optional
-  CloudNativePG PostgreSQL, Kafka event sources, and Flagger canary releases.
+  CloudNativePG PostgreSQL, Kafka event sources, DragonflyDB cache clusters,
+  and Flagger canary releases.
 type: library
-version: 0.1.0
+version: 0.2.0
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
 home: https://github.com/your-org/helm-charts
@@ -17,6 +18,7 @@ keywords:
   - knative
   - serverless
   - cloudnativepg
+  - dragonfly
   - flagger
   - kafka
 annotations:

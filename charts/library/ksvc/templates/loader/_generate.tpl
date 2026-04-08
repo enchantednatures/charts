@@ -57,6 +57,14 @@ merged. We must apply defaults explicitly before rendering.
   {{- end }}
 
   {{/* ============================================================ */}}
+  {{/* DragonflyDB Cache Cluster                                   */}}
+  {{/* ============================================================ */}}
+  {{- if and .Values.dragonfly .Values.dragonfly.enabled }}
+---
+  {{- include "ksvc.class.dragonfly" . | nindent 0 }}
+  {{- end }}
+
+  {{/* ============================================================ */}}
   {{/* Flagger Canary Release                                      */}}
   {{/* ============================================================ */}}
   {{- if and .Values.flagger .Values.flagger.enabled }}
@@ -150,6 +158,34 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   -}}
   {{- $flagger := .Values.flagger | default dict -}}
   {{- $_ := set .Values "flagger" (mustMergeOverwrite $flaggerDefaults $flagger) -}}
+
+  {{/* --- dragonfly defaults --- */}}
+  {{- $dfDefaults := dict
+    "enabled" false
+    "replicas" 3
+    "image" "docker.dragonflydb.io/dragonflydb/dragonfly"
+    "imageTag" "v1.21.2"
+    "args" (list)
+    "env" (list)
+    "resources" (dict "requests" (dict "cpu" "500m" "memory" "512Mi") "limits" (dict "cpu" "1" "memory" "1Gi"))
+    "authentication" (dict "passwordFromSecret" (dict "name" "" "key" "password") "clientCaCertSecret" (dict "name" "" "key" "ca.crt"))
+    "tls" (dict "secretName" "")
+    "snapshot" (dict "enabled" false "cron" "0 */6 * * *" "enableOnMasterOnly" true
+      "storage" (dict "size" "10Gi" "storageClassName" "")
+    )
+    "serviceSpec" (dict "type" "ClusterIP" "name" "" "nodePort" 0 "annotations" (dict) "labels" (dict))
+    "pdb" (dict "minAvailable" 2 "maxUnavailable" 0)
+    "affinity" (dict)
+    "tolerations" (list)
+    "topologySpreadConstraints" (list)
+    "nodeSelector" (dict)
+    "podSecurityContext" (dict)
+    "containerSecurityContext" (dict)
+    "serviceAccountName" ""
+    "priorityClassName" ""
+  -}}
+  {{- $df := .Values.dragonfly | default dict -}}
+  {{- $_ := set .Values "dragonfly" (mustMergeOverwrite $dfDefaults $df) -}}
 
   {{/* --- global defaults --- */}}
   {{- $globalDefaults := dict "nameOverride" "" "fullnameOverride" "" "labels" (dict) "annotations" (dict) -}}

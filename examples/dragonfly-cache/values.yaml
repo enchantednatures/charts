@@ -1,0 +1,62 @@
+knativeService:
+  image:
+    repository: ghcr.io/example-org/cache-service
+    tag: "v1.0.0"
+  scaling:
+    minScale: 1
+    maxScale: 10
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  env:
+    - name: APP__CACHE__URL
+      valueFrom:
+        secretKeyRef:
+          name: cache-service-dragonfly-auth
+          key: url
+    - name: APP__TELEMETRY__OTLP_ENDPOINT
+      value: "http://otel-collector.observability.svc.cluster.local:4317"
+
+postgres:
+  enabled: false
+
+kafka:
+  enabled: false
+
+flagger:
+  enabled: false
+
+dragonfly:
+  enabled: true
+  replicas: 3
+  args:
+    - --cluster_mode=emulated
+    - --proactor_threads=2
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+  authentication:
+    passwordFromSecret:
+      name: cache-service-dragonfly-auth
+      key: password
+  tls:
+    secretName: cache-service-dragonfly-tls
+  snapshot:
+    enabled: true
+    cron: "0 */4 * * *"
+    enableOnMasterOnly: true
+    storage:
+      size: "10Gi"
+      storageClassName: "gp3"
+  serviceSpec:
+    type: ClusterIP
+  pdb:
+    minAvailable: 2

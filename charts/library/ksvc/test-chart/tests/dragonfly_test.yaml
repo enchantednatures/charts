@@ -1,0 +1,202 @@
+suite: dragonfly tests
+templates:
+  - templates/common.yaml
+set:
+  knativeService.image.repository: test/image
+  dragonfly.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should render Dragonfly when enabled
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Dragonfly
+      - equal:
+          path: apiVersion
+          value: dragonflydb.io/v1alpha1
+
+  - it: should set correct name
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-dragonfly
+
+  - it: should set namespace
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+
+  - it: should set default replicas
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: should set custom replicas
+    set:
+      dragonfly.replicas: 5
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 5
+
+  - it: should set image with tag
+    set:
+      dragonfly.image: ghcr.io/dragonflydb/dragonfly
+      dragonfly.imageTag: v1.37.0
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.image
+          value: "ghcr.io/dragonflydb/dragonfly:v1.37.0"
+
+  - it: should set resources
+    set:
+      dragonfly.resources.requests.cpu: "1"
+      dragonfly.resources.requests.memory: 2Gi
+      dragonfly.resources.limits.cpu: "2"
+      dragonfly.resources.limits.memory: 4Gi
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.resources.requests.cpu
+          value: "1"
+      - equal:
+          path: spec.resources.limits.memory
+          value: 4Gi
+
+  - it: should set authentication when secret name provided
+    set:
+      dragonfly.authentication.passwordFromSecret.name: my-secret
+      dragonfly.authentication.passwordFromSecret.key: redis-password
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.authentication.passwordFromSecret.name
+          value: my-secret
+      - equal:
+          path: spec.authentication.passwordFromSecret.key
+          value: redis-password
+
+  - it: should not render authentication when secret name empty
+    documentIndex: 1
+    asserts:
+      - isNull:
+          path: spec.authentication
+
+  - it: should set TLS when secretName provided
+    set:
+      dragonfly.tls.secretName: dragonfly-tls
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.tlsSecretRef.name
+          value: dragonfly-tls
+
+  - it: should not render TLS when secretName empty
+    documentIndex: 1
+    asserts:
+      - isNull:
+          path: spec.tlsSecretRef
+
+  - it: should render PVC snapshot when enabled
+    set:
+      dragonfly.snapshot.enabled: true
+      dragonfly.snapshot.storage.size: 20Gi
+      dragonfly.snapshot.storage.storageClassName: gp3
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.snapshot.cron
+          value: "0 */6 * * *"
+      - equal:
+          path: spec.snapshot.persistentVolumeClaimSpec.resources.requests.storage
+          value: 20Gi
+      - equal:
+          path: spec.snapshot.persistentVolumeClaimSpec.storageClassName
+          value: "gp3"
+
+  - it: should render S3 snapshot when dir set
+    set:
+      dragonfly.snapshot.enabled: true
+      dragonfly.snapshot.dir: "s3://my-bucket/dragonfly"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.snapshot.dir
+          value: "s3://my-bucket/dragonfly"
+      - isNull:
+          path: spec.snapshot.persistentVolumeClaimSpec
+
+  - it: should render existing PVC snapshot
+    set:
+      dragonfly.snapshot.enabled: true
+      dragonfly.snapshot.existingPersistentVolumeClaimName: my-pvc
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.snapshot.existingPersistentVolumeClaimName
+          value: my-pvc
+      - isNull:
+          path: spec.snapshot.persistentVolumeClaimSpec
+
+  - it: should not render snapshot when disabled
+    documentIndex: 1
+    asserts:
+      - isNull:
+          path: spec.snapshot
+
+  - it: should set PDB
+    set:
+      dragonfly.pdb.minAvailable: 2
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.pdb.minAvailable
+          value: 2
+
+  - it: should set args
+    set:
+      dragonfly.args:
+        - --cluster_mode=emulated
+        - --proactor_threads=2
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.args
+          value:
+            - --cluster_mode=emulated
+            - --proactor_threads=2
+
+  - it: should set serviceSpec
+    set:
+      dragonfly.serviceSpec.type: LoadBalancer
+      dragonfly.serviceSpec.annotations.test: "true"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.serviceSpec.type
+          value: LoadBalancer
+
+  - it: should include component label
+    documentIndex: 1
+    asserts:
+      - isNotNull:
+          path: metadata.labels["app.kubernetes.io/component"]
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: cache
+
+  - it: should not render Dragonfly when disabled
+    set:
+      dragonfly.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1

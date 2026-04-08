@@ -448,6 +448,146 @@
         }
       }
     },
+    "dragonfly": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "imageTag": {
+          "type": "string"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "env": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            }
+          }
+        },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "passwordFromSecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "key": { "type": "string" }
+              }
+            },
+            "clientCaCertSecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "key": { "type": "string" }
+              }
+            }
+          }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "secretName": { "type": "string" }
+          }
+        },
+        "snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "cron": { "type": "string" },
+            "enableOnMasterOnly": { "type": "boolean" },
+            "dir": { "type": "string" },
+            "existingPersistentVolumeClaimName": { "type": "string" },
+            "storage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "size": {
+                  "type": "string",
+                  "pattern": "^[0-9]+[KMGT]i$"
+                },
+                "storageClassName": { "type": "string" }
+              }
+            }
+          }
+        },
+        "serviceSpec": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+            },
+            "name": { "type": "string" },
+            "nodePort": { "type": "integer" },
+            "annotations": { "type": "object" },
+            "labels": { "type": "object" }
+          }
+        },
+        "pdb": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minAvailable": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxUnavailable": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "affinity": { "type": "object" },
+        "tolerations": {
+          "type": "array"
+        },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
+        "nodeSelector": { "type": "object" },
+        "podSecurityContext": { "type": "object" },
+        "containerSecurityContext": { "type": "object" },
+        "serviceAccountName": { "type": "string" },
+        "priorityClassName": { "type": "string" }
+      }
+    },
     "flagger": {
       "type": "object",
       "additionalProperties": false,

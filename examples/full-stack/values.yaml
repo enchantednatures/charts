@@ -99,3 +99,26 @@ flagger:
     webhookUrl: http://k6-loadtester.flagger-system/launch-test
     vus: 10
     duration: 1m
+
+dragonfly:
+  enabled: true
+  replicas: 3
+  resources:
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+  authentication:
+    passwordFromSecret:
+      name: full-stack-service-dragonfly-auth
+      key: password
+  snapshot:
+    enabled: true
+    cron: "0 */6 * * *"
+    storage:
+      size: "20Gi"
+      storageClassName: "gp3"
+  pdb:
+    minAvailable: 2
