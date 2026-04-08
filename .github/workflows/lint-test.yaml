@@ -23,6 +23,13 @@ jobs:
       - name: Lint library chart
         run: helm lint charts/library/ksvc
 
+      - name: Lint app chart
+        run: |
+          sed -i 's|repository: oci://ghcr.io/enchantednatures/charts|repository: "file://../../library/ksvc"|' charts/app/ksvc/Chart.yaml
+          helm dependency update charts/app/ksvc
+          helm lint charts/app/ksvc
+          git checkout charts/app/ksvc/Chart.yaml
+
       - name: Lint all examples
         run: |
           for example in examples/*/; do
@@ -83,6 +90,19 @@ jobs:
 
       - name: Install yamllint
         run: pip install yamllint
+
+      - name: Render and validate app chart
+        run: |
+          sed -i 's|repository: oci://ghcr.io/enchantednatures/charts|repository: "file://../../library/ksvc"|' charts/app/ksvc/Chart.yaml
+          helm dependency update charts/app/ksvc
+          helm template test-app charts/app/ksvc \
+            --namespace test-ns \
+            --set knativeService.image.repository=ghcr.io/test/app \
+            --set knativeService.image.tag=v1.0.0 > /tmp/rendered-app.yaml
+          yamllint -d relaxed /tmp/rendered-app.yaml
+          echo "Resources rendered for app chart:"
+          grep -E "^kind:" /tmp/rendered-app.yaml | sort | uniq -c
+          git checkout charts/app/ksvc/Chart.yaml
 
       - name: Render and validate all examples
         run: |
