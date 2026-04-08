@@ -141,6 +141,6 @@ jobs:
               kubeconform \
                 -strict \
                 -summary \
-                -skip "Canary,MetricTemplate,KafkaSource,Cluster,ScheduledBackup,ObjectStore,Pooler,PodMonitor,PrometheusRule" \
+                -skip "Canary,MetricTemplate,KafkaSource,Cluster,ScheduledBackup,ObjectStore,Pooler,PodMonitor,PrometheusRule,Dragonfly" \
                 -kubernetes-version 1.28.0
           done
