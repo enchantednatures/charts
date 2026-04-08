@@ -24,26 +24,31 @@ jobs:
             install_kafka_crds: false
             install_flagger_crds: false
             install_dragonfly_crds: false
+            install_monitoring_crds: false
           - example: full-stack
             install_cnpg_crds: true
             install_kafka_crds: true
             install_flagger_crds: true
             install_dragonfly_crds: true
+            install_monitoring_crds: true
           - example: postgres-only
             install_cnpg_crds: true
             install_kafka_crds: false
             install_flagger_crds: false
             install_dragonfly_crds: false
+            install_monitoring_crds: true
           - example: kafka-consumer
             install_cnpg_crds: false
             install_kafka_crds: true
             install_flagger_crds: false
             install_dragonfly_crds: false
+            install_monitoring_crds: false
           - example: dragonfly-cache
             install_cnpg_crds: false
             install_kafka_crds: false
             install_flagger_crds: false
             install_dragonfly_crds: true
+            install_monitoring_crds: false
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +72,13 @@ jobs:
           kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_clusters.yaml
           kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_poolers.yaml
           kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_scheduledbackups.yaml
-          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml || true
+          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/main/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml
+
+      - name: Install Prometheus Operator CRDs
+        if: matrix.install_monitoring_crds
+        run: |
+          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 
       - name: Install Flagger CRDs
         if: matrix.install_flagger_crds
