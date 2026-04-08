@@ -41,7 +41,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          helm dependency build ${{ env.LIBRARY_CHART_PATH }}/test-chart
+          helm dependency update ${{ env.LIBRARY_CHART_PATH }}/test-chart
           helm unittest ${{ env.LIBRARY_CHART_PATH }}/test-chart
 
       - name: Login to OCI registry
