@@ -3,7 +3,7 @@ name: Release Chart
 on:
   push:
     tags:
-      - 'v*'
+      - '*-v*'
 
 permissions:
   contents: write
@@ -11,13 +11,67 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  LIBRARY_CHART_PATH: charts/library/ksvc
-  APP_CHART_PATH: charts/app/ksvc
 
 jobs:
+  resolve:
+    name: Resolve Chart
+    runs-on: ubuntu-latest
+    outputs:
+      chart_name: ${{ steps.parse.outputs.chart_name }}
+      chart_version: ${{ steps.parse.outputs.chart_version }}
+      chart_path: ${{ steps.resolve.outputs.chart_path }}
+      chart_type: ${{ steps.resolve.outputs.chart_type }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Split on last occurrence of -v to get name and version
+          CHART_NAME="${TAG%-v*}"
+          CHART_VERSION="${TAG##*-v}"
+
+          if [[ -z "$CHART_NAME" || -z "$CHART_VERSION" ]]; then
+            echo "::error::Tag '$TAG' does not match pattern '<chart-name>-v<version>'"
+            exit 1
+          fi
+
+          echo "chart_name=$CHART_NAME" >> "$GITHUB_OUTPUT"
+          echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Parsed tag: name=$CHART_NAME version=$CHART_VERSION"
+
+      - name: Resolve chart path
+        id: resolve
+        run: |
+          CHART_NAME="${{ steps.parse.outputs.chart_name }}"
+
+          # Search all chart directories for a Chart.yaml with matching name
+          CHART_PATH=""
+          for candidate in charts/library/*/Chart.yaml charts/app/*/Chart.yaml; do
+            [[ -f "$candidate" ]] || continue
+            name=$(grep '^name:' "$candidate" | head -1 | awk '{print $2}')
+            if [[ "$name" == "$CHART_NAME" ]]; then
+              CHART_PATH="$(dirname "$candidate")"
+              break
+            fi
+          done
+
+          if [[ -z "$CHART_PATH" ]]; then
+            echo "::error::No chart found with name '$CHART_NAME'"
+            exit 1
+          fi
+
+          CHART_TYPE=$(grep '^type:' "$CHART_PATH/Chart.yaml" | awk '{print $2}')
+
+          echo "chart_path=$CHART_PATH" >> "$GITHUB_OUTPUT"
+          echo "chart_type=$CHART_TYPE" >> "$GITHUB_OUTPUT"
+          echo "Resolved: path=$CHART_PATH type=$CHART_TYPE"
+
   release:
     name: Package and Push
     runs-on: ubuntu-latest
+    needs: resolve
     steps:
       - uses: actions/checkout@v4
 
@@ -25,24 +79,35 @@ jobs:
         with:
           version: v3.17.0
 
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
       - name: Update chart version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ${{ env.LIBRARY_CHART_PATH }}/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ needs.resolve.outputs.chart_version }}/" \
+            ${{ needs.resolve.outputs.chart_path }}/Chart.yaml
 
       - name: Helm lint
-        run: helm lint ${{ env.LIBRARY_CHART_PATH }}
+        run: |
+          CHART_PATH="${{ needs.resolve.outputs.chart_path }}"
+          CHART_TYPE="${{ needs.resolve.outputs.chart_type }}"
+
+          if [[ "$CHART_TYPE" == "application" ]]; then
+            helm dependency update "$CHART_PATH"
+          fi
+
+          helm lint "$CHART_PATH"
 
       - name: Install helm-unittest plugin
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
 
-      - name: Run unit tests
+      - name: Run unit tests (library charts)
+        if: needs.resolve.outputs.chart_type == 'library'
         run: |
-          helm dependency update ${{ env.LIBRARY_CHART_PATH }}/test-chart
-          helm unittest ${{ env.LIBRARY_CHART_PATH }}/test-chart
+          CHART_PATH="${{ needs.resolve.outputs.chart_path }}"
+          if [[ -d "$CHART_PATH/test-chart" ]]; then
+            helm dependency update "$CHART_PATH/test-chart"
+            helm unittest "$CHART_PATH/test-chart"
+          else
+            echo "No test-chart found, skipping unit tests"
+          fi
 
       - name: Login to OCI registry
         run: |
@@ -51,32 +116,23 @@ jobs:
               --username ${{ github.actor }} \
               --password-stdin
 
-      - name: Package library chart
-        run: helm package ${{ env.LIBRARY_CHART_PATH }} --destination /tmp/charts
-
-      - name: Push library chart to OCI registry
+      - name: Package chart
         run: |
-          helm push /tmp/charts/ksvc-${{ steps.version.outputs.version }}.tgz \
-            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+          helm package ${{ needs.resolve.outputs.chart_path }} --destination /tmp/charts
 
-      - name: Update and package app chart
+      - name: Push chart to OCI registry
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ${{ env.APP_CHART_PATH }}/Chart.yaml
-          sed -i "s/    version:.*/    version: ${{ steps.version.outputs.version }}/" ${{ env.APP_CHART_PATH }}/Chart.yaml
-          helm dependency update ${{ env.APP_CHART_PATH }}
-          helm package ${{ env.APP_CHART_PATH }} --destination /tmp/charts
+          CHART_NAME="${{ needs.resolve.outputs.chart_name }}"
+          CHART_VERSION="${{ needs.resolve.outputs.chart_version }}"
 
-      - name: Push app chart to OCI registry
-        run: |
-          helm push /tmp/charts/ksvc-app-${{ steps.version.outputs.version }}.tgz \
+          helm push "/tmp/charts/${CHART_NAME}-${CHART_VERSION}.tgz" \
             oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref }}
-          name: "ksvc v${{ steps.version.outputs.version }}"
+          name: "${{ needs.resolve.outputs.chart_name }} v${{ needs.resolve.outputs.chart_version }}"
           generate_release_notes: true
           files: |
-            /tmp/charts/ksvc-${{ steps.version.outputs.version }}.tgz
-            /tmp/charts/ksvc-app-${{ steps.version.outputs.version }}.tgz
+            /tmp/charts/${{ needs.resolve.outputs.chart_name }}-${{ needs.resolve.outputs.chart_version }}.tgz
