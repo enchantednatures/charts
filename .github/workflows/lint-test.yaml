@@ -138,7 +138,7 @@ jobs:
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
 
       - name: Build test-chart dependencies
-        run: helm dependency build charts/library/ksvc/test-chart
+        run: helm dependency update charts/library/ksvc/test-chart
 
       - name: Run unit tests
         run: helm unittest charts/library/ksvc/test-chart
