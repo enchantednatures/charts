@@ -1,18 +1,18 @@
 {{- define "ksvc.class.cnpgPodMonitor" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
+{{- $pgName := include "ksvc.postgresName" . -}}
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: {{ $fullname }}-postgres-metrics
+  name: {{ $pgName }}-metrics
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app: {{ $fullname }}-postgres
+    app: {{ $pgName }}
     release: prometheus
 spec:
   selector:
     matchLabels:
-      postgresql: {{ $fullname }}-postgres
+      postgresql: {{ $pgName }}
   podMetricsEndpoints:
     - port: metrics
       interval: 30s

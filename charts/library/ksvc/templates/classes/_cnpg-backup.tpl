@@ -1,10 +1,10 @@
 {{- define "ksvc.class.cnpgScheduledBackup" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
 {{- $backup := .Values.postgres.backup -}}
+{{- $pgName := include "ksvc.postgresName" . -}}
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
-  name: {{ $fullname }}-postgres-daily-backup
+  name: {{ $pgName }}-daily-backup
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
@@ -15,8 +15,8 @@ spec:
   pluginConfiguration:
     name: barman-cloud.cloudnative-pg.io
     parameters:
-      barmanObjectName: {{ $fullname }}-postgres-backup-store
+      barmanObjectName: {{ include "ksvc.postgresBackupStoreName" . }}
   cluster:
-    name: {{ $fullname }}-postgres
+    name: {{ $pgName }}
   target: {{ $backup.target }}
 {{- end }}

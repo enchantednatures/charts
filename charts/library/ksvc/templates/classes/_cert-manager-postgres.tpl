@@ -1,13 +1,13 @@
 {{- define "ksvc.class.certManagerPostgres" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
 {{- $pg := .Values.postgres -}}
 {{- $cm := $pg.certManager -}}
 {{- $globalCM := .Values.global.certManager -}}
 {{- $issuerName := $cm.issuerRef.name | default $globalCM.issuerRef.name -}}
 {{- $issuerKind := $cm.issuerRef.kind | default $globalCM.issuerRef.kind -}}
 {{- $issuerGroup := $cm.issuerRef.group | default $globalCM.issuerRef.group -}}
-{{- $serverSecretName := printf "%s-postgres-server-tls" $fullname -}}
-{{- $clientSecretName := printf "%s-postgres-client-tls" $fullname -}}
+{{- $pgName := include "ksvc.postgresName" . -}}
+{{- $serverSecretName := include "ksvc.postgresServerTLSSecret" . -}}
+{{- $clientSecretName := include "ksvc.postgresClientTLSSecret" . -}}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -21,7 +21,7 @@ metadata:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ $fullname }}-postgres-server-cert
+  name: {{ $pgName }}-server-cert
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
@@ -31,15 +31,15 @@ spec:
   usages:
     - server auth
   dnsNames:
-    - {{ $fullname }}-postgres-rw
-    - {{ $fullname }}-postgres-rw.{{ .Release.Namespace }}
-    - {{ $fullname }}-postgres-rw.{{ .Release.Namespace }}.svc
-    - {{ $fullname }}-postgres-r
-    - {{ $fullname }}-postgres-r.{{ .Release.Namespace }}
-    - {{ $fullname }}-postgres-r.{{ .Release.Namespace }}.svc
-    - {{ $fullname }}-postgres-ro
-    - {{ $fullname }}-postgres-ro.{{ .Release.Namespace }}
-    - {{ $fullname }}-postgres-ro.{{ .Release.Namespace }}.svc
+    - {{ $pgName }}-rw
+    - {{ $pgName }}-rw.{{ .Release.Namespace }}
+    - {{ $pgName }}-rw.{{ .Release.Namespace }}.svc
+    - {{ $pgName }}-r
+    - {{ $pgName }}-r.{{ .Release.Namespace }}
+    - {{ $pgName }}-r.{{ .Release.Namespace }}.svc
+    - {{ $pgName }}-ro
+    - {{ $pgName }}-ro.{{ .Release.Namespace }}
+    - {{ $pgName }}-ro.{{ .Release.Namespace }}.svc
   issuerRef:
     name: {{ $issuerName }}
     kind: {{ $issuerKind }}
@@ -58,7 +58,7 @@ metadata:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ $fullname }}-postgres-client-cert
+  name: {{ $pgName }}-client-cert
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}

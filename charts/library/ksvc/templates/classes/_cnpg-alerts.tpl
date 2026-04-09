@@ -1,14 +1,14 @@
 {{- define "ksvc.class.cnpgAlerts" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
+{{- $pgName := include "ksvc.postgresName" . -}}
 {{- $alerts := .Values.postgres.monitoring.alerts -}}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: {{ $fullname }}-postgres-alerts
+  name: {{ $pgName }}-alerts
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app: {{ $fullname }}-postgres
+    app: {{ $pgName }}
     prometheus: kube-prometheus
 spec:
   groups:

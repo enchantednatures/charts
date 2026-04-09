@@ -1,12 +1,12 @@
 {{- define "ksvc.class.certManagerDragonfly" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
 {{- $df := .Values.dragonfly -}}
 {{- $cm := $df.tls.certManager -}}
 {{- $globalCM := .Values.global.certManager -}}
 {{- $issuerName := $cm.issuerRef.name | default $globalCM.issuerRef.name -}}
 {{- $issuerKind := $cm.issuerRef.kind | default $globalCM.issuerRef.kind -}}
 {{- $issuerGroup := $cm.issuerRef.group | default $globalCM.issuerRef.group -}}
-{{- $secretName := printf "%s-dragonfly-server-tls" $fullname -}}
+{{- $dfName := include "ksvc.dragonflyName" . -}}
+{{- $secretName := include "ksvc.dragonflyServerTLSSecret" . -}}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -19,7 +19,7 @@ metadata:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ $fullname }}-dragonfly-server-cert
+  name: {{ $dfName }}-server-cert
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
@@ -35,10 +35,10 @@ spec:
   usages:
     - server auth
   dnsNames:
-    - {{ $fullname }}-dragonfly
-    - {{ $fullname }}-dragonfly.{{ .Release.Namespace }}
-    - {{ $fullname }}-dragonfly.{{ .Release.Namespace }}.svc
-    - {{ $fullname }}-dragonfly.{{ .Release.Namespace }}.svc.cluster.local
+    - {{ $dfName }}
+    - {{ $dfName }}.{{ .Release.Namespace }}
+    - {{ $dfName }}.{{ .Release.Namespace }}.svc
+    - {{ $dfName }}.{{ .Release.Namespace }}.svc.cluster.local
   issuerRef:
     name: {{ $issuerName }}
     kind: {{ $issuerKind }}

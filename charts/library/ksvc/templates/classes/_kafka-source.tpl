@@ -5,11 +5,10 @@ and "source" (the merged kafka source config dict).
 The source.sink field must reference a valid key in .Values.services.
 */}}
 {{- define "ksvc.class.kafkaSource" -}}
-{{- $fullname := include "ksvc.fullname" .root -}}
 {{- $source := .source -}}
 {{- $sinkServiceName := include "ksvc.serviceName" (dict "root" .root "key" $source.sink) -}}
-{{- $sourceName := printf "%s-%s-kafka-source" $fullname .key | trunc 63 | trimSuffix "-" -}}
-{{- $dlqName := printf "%s-%s-dlq" $fullname .key | trunc 63 | trimSuffix "-" -}}
+{{- $sourceName := include "ksvc.kafkaSourceName" . -}}
+{{- $dlqName := include "ksvc.kafkaDlqName" . -}}
 apiVersion: sources.knative.dev/v1beta1
 kind: KafkaSource
 metadata:
@@ -19,7 +18,7 @@ metadata:
     {{- include "ksvc.labels" .root | nindent 4 }}
     app.kubernetes.io/component: event-source
 spec:
-  consumerGroup: {{ default (printf "%s-%s-consumers" $fullname .key) $source.consumerGroup }}
+  consumerGroup: {{ default (include "ksvc.kafkaConsumerGroup" .) $source.consumerGroup }}
   consumers: {{ $source.consumers }}
   bootstrapServers:
     {{- toYaml $source.bootstrapServers | nindent 4 }}

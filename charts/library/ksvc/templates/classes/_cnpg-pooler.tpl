@@ -1,17 +1,17 @@
 {{- define "ksvc.class.cnpgPooler" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
+{{- $pgName := include "ksvc.postgresName" . -}}
 {{- $pooler := .Values.postgres.pooler -}}
 apiVersion: postgresql.cnpg.io/v1
 kind: Pooler
 metadata:
-  name: {{ $fullname }}-postgres-pooler
+  name: {{ $pgName }}-pooler
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
 spec:
   cluster:
-    name: {{ $fullname }}-postgres
+    name: {{ $pgName }}
   instances: {{ $pooler.instances }}
   type: {{ $pooler.type }}
   pgbouncer:
