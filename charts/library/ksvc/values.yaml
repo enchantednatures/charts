@@ -12,6 +12,15 @@ global:
   # Annotations applied to ALL resources
   annotations: {}
 
+  # Default cert-manager issuer for all Certificate resources.
+  # Individual components (postgres.certManager, dragonfly.tls.certManager) can
+  # override this with their own issuerRef.
+  certManager:
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+      group: cert-manager.io
+
 # =============================================================================
 # Services — Map of Knative Services (one or more)
 #
@@ -227,6 +236,17 @@ postgres:
       replicationLagCritical: 60
       highConnectionCount: 50
 
+  # cert-manager integration — generates server + client TLS certificates
+  # via CNPG's native spec.certificates support.
+  # Requires cert-manager CRDs and an Issuer/ClusterIssuer in the cluster.
+  certManager:
+    enabled: false
+    # Override global.certManager.issuerRef for postgres certificates
+    issuerRef:
+      name: ""
+      kind: ""
+      group: ""
+
 # =============================================================================
 # Kafka Event Sources — Map of KafkaSource entries
 #
@@ -286,6 +306,18 @@ dragonfly:
   # TLS — reference a Secret containing tls.crt / tls.key
   tls:
     secretName: ""
+    # cert-manager integration — generates a Certificate resource whose
+    # secret is automatically wired into tlsSecretRef.
+    # When enabled, tls.secretName is ignored (auto-generated name is used).
+    certManager:
+      enabled: false
+      # Override global.certManager.issuerRef for the dragonfly certificate
+      issuerRef:
+        name: ""
+        kind: ""
+        group: ""
+      duration: "2160h"
+      renewBefore: "360h"
 
   # Snapshot / persistence configuration
   snapshot:

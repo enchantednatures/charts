@@ -1,0 +1,147 @@
+suite: cert-manager postgres tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: false
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: false
+  postgres.certManager.enabled: true
+  global.certManager.issuerRef.name: my-cluster-issuer
+  global.certManager.issuerRef.kind: ClusterIssuer
+  global.certManager.issuerRef.group: cert-manager.io
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should add certificates section to CNPG Cluster when certManager enabled
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Cluster
+      - equal:
+          path: spec.certificates.serverTLSSecret
+          value: test-release-postgres-server-tls
+      - equal:
+          path: spec.certificates.serverCASecret
+          value: test-release-postgres-server-tls
+      - equal:
+          path: spec.certificates.clientCASecret
+          value: test-release-postgres-client-tls
+      - equal:
+          path: spec.certificates.replicationTLSSecret
+          value: test-release-postgres-client-tls
+
+  - it: should render server TLS placeholder Secret
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-server-tls
+      - isNotNull:
+          path: metadata.labels["cnpg.io/reload"]
+
+  - it: should render server Certificate resource
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: Certificate
+      - equal:
+          path: apiVersion
+          value: cert-manager.io/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-server-cert
+      - equal:
+          path: spec.secretName
+          value: test-release-postgres-server-tls
+      - contains:
+          path: spec.usages
+          content: server auth
+      - contains:
+          path: spec.dnsNames
+          content: test-release-postgres-rw
+      - contains:
+          path: spec.dnsNames
+          content: test-release-postgres-rw.test-ns.svc
+      - contains:
+          path: spec.dnsNames
+          content: test-release-postgres-r
+      - contains:
+          path: spec.dnsNames
+          content: test-release-postgres-ro
+      - equal:
+          path: spec.issuerRef.name
+          value: my-cluster-issuer
+      - equal:
+          path: spec.issuerRef.kind
+          value: ClusterIssuer
+
+  - it: should render client TLS placeholder Secret
+    documentIndex: 4
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-client-tls
+      - isNotNull:
+          path: metadata.labels["cnpg.io/reload"]
+
+  - it: should render client Certificate resource
+    documentIndex: 5
+    asserts:
+      - isKind:
+          of: Certificate
+      - equal:
+          path: apiVersion
+          value: cert-manager.io/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-client-cert
+      - equal:
+          path: spec.secretName
+          value: test-release-postgres-client-tls
+      - contains:
+          path: spec.usages
+          content: client auth
+      - equal:
+          path: spec.commonName
+          value: streaming_replica
+      - equal:
+          path: spec.issuerRef.name
+          value: my-cluster-issuer
+
+  - it: should use per-resource issuerRef when set
+    set:
+      postgres.certManager.issuerRef.name: pg-issuer
+      postgres.certManager.issuerRef.kind: Issuer
+      postgres.certManager.issuerRef.group: cert-manager.io
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.issuerRef.name
+          value: pg-issuer
+      - equal:
+          path: spec.issuerRef.kind
+          value: Issuer
+
+  - it: should not render certificates when certManager disabled
+    set:
+      postgres.certManager.enabled: false
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Cluster
+      - isNull:
+          path: spec.certificates
+
+  - it: should not render cert-manager resources when certManager disabled
+    set:
+      postgres.certManager.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2

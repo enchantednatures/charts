@@ -57,6 +57,9 @@ postgres:
   storage:
     size: "200Gi"
     storageClassName: "gp3"
+  ## -- Uncomment to let cert-manager generate server & client TLS certificates
+  # certManager:
+  #   enabled: true
   pooler:
     enabled: true
     instances: 3
@@ -115,6 +118,10 @@ dragonfly:
     passwordFromSecret:
       name: full-stack-service-dragonfly-auth
       key: password
+  ## -- Uncomment to let cert-manager generate TLS certificates for Dragonfly
+  # tls:
+  #   certManager:
+  #     enabled: true
   snapshot:
     enabled: true
     cron: "0 */6 * * *"

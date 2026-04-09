@@ -1,10 +1,10 @@
 {{- define "ksvc.class.dragonfly" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
 {{- $df := .Values.dragonfly -}}
+{{- $dfName := include "ksvc.dragonflyName" . -}}
 apiVersion: dragonflydb.io/v1alpha1
 kind: Dragonfly
 metadata:
-  name: {{ $fullname }}-dragonfly
+  name: {{ $dfName }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
@@ -37,7 +37,10 @@ spec:
       key: {{ $df.authentication.clientCaCertSecret.key | default "ca.crt" }}
     {{- end }}
   {{- end }}
-  {{- if and $df.tls $df.tls.secretName }}
+  {{- if and $df.tls $df.tls.certManager $df.tls.certManager.enabled }}
+  tlsSecretRef:
+    name: {{ include "ksvc.dragonflyServerTLSSecret" . }}
+  {{- else if and $df.tls $df.tls.secretName }}
   tlsSecretRef:
     name: {{ $df.tls.secretName }}
   {{- end }}

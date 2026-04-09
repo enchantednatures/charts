@@ -1,10 +1,10 @@
 {{- define "ksvc.class.cnpgCluster" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
 {{- $pg := .Values.postgres -}}
+{{- $pgName := include "ksvc.postgresName" . -}}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: {{ $fullname }}-postgres
+  name: {{ $pgName }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
@@ -30,12 +30,19 @@ spec:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true
       parameters:
-        barmanObjectName: {{ $fullname }}-postgres-backup-store
+        barmanObjectName: {{ include "ksvc.postgresBackupStoreName" . }}
   {{- end }}
   bootstrap:
     initdb:
       postInitApplicationSQL:
         {{- toYaml $pg.postInitSQL | nindent 8 }}
+  {{- if and $pg.certManager $pg.certManager.enabled }}
+  certificates:
+    serverTLSSecret: {{ include "ksvc.postgresServerTLSSecret" . }}
+    serverCASecret: {{ include "ksvc.postgresServerTLSSecret" . }}
+    clientCASecret: {{ include "ksvc.postgresClientTLSSecret" . }}
+    replicationTLSSecret: {{ include "ksvc.postgresClientTLSSecret" . }}
+  {{- end }}
   monitoring:
     enabled: {{ $pg.monitoring.enabled }}
     podMonitorEnabled: {{ $pg.monitoring.enabled }}

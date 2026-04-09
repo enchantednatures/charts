@@ -12,7 +12,14 @@
         "nameOverride": { "type": "string" },
         "fullnameOverride": { "type": "string" },
         "labels": { "type": "object" },
-        "annotations": { "type": "object" }
+        "annotations": { "type": "object" },
+        "certManager": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuerRef": { "$ref": "#/$defs/issuerRef" }
+          }
+        }
       }
     },
     "services": {
@@ -156,6 +163,14 @@
               }
             }
           }
+        },
+        "certManager": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "issuerRef": { "$ref": "#/$defs/issuerRef" }
+          }
         }
       }
     },
@@ -203,7 +218,17 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "secretName": { "type": "string" }
+            "secretName": { "type": "string" },
+            "certManager": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "issuerRef": { "$ref": "#/$defs/issuerRef" },
+                "duration": { "type": "string" },
+                "renewBefore": { "type": "string" }
+              }
+            }
           }
         },
         "snapshot": {
@@ -498,6 +523,18 @@
         "periodSeconds": { "type": "integer", "minimum": 1 },
         "timeoutSeconds": { "type": "integer", "minimum": 1 },
         "failureThreshold": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "issuerRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["Issuer", "ClusterIssuer", ""]
+        },
+        "group": { "type": "string" }
       }
     }
   }

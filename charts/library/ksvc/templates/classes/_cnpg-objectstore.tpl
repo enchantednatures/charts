@@ -1,10 +1,9 @@
 {{- define "ksvc.class.cnpgObjectStore" -}}
-{{- $fullname := include "ksvc.fullname" . -}}
 {{- $store := .Values.postgres.backup.objectStore -}}
 apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
-  name: {{ $fullname }}-postgres-backup-store
+  name: {{ include "ksvc.postgresBackupStoreName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
