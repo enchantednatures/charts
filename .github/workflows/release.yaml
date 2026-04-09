@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
+      has_library: ${{ steps.build-matrix.outputs.has_library }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,9 +32,9 @@ jobs:
         id: build-matrix
         run: |
           CHARTS="[]"
+          HAS_LIBRARY="false"
 
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            # Tag push: parse chart name and version from tag
             TAG="${GITHUB_REF#refs/tags/}"
             CHART_NAME="${TAG%-v*}"
             CHART_VERSION="${TAG##*-v}"
@@ -43,7 +44,6 @@ jobs:
               exit 1
             fi
 
-            # Resolve chart path
             for candidate in charts/library/*/Chart.yaml charts/app/*/Chart.yaml; do
               [[ -f "$candidate" ]] || continue
               name=$(grep '^name:' "$candidate" | head -1 | awk '{print $2}')
@@ -57,6 +57,7 @@ jobs:
                   --arg type "$CHART_TYPE" \
                   --arg tag "$TAG" \
                   '. + [{"name":$name,"version":$version,"path":$path,"type":$type,"tag":$tag}]')
+                [[ "$CHART_TYPE" == "library" ]] && HAS_LIBRARY="true"
                 break
               fi
             done
@@ -67,7 +68,6 @@ jobs:
             fi
 
           else
-            # Push to main: detect Chart.yaml version changes
             for chart_yaml in $(git diff HEAD~1 --name-only -- 'charts/*/Chart.yaml' 'charts/*/*/Chart.yaml' | grep 'Chart\.yaml$' || true); do
               [[ -f "$chart_yaml" ]] || continue
 
@@ -90,6 +90,8 @@ jobs:
                 --arg type "$CHART_TYPE" \
                 --arg tag "$TAG" \
                 '. + [{"name":$name,"version":$version,"path":$path,"type":$type,"tag":$tag}]')
+
+              [[ "$CHART_TYPE" == "library" ]] && HAS_LIBRARY="true"
             done
           fi
 
@@ -100,6 +102,7 @@ jobs:
           fi
 
           echo "matrix={\"include\":$CHARTS}" >> "$GITHUB_OUTPUT"
+          echo "has_library=$HAS_LIBRARY" >> "$GITHUB_OUTPUT"
 
   release:
     name: "Release ${{ matrix.name }} v${{ matrix.version }}"
@@ -145,6 +148,152 @@ jobs:
           else
             echo "No test-chart found, skipping unit tests"
           fi
+
+      - name: Login to OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ${{ env.REGISTRY }} \
+              --username ${{ github.actor }} \
+              --password-stdin
+
+      - name: Package chart
+        run: |
+          helm package ${{ matrix.path }} --destination /tmp/charts
+
+      - name: Push chart to OCI registry
+        run: |
+          helm push "/tmp/charts/${{ matrix.name }}-${{ matrix.version }}.tgz" \
+            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+
+      - name: Create tag
+        run: |
+          TAG="${{ matrix.tag }}"
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping"
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ matrix.tag }}
+          name: "${{ matrix.name }} v${{ matrix.version }}"
+          generate_release_notes: true
+          files: |
+            /tmp/charts/${{ matrix.name }}-${{ matrix.version }}.tgz
+
+  update-dependents:
+    name: Update Dependent Charts
+    runs-on: ubuntu-latest
+    needs: [detect, release]
+    if: needs.detect.outputs.has_library == 'true'
+    outputs:
+      matrix: ${{ steps.update-deps.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Update dependent app charts
+        id: update-deps
+        run: |
+          RELEASED='${{ needs.detect.outputs.matrix }}'
+          DEPENDENTS="[]"
+
+          # For each released library chart, find and update dependent app charts
+          for row in $(echo "$RELEASED" | jq -c '.include[] | select(.type == "library")'); do
+            LIB_NAME=$(echo "$row" | jq -r '.name')
+            LIB_VERSION=$(echo "$row" | jq -r '.version')
+
+            echo "Looking for app charts depending on $LIB_NAME..."
+
+            for app_chart in charts/app/*/Chart.yaml; do
+              [[ -f "$app_chart" ]] || continue
+
+              # Check if this app chart depends on the released library
+              if ! grep -q "name: $LIB_NAME" "$app_chart"; then
+                continue
+              fi
+
+              APP_NAME=$(grep '^name:' "$app_chart" | head -1 | awk '{print $2}')
+              APP_PATH="$(dirname "$app_chart")"
+              OLD_APP_VERSION=$(grep '^version:' "$app_chart" | head -1 | awk '{print $2}')
+
+              # Bump app chart patch version
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$OLD_APP_VERSION"
+              NEW_APP_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+
+              echo "Updating $APP_NAME: version $OLD_APP_VERSION -> $NEW_APP_VERSION, dep $LIB_NAME -> $LIB_VERSION"
+
+              # Update the app chart version
+              sed -i "s/^version: ${OLD_APP_VERSION}/version: ${NEW_APP_VERSION}/" "$app_chart"
+
+              # Update the dependency version for this library
+              # Use awk to find the dependency block for LIB_NAME and update its version
+              awk -v lib="$LIB_NAME" -v ver="$LIB_VERSION" '
+                /^dependencies:/ { in_deps=1 }
+                in_deps && /- name:/ { in_dep_entry=1; is_target=0 }
+                in_deps && in_dep_entry && $0 ~ "name: " lib { is_target=1 }
+                in_deps && in_dep_entry && is_target && /version:/ {
+                  sub(/version: .*/, "version: " ver)
+                  is_target=0; in_dep_entry=0
+                }
+                { print }
+              ' "$app_chart" > "${app_chart}.tmp" && mv "${app_chart}.tmp" "$app_chart"
+
+              APP_TYPE=$(grep '^type:' "$app_chart" | awk '{print $2}')
+              TAG="${APP_NAME}-v${NEW_APP_VERSION}"
+
+              DEPENDENTS=$(echo "$DEPENDENTS" | jq -c \
+                --arg name "$APP_NAME" \
+                --arg version "$NEW_APP_VERSION" \
+                --arg path "$APP_PATH" \
+                --arg type "$APP_TYPE" \
+                --arg tag "$TAG" \
+                '. + [{"name":$name,"version":$version,"path":$path,"type":$type,"tag":$tag}]')
+            done
+          done
+
+          if [[ "$DEPENDENTS" == "[]" ]]; then
+            echo "No dependent charts to update"
+            echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Dependent charts to release: $DEPENDENTS"
+            echo "matrix={\"include\":$DEPENDENTS}" >> "$GITHUB_OUTPUT"
+
+            # Commit the dependency updates
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add charts/app/*/Chart.yaml
+            git commit -m "chore: bump dependent chart versions [skip ci]"
+            git pull --rebase origin main
+            git push origin main
+          fi
+
+  release-dependents:
+    name: "Release ${{ matrix.name }} v${{ matrix.version }}"
+    runs-on: ubuntu-latest
+    needs: update-dependents
+    if: needs.update-dependents.outputs.matrix != '' && toJSON(fromJSON(needs.update-dependents.outputs.matrix).include) != '[]'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.update-dependents.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Helm lint
+        run: |
+          CHART_PATH="${{ matrix.path }}"
+          helm dependency update "$CHART_PATH"
+          helm lint "$CHART_PATH"
 
       - name: Login to OCI registry
         run: |
