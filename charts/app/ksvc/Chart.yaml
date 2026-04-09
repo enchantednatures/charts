@@ -5,7 +5,7 @@ description: >-
   optional CloudNativePG PostgreSQL, Kafka event sources, DragonflyDB cache
   clusters, and Flagger canary releases.
 type: application
-version: 0.6.1
+version: 0.6.2
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
 home: https://github.com/enchantednatures/charts
@@ -23,7 +23,7 @@ keywords:
   - kafka
 dependencies:
   - name: ksvc
-    version: 0.6.1
+    version: 0.6.3
     repository: oci://ghcr.io/enchantednatures/charts
 annotations:
   artifacthub.io/category: integration-delivery
