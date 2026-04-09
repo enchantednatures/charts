@@ -37,7 +37,10 @@ spec:
       key: {{ $df.authentication.clientCaCertSecret.key | default "ca.crt" }}
     {{- end }}
   {{- end }}
-  {{- if and $df.tls $df.tls.secretName }}
+  {{- if and $df.tls $df.tls.certManager $df.tls.certManager.enabled }}
+  tlsSecretRef:
+    name: {{ $fullname }}-dragonfly-server-tls
+  {{- else if and $df.tls $df.tls.secretName }}
   tlsSecretRef:
     name: {{ $df.tls.secretName }}
   {{- end }}

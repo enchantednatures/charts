@@ -41,6 +41,15 @@ dragonfly:
       key: password
   tls:
     secretName: cache-service-dragonfly-tls
+    ## -- Uncomment to use cert-manager instead of a manually provisioned secret
+    # certManager:
+    #   enabled: true
+    #   issuerRef:                            # optional: overrides global.certManager.issuerRef
+    #     name: my-cluster-issuer
+    #     kind: ClusterIssuer
+    #     group: cert-manager.io
+    #   duration: 2160h
+    #   renewBefore: 360h
   snapshot:
     enabled: true
     cron: "0 */4 * * *"

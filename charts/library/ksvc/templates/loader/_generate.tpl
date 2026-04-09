@@ -55,6 +55,10 @@ merged. We must apply defaults explicitly before rendering.
 ---
   {{- include "ksvc.class.cnpgAlerts" . | nindent 0 }}
     {{- end }}
+    {{- if and .Values.postgres.certManager .Values.postgres.certManager.enabled }}
+---
+  {{- include "ksvc.class.certManagerPostgres" . | nindent 0 }}
+    {{- end }}
   {{- end }}
 
   {{/* ============================================================ */}}
@@ -77,6 +81,10 @@ merged. We must apply defaults explicitly before rendering.
   {{- if and .Values.dragonfly .Values.dragonfly.enabled }}
 ---
   {{- include "ksvc.class.dragonfly" . | nindent 0 }}
+    {{- if and .Values.dragonfly.tls .Values.dragonfly.tls.certManager .Values.dragonfly.tls.certManager.enabled }}
+---
+  {{- include "ksvc.class.certManagerDragonfly" . | nindent 0 }}
+    {{- end }}
   {{- end }}
 
 {{- end }}
@@ -180,6 +188,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
       )
     )
     "monitoring" (dict "enabled" true "alerts" (dict "replicationLagWarning" 10 "replicationLagCritical" 60 "highConnectionCount" 50))
+    "certManager" (dict "enabled" false "issuerRef" (dict "name" "" "kind" "" "group" ""))
   -}}
   {{- $pg := .Values.postgres | default dict -}}
   {{- $_ := set .Values "postgres" (mustMergeOverwrite $pgDefaults $pg) -}}
@@ -194,7 +203,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "env" (list)
     "resources" (dict "requests" (dict "cpu" "500m" "memory" "512Mi") "limits" (dict "cpu" "1" "memory" "1Gi"))
     "authentication" (dict "passwordFromSecret" (dict "name" "" "key" "password") "clientCaCertSecret" (dict "name" "" "key" "ca.crt"))
-    "tls" (dict "secretName" "")
+    "tls" (dict "secretName" "" "certManager" (dict "enabled" false "issuerRef" (dict "name" "" "kind" "" "group" "") "duration" "2160h" "renewBefore" "360h"))
     "snapshot" (dict "enabled" false "cron" "0 */6 * * *" "enableOnMasterOnly" true
       "storage" (dict "size" "10Gi" "storageClassName" "")
     )
@@ -213,7 +222,13 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $_ := set .Values "dragonfly" (mustMergeOverwrite $dfDefaults $df) -}}
 
   {{/* --- global defaults --- */}}
-  {{- $globalDefaults := dict "nameOverride" "" "fullnameOverride" "" "labels" (dict) "annotations" (dict) -}}
+  {{- $globalDefaults := dict
+    "nameOverride" ""
+    "fullnameOverride" ""
+    "labels" (dict)
+    "annotations" (dict)
+    "certManager" (dict "issuerRef" (dict "name" "" "kind" "ClusterIssuer" "group" "cert-manager.io"))
+  -}}
   {{- $global := .Values.global | default dict -}}
   {{- $_ := set .Values "global" (mustMergeOverwrite $globalDefaults $global) -}}
 

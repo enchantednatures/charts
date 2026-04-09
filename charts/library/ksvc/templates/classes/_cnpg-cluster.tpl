@@ -36,6 +36,13 @@ spec:
     initdb:
       postInitApplicationSQL:
         {{- toYaml $pg.postInitSQL | nindent 8 }}
+  {{- if and $pg.certManager $pg.certManager.enabled }}
+  certificates:
+    serverTLSSecret: {{ $fullname }}-postgres-server-tls
+    serverCASecret: {{ $fullname }}-postgres-server-tls
+    clientCASecret: {{ $fullname }}-postgres-client-tls
+    replicationTLSSecret: {{ $fullname }}-postgres-client-tls
+  {{- end }}
   monitoring:
     enabled: {{ $pg.monitoring.enabled }}
     podMonitorEnabled: {{ $pg.monitoring.enabled }}

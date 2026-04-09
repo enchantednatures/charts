@@ -29,6 +29,13 @@ postgres:
   storage:
     size: "100Gi"
     storageClassName: "standard"
+  ## -- Uncomment to let cert-manager generate server & client TLS certificates
+  # certManager:
+  #   enabled: true
+  #   issuerRef:                            # optional: overrides global.certManager.issuerRef
+  #     name: my-cluster-issuer
+  #     kind: ClusterIssuer
+  #     group: cert-manager.io
   backup:
     enabled: true
     schedule: "0 3 * * *"
