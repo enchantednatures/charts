@@ -2,8 +2,12 @@ name: Release Chart
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'charts/**/Chart.yaml'
     tags:
       - '*-v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,65 +17,98 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  resolve:
-    name: Resolve Chart
+  detect:
+    name: Detect Charts to Release
     runs-on: ubuntu-latest
     outputs:
-      chart_name: ${{ steps.parse.outputs.chart_name }}
-      chart_version: ${{ steps.parse.outputs.chart_version }}
-      chart_path: ${{ steps.resolve.outputs.chart_path }}
-      chart_type: ${{ steps.resolve.outputs.chart_type }}
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-      - name: Parse tag
-        id: parse
+      - name: Build release matrix
+        id: build-matrix
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          # Split on last occurrence of -v to get name and version
-          CHART_NAME="${TAG%-v*}"
-          CHART_VERSION="${TAG##*-v}"
+          CHARTS="[]"
 
-          if [[ -z "$CHART_NAME" || -z "$CHART_VERSION" ]]; then
-            echo "::error::Tag '$TAG' does not match pattern '<chart-name>-v<version>'"
-            exit 1
-          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # Tag push: parse chart name and version from tag
+            TAG="${GITHUB_REF#refs/tags/}"
+            CHART_NAME="${TAG%-v*}"
+            CHART_VERSION="${TAG##*-v}"
 
-          echo "chart_name=$CHART_NAME" >> "$GITHUB_OUTPUT"
-          echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Parsed tag: name=$CHART_NAME version=$CHART_VERSION"
-
-      - name: Resolve chart path
-        id: resolve
-        run: |
-          CHART_NAME="${{ steps.parse.outputs.chart_name }}"
-
-          # Search all chart directories for a Chart.yaml with matching name
-          CHART_PATH=""
-          for candidate in charts/library/*/Chart.yaml charts/app/*/Chart.yaml; do
-            [[ -f "$candidate" ]] || continue
-            name=$(grep '^name:' "$candidate" | head -1 | awk '{print $2}')
-            if [[ "$name" == "$CHART_NAME" ]]; then
-              CHART_PATH="$(dirname "$candidate")"
-              break
+            if [[ -z "$CHART_NAME" || -z "$CHART_VERSION" ]]; then
+              echo "::error::Tag '$TAG' does not match pattern '<chart-name>-v<version>'"
+              exit 1
             fi
-          done
 
-          if [[ -z "$CHART_PATH" ]]; then
-            echo "::error::No chart found with name '$CHART_NAME'"
-            exit 1
+            # Resolve chart path
+            for candidate in charts/library/*/Chart.yaml charts/app/*/Chart.yaml; do
+              [[ -f "$candidate" ]] || continue
+              name=$(grep '^name:' "$candidate" | head -1 | awk '{print $2}')
+              if [[ "$name" == "$CHART_NAME" ]]; then
+                CHART_PATH="$(dirname "$candidate")"
+                CHART_TYPE=$(grep '^type:' "$candidate" | awk '{print $2}')
+                CHARTS=$(echo "$CHARTS" | jq -c \
+                  --arg name "$CHART_NAME" \
+                  --arg version "$CHART_VERSION" \
+                  --arg path "$CHART_PATH" \
+                  --arg type "$CHART_TYPE" \
+                  --arg tag "$TAG" \
+                  '. + [{"name":$name,"version":$version,"path":$path,"type":$type,"tag":$tag}]')
+                break
+              fi
+            done
+
+            if [[ "$CHARTS" == "[]" ]]; then
+              echo "::error::No chart found with name '$CHART_NAME'"
+              exit 1
+            fi
+
+          else
+            # Push to main: detect Chart.yaml version changes
+            for chart_yaml in $(git diff HEAD~1 --name-only -- 'charts/*/Chart.yaml' 'charts/*/*/Chart.yaml' | grep 'Chart\.yaml$' || true); do
+              [[ -f "$chart_yaml" ]] || continue
+
+              CHART_NAME=$(grep '^name:' "$chart_yaml" | head -1 | awk '{print $2}')
+              NEW_VERSION=$(grep '^version:' "$chart_yaml" | head -1 | awk '{print $2}')
+
+              [[ -z "$CHART_NAME" || -z "$NEW_VERSION" ]] && continue
+
+              OLD_VERSION=$(git show HEAD~1:"$chart_yaml" 2>/dev/null | grep '^version:' | head -1 | awk '{print $2}' || true)
+              [[ "$OLD_VERSION" == "$NEW_VERSION" ]] && continue
+
+              CHART_PATH="$(dirname "$chart_yaml")"
+              CHART_TYPE=$(grep '^type:' "$chart_yaml" | awk '{print $2}')
+              TAG="${CHART_NAME}-v${NEW_VERSION}"
+
+              CHARTS=$(echo "$CHARTS" | jq -c \
+                --arg name "$CHART_NAME" \
+                --arg version "$NEW_VERSION" \
+                --arg path "$CHART_PATH" \
+                --arg type "$CHART_TYPE" \
+                --arg tag "$TAG" \
+                '. + [{"name":$name,"version":$version,"path":$path,"type":$type,"tag":$tag}]')
+            done
           fi
 
-          CHART_TYPE=$(grep '^type:' "$CHART_PATH/Chart.yaml" | awk '{print $2}')
+          if [[ "$CHARTS" == "[]" ]]; then
+            echo "No charts to release"
+          else
+            echo "Charts to release: $CHARTS"
+          fi
 
-          echo "chart_path=$CHART_PATH" >> "$GITHUB_OUTPUT"
-          echo "chart_type=$CHART_TYPE" >> "$GITHUB_OUTPUT"
-          echo "Resolved: path=$CHART_PATH type=$CHART_TYPE"
+          echo "matrix={\"include\":$CHARTS}" >> "$GITHUB_OUTPUT"
 
   release:
-    name: Package and Push
+    name: "Release ${{ matrix.name }} v${{ matrix.version }}"
     runs-on: ubuntu-latest
-    needs: resolve
+    needs: detect
+    if: needs.detect.outputs.matrix != '' && toJSON(fromJSON(needs.detect.outputs.matrix).include) != '[]'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -81,13 +118,13 @@ jobs:
 
       - name: Update chart version
         run: |
-          sed -i "s/^version:.*/version: ${{ needs.resolve.outputs.chart_version }}/" \
-            ${{ needs.resolve.outputs.chart_path }}/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ matrix.version }}/" \
+            ${{ matrix.path }}/Chart.yaml
 
       - name: Helm lint
         run: |
-          CHART_PATH="${{ needs.resolve.outputs.chart_path }}"
-          CHART_TYPE="${{ needs.resolve.outputs.chart_type }}"
+          CHART_PATH="${{ matrix.path }}"
+          CHART_TYPE="${{ matrix.type }}"
 
           if [[ "$CHART_TYPE" == "application" ]]; then
             helm dependency update "$CHART_PATH"
@@ -99,9 +136,9 @@ jobs:
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
 
       - name: Run unit tests (library charts)
-        if: needs.resolve.outputs.chart_type == 'library'
+        if: matrix.type == 'library'
         run: |
-          CHART_PATH="${{ needs.resolve.outputs.chart_path }}"
+          CHART_PATH="${{ matrix.path }}"
           if [[ -d "$CHART_PATH/test-chart" ]]; then
             helm dependency update "$CHART_PATH/test-chart"
             helm unittest "$CHART_PATH/test-chart"
@@ -118,21 +155,28 @@ jobs:
 
       - name: Package chart
         run: |
-          helm package ${{ needs.resolve.outputs.chart_path }} --destination /tmp/charts
+          helm package ${{ matrix.path }} --destination /tmp/charts
 
       - name: Push chart to OCI registry
         run: |
-          CHART_NAME="${{ needs.resolve.outputs.chart_name }}"
-          CHART_VERSION="${{ needs.resolve.outputs.chart_version }}"
-
-          helm push "/tmp/charts/${CHART_NAME}-${CHART_VERSION}.tgz" \
+          helm push "/tmp/charts/${{ matrix.name }}-${{ matrix.version }}.tgz" \
             oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+
+      - name: Create tag
+        run: |
+          TAG="${{ matrix.tag }}"
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping"
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          name: "${{ needs.resolve.outputs.chart_name }} v${{ needs.resolve.outputs.chart_version }}"
+          tag_name: ${{ matrix.tag }}
+          name: "${{ matrix.name }} v${{ matrix.version }}"
           generate_release_notes: true
           files: |
-            /tmp/charts/${{ needs.resolve.outputs.chart_name }}-${{ needs.resolve.outputs.chart_version }}.tgz
+            /tmp/charts/${{ matrix.name }}-${{ matrix.version }}.tgz
