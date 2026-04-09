@@ -69,37 +69,61 @@ jobs:
 
       - name: Install Knative Serving CRDs
         run: |
-          kubectl apply --server-side -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml
+          for i in 1 2 3; do
+            kubectl apply --server-side -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml && break
+            echo "Attempt $i failed, retrying in 5s..." && sleep 5
+          done
           kubectl wait --for=condition=Established crd/services.serving.knative.dev --timeout=60s
 
       - name: Install CNPG CRDs
         if: matrix.install_cnpg_crds
         run: |
-          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_clusters.yaml
-          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_poolers.yaml
-          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_scheduledbackups.yaml
-          kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/main/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml
+          for url in \
+            https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_clusters.yaml \
+            https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_poolers.yaml \
+            https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/config/crd/bases/postgresql.cnpg.io_scheduledbackups.yaml \
+            https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/main/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml; do
+            for i in 1 2 3; do
+              kubectl apply --server-side -f "$url" && break
+              echo "Attempt $i failed for $url, retrying in 5s..." && sleep 5
+            done
+          done
 
       - name: Install Prometheus Operator CRDs
         if: matrix.install_monitoring_crds
         run: |
-          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
-          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+          for url in \
+            https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml \
+            https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml; do
+            for i in 1 2 3; do
+              kubectl apply --server-side -f "$url" && break
+              echo "Attempt $i failed for $url, retrying in 5s..." && sleep 5
+            done
+          done
 
       - name: Install Flagger CRDs
         if: matrix.install_flagger_crds
         run: |
-          kubectl apply --server-side -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+          for i in 1 2 3; do
+            kubectl apply --server-side -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml && break
+            echo "Attempt $i failed, retrying in 5s..." && sleep 5
+          done
 
       - name: Install Kafka CRDs
         if: matrix.install_kafka_crds
         run: |
-          kubectl apply --server-side -f https://raw.githubusercontent.com/knative-extensions/eventing-kafka-broker/knative-v1.17.0/control-plane/config/eventing-kafka-broker/100-source/100-kafka-source.yaml
+          for i in 1 2 3; do
+            kubectl apply --server-side -f https://raw.githubusercontent.com/knative-extensions/eventing-kafka-broker/knative-v1.17.0/control-plane/config/eventing-kafka-broker/100-source/100-kafka-source.yaml && break
+            echo "Attempt $i failed, retrying in 5s..." && sleep 5
+          done
 
       - name: Install DragonflyDB CRDs
         if: matrix.install_dragonfly_crds
         run: |
-          kubectl apply --server-side -f https://raw.githubusercontent.com/dragonflydb/dragonfly-operator/main/config/crd/bases/dragonflydb.io_dragonflies.yaml
+          for i in 1 2 3; do
+            kubectl apply --server-side -f https://raw.githubusercontent.com/dragonflydb/dragonfly-operator/main/config/crd/bases/dragonflydb.io_dragonflies.yaml && break
+            echo "Attempt $i failed, retrying in 5s..." && sleep 5
+          done
 
       - name: Helm dependency update
         run: helm dependency update examples/${{ matrix.example }}
@@ -114,6 +138,7 @@ jobs:
 
       - name: Verify rendered resources via kubectl
         run: |
+          kubectl create namespace test-ns --dry-run=client -o yaml | kubectl apply -f -
           helm template test-release examples/${{ matrix.example }} \
             --namespace test-ns | \
             kubectl apply --dry-run=server -f - 2>&1 || true
@@ -135,7 +160,10 @@ jobs:
 
       - name: Install Knative Serving CRDs
         run: |
-          kubectl apply --server-side -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml
+          for i in 1 2 3; do
+            kubectl apply --server-side -f https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml && break
+            echo "Attempt $i failed, retrying in 5s..." && sleep 5
+          done
           kubectl wait --for=condition=Established crd/services.serving.knative.dev --timeout=60s
 
       - name: Resolve app chart dependency locally
