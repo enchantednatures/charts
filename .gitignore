@@ -1,6 +1,7 @@
 # Helm
 charts/library/ksvc/charts/
 charts/library/ksvc/test-chart/charts/
+charts/library/ksvc/test-chart/Chart.lock
 charts/app/ksvc/charts/
 examples/*/charts/
 *.tgz
