@@ -4,7 +4,7 @@ Expects context: dict with "root" (top-level context), "key" (service map key),
 and "svc" (the merged service config dict).
 */}}
 {{- define "ksvc.class.knativeService" -}}
-{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key) -}}
+{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key "svc" .svc) -}}
 {{- $svc := .svc -}}
 apiVersion: serving.knative.dev/v1
 kind: Service

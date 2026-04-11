@@ -315,6 +315,10 @@
       "additionalProperties": false,
       "required": ["image"],
       "properties": {
+        "nameOverride": {
+          "type": "string",
+          "description": "Override the name suffix for this service. When set, replaces the map key in the resource name: <release>-<nameOverride>. Set to empty string to produce just <release> with no suffix."
+        },
         "image": {
           "type": "object",
           "additionalProperties": false,
