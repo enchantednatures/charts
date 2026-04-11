@@ -1,0 +1,85 @@
+services:
+  event-handler:
+    image:
+      repository: ghcr.io/example-org/event-handler
+      tag: "v1.0.0"
+    scaling:
+      minScale: 1
+      maxScale: 20
+      target: 10
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+    env:
+      - name: APP__TELEMETRY__SERVICE_NAME
+        value: "event-handler"
+
+  order-processor:
+    image:
+      repository: ghcr.io/example-org/order-processor
+      tag: "v1.0.0"
+    scaling:
+      minScale: 0
+      maxScale: 50
+      target: 5
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "128Mi"
+      limits:
+        cpu: "1000m"
+        memory: "512Mi"
+
+kafka:
+  broker:
+    enabled: true
+    config:
+      bootstrapServers:
+        - kafka.kafka.svc.cluster.local:9092
+      topicPartitions: 10
+      topicReplicationFactor: 3
+    delivery:
+      retry: 5
+      backoffPolicy: exponential
+      backoffDelay: PT2S
+
+  sources:
+    incoming:
+      topic: "incoming-events"
+      bootstrapServers:
+        - kafka.kafka.svc.cluster.local:9092
+      consumers: 5
+      initialOffset: latest
+      dlq:
+        enabled: true
+
+  triggers:
+    all-events:
+      subscriber: event-handler
+
+    order-events:
+      subscriber: order-processor
+      filter:
+        type: com.example.order.created
+        source: /orders
+      delivery:
+        retry: 10
+        backoffPolicy: exponential
+        backoffDelay: PT1S
+      dlq:
+        enabled: true
+
+    payment-events:
+      subscriber: order-processor
+      filters:
+        - any:
+            - exact:
+                type: com.example.payment.completed
+            - exact:
+                type: com.example.payment.refunded
+      annotations:
+        kafka.eventing.knative.dev/delivery.order: ordered

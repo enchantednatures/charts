@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [minimal, full-stack, postgres-only, kafka-consumer, dragonfly-cache]
+        example: [minimal, full-stack, postgres-only, kafka-consumer, kafka-broker, dragonfly-cache]
         include:
           - example: minimal
             install_cnpg_crds: false
@@ -31,30 +31,42 @@ jobs:
             install_flagger_crds: false
             install_dragonfly_crds: false
             install_monitoring_crds: false
+            install_eventing_crds: false
           - example: full-stack
             install_cnpg_crds: true
             install_kafka_crds: true
             install_flagger_crds: true
             install_dragonfly_crds: true
             install_monitoring_crds: true
+            install_eventing_crds: false
           - example: postgres-only
             install_cnpg_crds: true
             install_kafka_crds: false
             install_flagger_crds: false
             install_dragonfly_crds: false
             install_monitoring_crds: true
+            install_eventing_crds: false
           - example: kafka-consumer
             install_cnpg_crds: false
             install_kafka_crds: true
             install_flagger_crds: false
             install_dragonfly_crds: false
             install_monitoring_crds: false
+            install_eventing_crds: false
+          - example: kafka-broker
+            install_cnpg_crds: false
+            install_kafka_crds: true
+            install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+            install_eventing_crds: true
           - example: dragonfly-cache
             install_cnpg_crds: false
             install_kafka_crds: false
             install_flagger_crds: false
             install_dragonfly_crds: true
             install_monitoring_crds: false
+            install_eventing_crds: false
     steps:
       - uses: actions/checkout@v4
 
@@ -116,6 +128,16 @@ jobs:
             kubectl apply --server-side -f https://raw.githubusercontent.com/knative-extensions/eventing-kafka-broker/knative-v1.17.0/control-plane/config/eventing-kafka-broker/100-source/100-kafka-source.yaml && break
             echo "Attempt $i failed, retrying in 5s..." && sleep 5
           done
+
+      - name: Install Knative Eventing CRDs (Broker, Trigger)
+        if: matrix.install_eventing_crds
+        run: |
+          for i in 1 2 3; do
+            kubectl apply --server-side -f https://github.com/knative/eventing/releases/download/knative-v1.17.0/eventing-crds.yaml && break
+            echo "Attempt $i failed, retrying in 5s..." && sleep 5
+          done
+          kubectl wait --for=condition=Established crd/brokers.eventing.knative.dev --timeout=60s
+          kubectl wait --for=condition=Established crd/triggers.eventing.knative.dev --timeout=60s
 
       - name: Install DragonflyDB CRDs
         if: matrix.install_dragonfly_crds

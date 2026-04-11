@@ -1,12 +1,12 @@
 # ksvc
 
-Helm library chart for deploying **multiple Knative services** with integrated CloudNativePG, Kafka event sources, DragonflyDB, and Flagger canary releases.
+Helm library chart for deploying **multiple Knative services** with integrated CloudNativePG, Kafka event sources, Knative Kafka Broker & Triggers, DragonflyDB, and Flagger canary releases.
 
 ## Overview
 
 This library chart provides a standardized way to deploy serverless applications on Kubernetes using Knative Serving. Consumers define one or more services via a `services:` map, and the library renders all required Kubernetes and Custom Resource manifests.
 
-Infrastructure resources (PostgreSQL, DragonflyDB) are shared globally across all services in the release, while Kafka event sources and Flagger canary configs are scoped per-source and per-service respectively.
+Infrastructure resources (PostgreSQL, DragonflyDB) are shared globally across all services in the release, while Kafka event sources, Kafka Broker & Triggers, and Flagger canary configs are scoped per-source, per-trigger, and per-service respectively.
 
 ## Architecture
 
@@ -19,12 +19,25 @@ Consumer Chart
               │     ├── Knative Service
               │     └── Flagger Canary (opt-in)
               ├── Per-source loop (kafka.sources map)
-              │     ├── KafkaSource
+              │     ├── KafkaSource → sink: Service (default) or Broker (when broker enabled)
               │     └── DLQ Knative Service (opt-in)
+              ├── Kafka Broker (opt-in, global)
+              │     ├── ConfigMap (bootstrap servers, topic config)
+              │     └── Broker CRD (Kafka class)
+              ├── Per-trigger loop (kafka.triggers map, requires broker)
+              │     ├── Trigger CRD (filter, subscriber, delivery)
+              │     └── DLQ Knative Service (opt-in per trigger)
               └── Global resources
                     ├── CNPG Cluster, Pooler, Backup, ObjectStore, PodMonitor, Alerts
                     └── Dragonfly
 ```
+
+### Eventing Architecture
+
+The chart supports two eventing patterns that coexist:
+
+- **KafkaSource only** (default): External Kafka topics → KafkaSource → Knative Service directly.
+- **KafkaSource + Broker + Triggers**: External Kafka topics → KafkaSource → Broker → Triggers → Knative Services. Enable by setting `kafka.broker.enabled: true` and defining entries in `kafka.triggers`.
 
 ### Naming Conventions
 
@@ -33,7 +46,11 @@ Consumer Chart
 | Knative Service | `<release>-<service-key>` (or `<release>-<nameOverride>` when set) |
 | Flagger Canary | `<release>-<service-key>` (or `<release>-<nameOverride>` when set) |
 | KafkaSource | `<release>-<source-key>-kafka-source` |
-| DLQ Service | `<release>-<source-key>-dlq` |
+| KafkaSource DLQ Service | `<release>-<source-key>-dlq` |
+| Kafka Broker | `<release>-kafka-broker` |
+| Kafka Broker ConfigMap | `<release>-kafka-broker-config` |
+| Kafka Trigger | `<release>-<trigger-key>-trigger` |
+| Kafka Trigger DLQ Service | `<release>-<trigger-key>-trigger-dlq` |
 | CNPG Cluster | `<release>` (global) |
 | Dragonfly | `<release>` (global) |
 
@@ -81,8 +98,11 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
 |---------|-------------------|-------|
 | **Services** | Knative Service (per entry in `services`) | Per-service |
 | **Flagger** | Canary (per service with `flagger.enabled: true`) | Per-service |
-| **Kafka** | KafkaSource (per entry in `kafka.sources`) | Per-source |
-| **Kafka DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
+| **Kafka Sources** | KafkaSource (per entry in `kafka.sources`) | Per-source |
+| **Kafka Source DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
+| **Kafka Broker** | Broker CRD + ConfigMap (when `kafka.broker.enabled: true`) | Global |
+| **Kafka Triggers** | Trigger CRD (per entry in `kafka.triggers`) | Per-trigger |
+| **Kafka Trigger DLQ** | Knative Service (per trigger with `dlq.enabled: true`) | Per-trigger |
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
 
@@ -149,12 +169,12 @@ Flagger is configured inside each service entry.
 
 ### Kafka Event Sources (Map)
 
-Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must reference a valid key in the `services` map (validated at render time).
+Each key in `kafka.sources:` defines a KafkaSource. When `kafka.broker.enabled` is `false`, the `sink` field must reference a valid key in the `services` map. When `kafka.broker.enabled` is `true`, KafkaSources automatically sink to the Broker instead and the `sink` field is not required.
 
 | Key | Description | Default |
 |-----|-------------|---------|
 | `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
-| `kafka.sources.<key>.sink` | **Required.** Key from the `services` map | — |
+| `kafka.sources.<key>.sink` | Key from the `services` map (required when broker is disabled) | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
 | `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
 | `kafka.sources.<key>.consumers` | Concurrent consumers per replica | `3` |
@@ -164,6 +184,88 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+
+### Kafka Broker (Global)
+
+When enabled, a Knative Kafka Broker is created as the central event bus. KafkaSources automatically sink to this Broker, and Triggers route events from the Broker to services.
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `kafka.broker.enabled` | Enable Kafka Broker | `false` |
+| `kafka.broker.externalTopic` | Pre-existing Kafka topic for the Broker | `""` (auto-created) |
+| `kafka.broker.annotations` | Extra annotations on the Broker | `{}` |
+| `kafka.broker.config.bootstrapServers` | List of Kafka bootstrap servers | `["kafka.kafka.svc.cluster.local:9092"]` |
+| `kafka.broker.config.topicPartitions` | Default topic partition count | `10` |
+| `kafka.broker.config.topicReplicationFactor` | Default topic replication factor | `3` |
+| `kafka.broker.config.authSecretName` | Secret name for Kafka auth (SASL/TLS) | `""` |
+| `kafka.broker.config.extra` | Additional ConfigMap entries | `{}` |
+| `kafka.broker.delivery.retry` | Broker-level delivery retry count | `5` |
+| `kafka.broker.delivery.backoffPolicy` | `linear` or `exponential` | `exponential` |
+| `kafka.broker.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
+| `kafka.broker.delivery.deadLetterSink.enabled` | Enable broker-level DLQ | `false` |
+| `kafka.broker.delivery.deadLetterSink.uri` | DLQ absolute URI | `""` |
+| `kafka.broker.delivery.deadLetterSink.ref.apiVersion` | DLQ ref apiVersion | `""` |
+| `kafka.broker.delivery.deadLetterSink.ref.kind` | DLQ ref kind | `""` |
+| `kafka.broker.delivery.deadLetterSink.ref.name` | DLQ ref name | `""` |
+
+### Kafka Triggers (Map)
+
+Each key in `kafka.triggers:` defines a Trigger that routes events from the Broker to a Knative Service. Requires `kafka.broker.enabled: true` (validated at render time).
+
+The `subscriber` field must reference a valid key in the `services` map.
+
+#### Basic Trigger Settings
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `kafka.triggers.<key>.subscriber` | **Required.** Key from the `services` map | — |
+| `kafka.triggers.<key>.subscriberUri` | Optional path appended to subscriber URL | `""` |
+| `kafka.triggers.<key>.annotations` | Extra annotations (e.g. delivery ordering) | `{}` |
+
+#### Legacy Filter (CloudEvents Attributes)
+
+The `filter` field uses the Trigger v1 attribute-matching syntax. Each key-value pair must match the corresponding CloudEvent attribute exactly.
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `kafka.triggers.<key>.filter` | Map of CloudEvents attribute filters | `{}` |
+
+Example:
+```yaml
+filter:
+  type: com.example.order.created
+  source: /orders
+```
+
+#### Modern Filters (CEL / Composition)
+
+The `filters` field uses the new Trigger filters API supporting composable filter expressions: `exact`, `prefix`, `suffix`, `all`, `any`, `not`, and `cesql`.
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `kafka.triggers.<key>.filters` | List of composable filter expressions | `[]` |
+
+Example:
+```yaml
+filters:
+  - any:
+      - exact:
+          type: com.example.payment.completed
+      - exact:
+          type: com.example.payment.refunded
+```
+
+#### Trigger Delivery & DLQ
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `kafka.triggers.<key>.delivery.retry` | Per-trigger retry count | `5` |
+| `kafka.triggers.<key>.delivery.backoffPolicy` | `linear` or `exponential` | `exponential` |
+| `kafka.triggers.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
+| `kafka.triggers.<key>.dlq.enabled` | Deploy a DLQ Knative Service for this trigger | `false` |
+| `kafka.triggers.<key>.dlq.image` | DLQ container image | `gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:latest` |
+| `kafka.triggers.<key>.dlq.scaling` | DLQ service scaling config | See source DLQ defaults |
+| `kafka.triggers.<key>.dlq.resources` | DLQ container resources | See source DLQ defaults |
 
 ### CloudNativePG PostgreSQL
 
@@ -291,6 +393,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **full-stack** — Multi-service deployment with PostgreSQL, Kafka, DragonflyDB, and Flagger.
 *   **postgres-only** — API service with CloudNativePG integration.
 *   **kafka-consumer** — Consumer service with KafkaSource and DLQ.
+*   **kafka-broker** — Multi-service deployment with Kafka Broker, Triggers (unfiltered, legacy filter, modern filters with delivery ordering).
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
 
 ## CI/CD
