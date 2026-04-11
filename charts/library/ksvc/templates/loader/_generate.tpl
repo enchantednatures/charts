@@ -76,6 +76,30 @@ merged. We must apply defaults explicitly before rendering.
   {{- end }}
 
   {{/* ============================================================ */}}
+  {{/* Kafka Broker (eventing bus backed by Kafka)                  */}}
+  {{/* ============================================================ */}}
+  {{- if and .Values.kafka .Values.kafka.broker .Values.kafka.broker.enabled }}
+---
+  {{- include "ksvc.class.kafkaBrokerConfig" . | nindent 0 }}
+---
+  {{- include "ksvc.class.kafkaBroker" . | nindent 0 }}
+  {{- end }}
+
+  {{/* ============================================================ */}}
+  {{/* Kafka Triggers (iterate the kafka.triggers map)              */}}
+  {{/* ============================================================ */}}
+  {{- if and .Values.kafka .Values.kafka.triggers }}
+    {{- range $key, $trigger := .Values.kafka.triggers }}
+---
+  {{- include "ksvc.class.kafkaTrigger" (dict "root" $ "key" $key "trigger" $trigger) | nindent 0 }}
+      {{- if and $trigger.dlq $trigger.dlq.enabled }}
+---
+  {{- include "ksvc.class.kafkaTriggerDlq" (dict "root" $ "key" $key "trigger" $trigger) | nindent 0 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{/* ============================================================ */}}
   {{/* DragonflyDB Cache Cluster                                   */}}
   {{/* ============================================================ */}}
   {{- if and .Values.dragonfly .Values.dragonfly.enabled }}
@@ -163,6 +187,54 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- range $key, $source := $kafka.sources }}
     {{- $merged := mustMergeOverwrite (deepCopy $kafkaSourceDefaults) $source -}}
     {{- $_ := set $kafka.sources $key $merged -}}
+  {{- end }}
+  {{- $_ := set .Values "kafka" $kafka -}}
+
+  {{/* --- kafka broker defaults --- */}}
+  {{- $brokerDefaults := dict
+    "enabled" false
+    "externalTopic" ""
+    "annotations" (dict)
+    "config" (dict
+      "bootstrapServers" (list "kafka.kafka.svc.cluster.local:9092")
+      "topicPartitions" 10
+      "topicReplicationFactor" 3
+      "authSecretName" ""
+      "extra" (dict)
+    )
+    "delivery" (dict
+      "retry" 5
+      "backoffPolicy" "exponential"
+      "backoffDelay" "PT1S"
+      "deadLetterSink" (dict "enabled" false "uri" "" "ref" (dict "apiVersion" "serving.knative.dev/v1" "kind" "Service" "name" ""))
+    )
+  -}}
+  {{- if hasKey $kafka "broker" -}}
+    {{- $broker := $kafka.broker | default dict -}}
+    {{- $_ := set $kafka "broker" (mustMergeOverwrite (deepCopy $brokerDefaults) $broker) -}}
+  {{- end -}}
+
+  {{/* --- kafka trigger defaults (applied to each entry in kafka.triggers map) --- */}}
+  {{- $triggerDefaults := dict
+    "subscriber" ""
+    "subscriberUri" ""
+    "filter" (dict)
+    "filters" (list)
+    "annotations" (dict)
+    "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
+    "dlq" (dict "enabled" false
+      "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "latest")
+      "scaling" (dict "minScale" 0 "maxScale" 2)
+      "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
+    )
+  -}}
+
+  {{- if or (not (hasKey $kafka "triggers")) (not $kafka.triggers) -}}
+    {{- $_ := set $kafka "triggers" dict -}}
+  {{- end -}}
+  {{- range $key, $trigger := $kafka.triggers }}
+    {{- $merged := mustMergeOverwrite (deepCopy $triggerDefaults) $trigger -}}
+    {{- $_ := set $kafka.triggers $key $merged -}}
   {{- end }}
   {{- $_ := set .Values "kafka" $kafka -}}
 
