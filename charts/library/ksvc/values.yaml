@@ -25,12 +25,16 @@ global:
 # Services — Map of Knative Services (one or more)
 #
 # Each key becomes a name suffix: <release-name>-<key>
+# Use nameOverride to change the suffix (or set to "" for no suffix).
 # Example:
 #   services:
 #     api:
 #       image: { repository: ghcr.io/org/api, tag: v1.0.0 }
 #     worker:
 #       image: { repository: ghcr.io/org/worker, tag: v1.0.0 }
+#     app:
+#       nameOverride: ""    # produces just <release-name> with no suffix
+#       image: { repository: ghcr.io/org/app, tag: v1.0.0 }
 # =============================================================================
 services:
   api:

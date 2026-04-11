@@ -4,7 +4,7 @@ Expects context: dict with "root" (top-level context), "key" (service map key),
 and "svc" (the merged service config dict containing flagger sub-config).
 */}}
 {{- define "ksvc.class.flaggerCanary" -}}
-{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key) -}}
+{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key "svc" .svc) -}}
 {{- $flagger := .svc.flagger -}}
 {{- $lt := $flagger.loadTest -}}
 apiVersion: flagger.app/v1beta1

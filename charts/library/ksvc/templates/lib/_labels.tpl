@@ -26,7 +26,7 @@ Expects context: dict with "root" (top-level context), "key" (service map key),
 and "svc" (the service config dict).
 */}}
 {{- define "ksvc.serviceLabels" -}}
-{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key) -}}
+{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key "svc" .svc) -}}
 app.kubernetes.io/name: {{ $serviceName }}
 app.kubernetes.io/instance: {{ .root.Release.Name }}
 app.kubernetes.io/version: {{ .root.Chart.AppVersion | quote }}

@@ -131,3 +131,30 @@ tests:
     asserts:
       - hasDocuments:
           count: 2
+
+  - it: should use nameOverride as name suffix when set
+    set:
+      services.api.nameOverride: web
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-web
+
+  - it: should produce release name only when nameOverride is empty string
+    set:
+      services.api.nameOverride: ""
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release
+
+  - it: should keep component label as the map key even with nameOverride
+    set:
+      services.api.nameOverride: ""
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: api

@@ -30,12 +30,20 @@ Chart label value.
 
 {{/*
 ksvc.serviceName — Derive resource name for a service entry.
-Expects context: dict with "root" (top-level context) and "key" (service map key).
-Returns: <fullname>-<key>
+Expects context: dict with "root" (top-level context), "key" (service map key),
+and "svc" (the service config dict).
+When svc.nameOverride is set, it replaces the key as the name suffix.
+An empty nameOverride produces just <fullname> (no suffix), which is useful
+for single-service deployments that want a clean resource name.
+Returns: <fullname>-<suffix>  (or just <fullname> when suffix is empty)
 */}}
 {{- define "ksvc.serviceName" -}}
 {{- $fullname := include "ksvc.fullname" .root -}}
-{{- printf "%s-%s" $fullname .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- $suffix := .key -}}
+{{- if and .svc (hasKey .svc "nameOverride") -}}
+  {{- $suffix = .svc.nameOverride -}}
+{{- end -}}
+{{- printf "%s-%s" $fullname $suffix | trunc 63 | trimSuffix "-" | replace "_" "-" }}
 {{- end }}
 
 {{- define "ksvc.postgresName" -}}

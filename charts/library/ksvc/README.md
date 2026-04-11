@@ -30,12 +30,14 @@ Consumer Chart
 
 | Resource | Name Pattern |
 |----------|-------------|
-| Knative Service | `<release>-<service-key>` |
-| Flagger Canary | `<release>-<service-key>` |
+| Knative Service | `<release>-<service-key>` (or `<release>-<nameOverride>` when set) |
+| Flagger Canary | `<release>-<service-key>` (or `<release>-<nameOverride>` when set) |
 | KafkaSource | `<release>-<source-key>-kafka-source` |
 | DLQ Service | `<release>-<source-key>-dlq` |
 | CNPG Cluster | `<release>` (global) |
 | Dragonfly | `<release>` (global) |
+
+Use `nameOverride: ""` on a service entry to produce just `<release>` with no suffix — useful for single-service deployments or kustomize compatibility.
 
 ## Quick Start
 
@@ -97,10 +99,11 @@ Consumer Chart
 
 ### Services (Map)
 
-Each key in `services:` defines a Knative Service. The key becomes a name suffix: `<release>-<key>`.
+Each key in `services:` defines a Knative Service. The key becomes a name suffix: `<release>-<key>`. Set `nameOverride` to change the suffix or use `""` for no suffix.
 
 | Key | Description | Default |
 |-----|-------------|---------|
+| `services.<key>.nameOverride` | Override the name suffix (replaces the map key). Set to `""` for no suffix. | *(not set — uses key)* |
 | `services.<key>.image.repository` | Container image repository | `""` |
 | `services.<key>.image.tag` | Container image tag | `"latest"` |
 | `services.<key>.image.pullPolicy` | Image pull policy | `IfNotPresent` |
