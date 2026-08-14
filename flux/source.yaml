@@ -1,0 +1,12 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: charts
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: ssh://git@github.com/enchantednatures/charts
+  ref:
+    branch: main
+  secretRef:
+    name: charts-deploy-key
