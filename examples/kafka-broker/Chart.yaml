@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kafka-broker-example
+description: Knative Service with Kafka Broker eventing bus and Triggers
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+dependencies:
+  - name: ksvc
+    version: ">=0.1.0"
+    repository: "file://../../charts/library/ksvc"

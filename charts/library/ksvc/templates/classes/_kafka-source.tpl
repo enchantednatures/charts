@@ -2,13 +2,15 @@
 ksvc.class.kafkaSource — Render a KafkaSource for a specific source entry.
 Expects context: dict with "root" (top-level context), "key" (source map key),
 and "source" (the merged kafka source config dict).
-The source.sink field must reference a valid key in .Values.services.
+
+When kafka.broker is defined, the sink points to the Kafka Broker (eventing bus).
+Otherwise the source.sink field references a Knative Service directly.
 */}}
 {{- define "ksvc.class.kafkaSource" -}}
 {{- $source := .source -}}
-{{- $sinkServiceName := include "ksvc.serviceName" (dict "root" .root "key" $source.sink) -}}
 {{- $sourceName := include "ksvc.kafkaSourceName" . -}}
 {{- $dlqName := include "ksvc.kafkaDlqName" . -}}
+{{- $hasBroker := and .root.Values.kafka .root.Values.kafka.broker .root.Values.kafka.broker.enabled -}}
 apiVersion: sources.knative.dev/v1beta1
 kind: KafkaSource
 metadata:
@@ -25,10 +27,17 @@ spec:
   topics:
     - {{ $source.topic }}
   sink:
+    {{- if $hasBroker }}
+    ref:
+      apiVersion: eventing.knative.dev/v1
+      kind: Broker
+      name: {{ include "ksvc.kafkaBrokerName" .root }}
+    {{- else }}
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
-      name: {{ $sinkServiceName }}
+      name: {{ include "ksvc.serviceName" (dict "root" .root "key" $source.sink) }}
+    {{- end }}
   delivery:
     retry: {{ $source.delivery.retry }}
     backoffPolicy: {{ $source.delivery.backoffPolicy }}

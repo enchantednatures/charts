@@ -82,3 +82,32 @@ tests:
     asserts:
       - hasDocuments:
           count: 1
+
+  - it: should sink to kafka broker when broker is enabled
+    set:
+      kafka.broker.enabled: true
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.sink.ref.apiVersion
+          value: eventing.knative.dev/v1
+      - equal:
+          path: spec.sink.ref.kind
+          value: Broker
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-kafka-broker
+
+  - it: should sink to knative service when broker is not enabled
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.sink.ref.apiVersion
+          value: serving.knative.dev/v1
+      - equal:
+          path: spec.sink.ref.kind
+          value: Service
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-api

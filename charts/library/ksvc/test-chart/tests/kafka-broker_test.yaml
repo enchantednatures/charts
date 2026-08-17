@@ -1,0 +1,190 @@
+suite: kafka broker tests
+templates:
+  - templates/common.yaml
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # ============================================================
+  # Broker + ConfigMap rendering
+  # ============================================================
+  # With broker enabled + one service + one trigger:
+  # doc 0 = Knative Service (api)
+  # doc 1 = ConfigMap (kafka-broker-config)
+  # doc 2 = Broker
+  # doc 3 = Trigger (order-events)
+
+  - it: should render Kafka Broker ConfigMap when broker enabled
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.broker.config.bootstrapServers:
+        - kafka.prod.svc:9092
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: test-release-kafka-broker-config
+
+  - it: should set bootstrap servers in ConfigMap
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.broker.config.bootstrapServers:
+        - kafka-1.prod.svc:9092
+        - kafka-2.prod.svc:9092
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: data["bootstrap.servers"]
+          value: "kafka-1.prod.svc:9092,kafka-2.prod.svc:9092"
+
+  - it: should set topic partitions and replication factor in ConfigMap
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.broker.config.topicPartitions: 24
+      kafka.broker.config.topicReplicationFactor: 5
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: data["default.topic.partitions"]
+          value: "24"
+      - equal:
+          path: data["default.topic.replication.factor"]
+          value: "5"
+
+  - it: should set auth secret in ConfigMap when provided
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.broker.config.authSecretName: my-kafka-secret
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: data["auth.secret.ref.name"]
+          value: my-kafka-secret
+
+  - it: should render Kafka Broker with correct apiVersion and kind
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: Broker
+      - equal:
+          path: apiVersion
+          value: eventing.knative.dev/v1
+
+  - it: should set broker class annotation to Kafka
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.annotations["eventing.knative.dev/broker.class"]
+          value: Kafka
+
+  - it: should set correct broker name
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-kafka-broker
+
+  - it: should reference the ConfigMap in broker spec
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.config.name
+          value: test-release-kafka-broker-config
+      - equal:
+          path: spec.config.kind
+          value: ConfigMap
+
+  - it: should set external topic annotation when provided
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.broker.externalTopic: my-external-topic
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.annotations["kafka.eventing.knative.dev/external.topic"]
+          value: my-external-topic
+
+  - it: should set delivery config on broker
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.broker.delivery.retry: 10
+      kafka.broker.delivery.backoffPolicy: linear
+      kafka.broker.delivery.backoffDelay: PT5S
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.delivery.retry
+          value: 10
+      - equal:
+          path: spec.delivery.backoffPolicy
+          value: linear
+      - equal:
+          path: spec.delivery.backoffDelay
+          value: PT5S
+
+  - it: should set dead letter sink on broker when enabled
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.broker.delivery.deadLetterSink.enabled: true
+      kafka.broker.delivery.deadLetterSink.ref.name: my-dlq-service
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.delivery.deadLetterSink.ref.name
+          value: my-dlq-service
+      - equal:
+          path: spec.delivery.deadLetterSink.ref.apiVersion
+          value: serving.knative.dev/v1
+
+  - it: should not render broker when not enabled
+    set:
+      services.api.image.repository: test/image
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render default topic config values
+    set:
+      services.api.image.repository: test/image
+      kafka.broker.enabled: true
+      kafka.triggers.order-events.subscriber: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: data["default.topic.partitions"]
+          value: "10"
+      - equal:
+          path: data["default.topic.replication.factor"]
+          value: "3"
