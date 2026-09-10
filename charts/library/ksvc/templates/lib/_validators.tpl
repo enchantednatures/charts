@@ -33,13 +33,33 @@ Call this from the loader to catch misconfigurations early.
   {{- end -}}
 
   {{/* kafka source sink validation: each source's sink must reference a valid services key */}}
+  {{/* When a kafka broker is enabled, sources sink to the broker so source.sink is optional */}}
+  {{- $hasBroker := and .Values.kafka .Values.kafka.broker .Values.kafka.broker.enabled -}}
   {{- if and .Values.kafka .Values.kafka.sources -}}
     {{- range $key, $source := .Values.kafka.sources -}}
-      {{- if not $source.sink -}}
-        {{- fail (printf "kafka.sources.%s.sink is required and must reference a key in the services map" $key) -}}
+      {{- if not $hasBroker -}}
+        {{- if not $source.sink -}}
+          {{- fail (printf "kafka.sources.%s.sink is required when kafka.broker is not enabled — it must reference a key in the services map" $key) -}}
+        {{- end -}}
+        {{- if not (hasKey $.Values.services $source.sink) -}}
+          {{- fail (printf "kafka.sources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
+        {{- end -}}
       {{- end -}}
-      {{- if not (hasKey $.Values.services $source.sink) -}}
-        {{- fail (printf "kafka.sources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{/* kafka trigger validation */}}
+  {{- if and .Values.kafka .Values.kafka.triggers -}}
+    {{/* triggers require broker to be enabled */}}
+    {{- if not $hasBroker -}}
+      {{- fail "kafka.triggers requires kafka.broker.enabled=true — triggers route events from the broker to services" -}}
+    {{- end -}}
+    {{- range $key, $trigger := .Values.kafka.triggers -}}
+      {{- if not $trigger.subscriber -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber is required and must reference a key in the services map" $key) -}}
+      {{- end -}}
+      {{- if not (hasKey $.Values.services $trigger.subscriber) -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber references '%s' which does not exist in the services map" $key $trigger.subscriber) -}}
       {{- end -}}
     {{- end -}}
   {{- end -}}

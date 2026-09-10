@@ -169,6 +169,6 @@ jobs:
                 -strict \
                 -ignore-missing-schemas \
                 -summary \
-                -skip "Canary,MetricTemplate,KafkaSource,Cluster,ScheduledBackup,ObjectStore,Pooler,PodMonitor,PrometheusRule,Dragonfly" \
+                -skip "Canary,MetricTemplate,KafkaSource,Broker,Trigger,Cluster,ScheduledBackup,ObjectStore,Pooler,PodMonitor,PrometheusRule,Dragonfly" \
                 -kubernetes-version 1.28.0
           done
