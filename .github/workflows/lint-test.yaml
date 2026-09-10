@@ -30,8 +30,18 @@ jobs:
       - name: Lint library chart
         run: helm lint charts/library/ksvc
 
+      - name: Guard against committed packaged charts
+        run: |
+          tracked=$(git ls-files -- 'charts/**/charts/*.tgz' 'examples/*/charts/*.tgz')
+          if [ -n "$tracked" ]; then
+            echo "::error::Stale packaged .tgz files are committed — they shadow the current chart source and make lint/unittest validate stale code:"
+            echo "$tracked"
+            exit 1
+          fi
+
       - name: Lint app chart
         run: |
+          rm -f charts/app/ksvc/charts/*.tgz
           sed -i 's|repository: oci://ghcr.io/enchantednatures/charts|repository: "file://../../library/ksvc"|' charts/app/ksvc/Chart.yaml
           helm dependency update charts/app/ksvc
           helm lint charts/app/ksvc
@@ -138,7 +148,9 @@ jobs:
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
 
       - name: Build test-chart dependencies
-        run: helm dependency build charts/library/ksvc/test-chart
+        run: |
+          rm -f charts/library/ksvc/test-chart/charts/*.tgz
+          helm dependency build charts/library/ksvc/test-chart
 
       - name: Run unit tests
         run: helm unittest charts/library/ksvc/test-chart
