@@ -14,6 +14,7 @@ spec:
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
     kind: ClusterImageCatalog
+    name: {{ $pg.imageCatalog.name | quote }}
     major: {{ $pg.version | int }}
   postgresql:
     parameters:

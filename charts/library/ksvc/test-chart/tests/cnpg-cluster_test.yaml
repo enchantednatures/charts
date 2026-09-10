@@ -36,6 +36,31 @@ tests:
           path: spec.instances
           value: 5
 
+  - it: "should set imageCatalogRef with the required catalog name (regression: CNPG rejects nameless ref)"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imageCatalogRef.apiGroup
+          value: postgresql.cnpg.io
+      - equal:
+          path: spec.imageCatalogRef.kind
+          value: ClusterImageCatalog
+      - equal:
+          path: spec.imageCatalogRef.name
+          value: postgresql
+      - equal:
+          path: spec.imageCatalogRef.major
+          value: 16
+
+  - it: should allow a custom image catalog name
+    set:
+      postgres.imageCatalog.name: "my-postgres-catalog"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imageCatalogRef.name
+          value: "my-postgres-catalog"
+
   - it: should set storage size
     set:
       postgres.storage.size: "500Gi"
