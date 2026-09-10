@@ -68,6 +68,15 @@ tests:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 8080
 
+  - it: "should render a custom port (regression: port was locked to 8080 by schema const)"
+    set:
+      services.api.port: 9090
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9090
+
   - it: should enforce security context
     documentIndex: 0
     asserts:

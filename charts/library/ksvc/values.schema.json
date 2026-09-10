@@ -415,7 +415,9 @@
               "type": "string"
             },
             "nodePort": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
             },
             "annotations": {
               "type": "object"
@@ -585,7 +587,8 @@
         },
         "port": {
           "type": "integer",
-          "const": 8080
+          "minimum": 1,
+          "maximum": 65535
         },
         "probes": {
           "type": "object",
