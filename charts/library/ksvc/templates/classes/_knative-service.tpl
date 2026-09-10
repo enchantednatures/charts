@@ -37,6 +37,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- with $svc.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containerConcurrency: {{ $svc.scaling.containerConcurrency }}
       timeoutSeconds: {{ $svc.scaling.timeoutSeconds }}
       containers:
