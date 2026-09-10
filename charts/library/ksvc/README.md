@@ -88,6 +88,8 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
 
 ## Values Reference
 
+> **Schema validation note:** Helm does **not** validate a library chart's `values.schema.json` against consumer values passed through the loader — the schema above `ksvc`'s own install only. Render-time checks enforced by `_validators.tpl` (required fields, cross-references, cert-manager issuers) are the true enforcement; CI validates example values against this schema. If a "required" check matters, also rely on the validator behavior.
+
 ### Global Settings
 
 | Key | Description | Default |
