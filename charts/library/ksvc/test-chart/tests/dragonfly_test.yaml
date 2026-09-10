@@ -162,6 +162,35 @@ tests:
           path: spec.pdb.minAvailable
           value: 2
 
+  - it: "should treat minAvailable 0 alone as no PDB constraint (regression: was dropped as falsy and left a bare pdb block)"
+    set:
+      dragonfly.pdb.minAvailable: 0
+    documentIndex: 1
+    asserts:
+      - isNull:
+          path: spec.pdb
+
+  - it: "should not render both PDB fields at once (regression: mutual exclusivity)"
+    set:
+      dragonfly.pdb.minAvailable: 2
+      dragonfly.pdb.maxUnavailable: 1
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.pdb.maxUnavailable
+          value: 1
+      - isNull:
+          path: spec.pdb.minAvailable
+
+  - it: "should not render an empty pdb spec (regression: bare null pdb)"
+    set:
+      dragonfly.pdb.minAvailable: 0
+      dragonfly.pdb.maxUnavailable: 0
+    documentIndex: 1
+    asserts:
+      - isNull:
+          path: spec.pdb
+
   - it: should set args
     set:
       dragonfly.args:

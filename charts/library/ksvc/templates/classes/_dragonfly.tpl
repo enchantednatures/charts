@@ -91,13 +91,17 @@ spec:
       {{- toYaml $df.serviceSpec.labels | nindent 6 }}
     {{- end }}
   {{- end }}
-  {{- if $df.pdb }}
+  {{/* PDB: minAvailable and maxUnavailable are mutually exclusive — if
+       both are set, maxUnavailable wins (documented in values.yaml).
+       Explicit 0 renders instead of being swallowed by falsy checks. */}}
+  {{- $pdbMin := int $df.pdb.minAvailable }}
+  {{- $pdbMax := int $df.pdb.maxUnavailable }}
+  {{- if or $pdbMin $pdbMax }}
   pdb:
-    {{- if $df.pdb.minAvailable }}
-    minAvailable: {{ $df.pdb.minAvailable }}
-    {{- end }}
-    {{- if $df.pdb.maxUnavailable }}
-    maxUnavailable: {{ $df.pdb.maxUnavailable }}
+    {{- if $pdbMax }}
+    maxUnavailable: {{ $pdbMax }}
+    {{- else }}
+    minAvailable: {{ $pdbMin }}
     {{- end }}
   {{- end }}
   {{- if $df.affinity }}
