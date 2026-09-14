@@ -43,6 +43,8 @@ services:
       repository: ""
       tag: "latest"
       pullPolicy: IfNotPresent
+      # List of imagePullSecrets to attach to the pod spec (private registries)
+      imagePullSecrets: []
       # Flux image policy annotation
       fluxImagePolicy: ""
 

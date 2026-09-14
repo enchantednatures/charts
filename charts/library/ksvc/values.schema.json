@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ksvc Helm Chart Values",
-  "description": "Schema for ksvc Helm library chart values — multi-service edition",
+  "description": "Schema for ksvc Helm library chart values \u2014 multi-service edition",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -9,15 +9,25 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "nameOverride": { "type": "string" },
-        "fullnameOverride": { "type": "string" },
-        "labels": { "type": "object" },
-        "annotations": { "type": "object" },
+        "nameOverride": {
+          "type": "string"
+        },
+        "fullnameOverride": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object"
+        },
+        "annotations": {
+          "type": "object"
+        },
         "certManager": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "issuerRef": { "$ref": "#/$defs/issuerRef" }
+            "issuerRef": {
+              "$ref": "#/$defs/issuerRef"
+            }
           }
         }
       }
@@ -47,26 +57,41 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" },
+        "enabled": {
+          "type": "boolean"
+        },
         "version": {
           "type": "string",
-          "enum": ["14", "15", "16", "17"]
+          "enum": [
+            "14",
+            "15",
+            "16",
+            "17"
+          ]
         },
         "instances": {
           "type": "integer",
           "minimum": 1,
           "maximum": 16
         },
-        "parameters": { "type": "object" },
+        "parameters": {
+          "type": "object"
+        },
         "sharedPreloadLibraries": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "postInitSQL": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "resources": { "$ref": "#/$defs/resources" },
+        "resources": {
+          "$ref": "#/$defs/resources"
+        },
         "storage": {
           "type": "object",
           "additionalProperties": false,
@@ -75,51 +100,88 @@
               "type": "string",
               "pattern": "^[0-9]+[KMGT]i$"
             },
-            "storageClassName": { "type": "string" }
+            "storageClassName": {
+              "type": "string"
+            }
           }
         },
         "pooler": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "instances": { "type": "integer", "minimum": 1 },
+            "enabled": {
+              "type": "boolean"
+            },
+            "instances": {
+              "type": "integer",
+              "minimum": 1
+            },
             "type": {
               "type": "string",
-              "enum": ["rw", "ro"]
+              "enum": [
+                "rw",
+                "ro"
+              ]
             },
             "poolMode": {
               "type": "string",
-              "enum": ["transaction", "session", "statement"]
+              "enum": [
+                "transaction",
+                "session",
+                "statement"
+              ]
             },
-            "parameters": { "type": "object" },
-            "resources": { "$ref": "#/$defs/resources" }
+            "parameters": {
+              "type": "object"
+            },
+            "resources": {
+              "$ref": "#/$defs/resources"
+            }
           }
         },
         "backup": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "schedule": { "type": "string" },
+            "enabled": {
+              "type": "boolean"
+            },
+            "schedule": {
+              "type": "string"
+            },
             "target": {
               "type": "string",
-              "enum": ["prefer-standby", "primary"]
+              "enum": [
+                "prefer-standby",
+                "primary"
+              ]
             },
-            "retentionPolicy": { "type": "string" },
+            "retentionPolicy": {
+              "type": "string"
+            },
             "objectStore": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "destinationPath": { "type": "string" },
-                "endpointURL": { "type": "string" },
+                "destinationPath": {
+                  "type": "string"
+                },
+                "endpointURL": {
+                  "type": "string"
+                },
                 "s3Credentials": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "secretName": { "type": "string" },
-                    "accessKeyIdKey": { "type": "string" },
-                    "secretAccessKeyKey": { "type": "string" }
+                    "secretName": {
+                      "type": "string"
+                    },
+                    "accessKeyIdKey": {
+                      "type": "string"
+                    },
+                    "secretAccessKeyKey": {
+                      "type": "string"
+                    }
                   }
                 },
                 "data": {
@@ -128,9 +190,17 @@
                   "properties": {
                     "compression": {
                       "type": "string",
-                      "enum": ["gzip", "bzip2", "snappy", "zstd"]
+                      "enum": [
+                        "gzip",
+                        "bzip2",
+                        "snappy",
+                        "zstd"
+                      ]
                     },
-                    "jobs": { "type": "integer", "minimum": 1 }
+                    "jobs": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
                   }
                 },
                 "wal": {
@@ -139,9 +209,17 @@
                   "properties": {
                     "compression": {
                       "type": "string",
-                      "enum": ["gzip", "bzip2", "snappy", "zstd"]
+                      "enum": [
+                        "gzip",
+                        "bzip2",
+                        "snappy",
+                        "zstd"
+                      ]
                     },
-                    "maxParallel": { "type": "integer", "minimum": 1 }
+                    "maxParallel": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
                   }
                 }
               }
@@ -152,14 +230,25 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
+            "enabled": {
+              "type": "boolean"
+            },
             "alerts": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "replicationLagWarning": { "type": "integer", "minimum": 0 },
-                "replicationLagCritical": { "type": "integer", "minimum": 0 },
-                "highConnectionCount": { "type": "integer", "minimum": 0 }
+                "replicationLagWarning": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "replicationLagCritical": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "highConnectionCount": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               }
             }
           }
@@ -168,8 +257,12 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "issuerRef": { "$ref": "#/$defs/issuerRef" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "issuerRef": {
+              "$ref": "#/$defs/issuerRef"
+            }
           }
         }
       }
@@ -178,9 +271,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" },
-        "image": { "type": "string" },
-        "imageTag": { "type": "string" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "imageTag": {
+          "type": "string"
+        },
         "replicas": {
           "type": "integer",
           "minimum": 1,
@@ -188,10 +287,16 @@
         },
         "args": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "env": { "type": "array" },
-        "resources": { "$ref": "#/$defs/resources" },
+        "env": {
+          "type": "array"
+        },
+        "resources": {
+          "$ref": "#/$defs/resources"
+        },
         "authentication": {
           "type": "object",
           "additionalProperties": false,
@@ -200,16 +305,24 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "name": { "type": "string" },
-                "key": { "type": "string" }
+                "name": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                }
               }
             },
             "clientCaCertSecret": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "name": { "type": "string" },
-                "key": { "type": "string" }
+                "name": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -218,15 +331,25 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "secretName": { "type": "string" },
+            "secretName": {
+              "type": "string"
+            },
             "certManager": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "enabled": { "type": "boolean" },
-                "issuerRef": { "$ref": "#/$defs/issuerRef" },
-                "duration": { "type": "string" },
-                "renewBefore": { "type": "string" }
+                "enabled": {
+                  "type": "boolean"
+                },
+                "issuerRef": {
+                  "$ref": "#/$defs/issuerRef"
+                },
+                "duration": {
+                  "type": "string"
+                },
+                "renewBefore": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -235,11 +358,21 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "cron": { "type": "string" },
-            "enableOnMasterOnly": { "type": "boolean" },
-            "dir": { "type": "string" },
-            "existingPersistentVolumeClaimName": { "type": "string" },
+            "enabled": {
+              "type": "boolean"
+            },
+            "cron": {
+              "type": "string"
+            },
+            "enableOnMasterOnly": {
+              "type": "boolean"
+            },
+            "dir": {
+              "type": "string"
+            },
+            "existingPersistentVolumeClaimName": {
+              "type": "string"
+            },
             "storage": {
               "type": "object",
               "additionalProperties": false,
@@ -248,7 +381,9 @@
                   "type": "string",
                   "pattern": "^[0-9]+[KMGT]i$"
                 },
-                "storageClassName": { "type": "string" }
+                "storageClassName": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -259,34 +394,70 @@
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
             },
-            "name": { "type": "string" },
-            "nodePort": { "type": "integer" },
-            "annotations": { "type": "object" },
-            "labels": { "type": "object" }
+            "name": {
+              "type": "string"
+            },
+            "nodePort": {
+              "type": "integer"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "labels": {
+              "type": "object"
+            }
           }
         },
         "pdb": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "minAvailable": { "type": "integer", "minimum": 0 },
-            "maxUnavailable": { "type": "integer", "minimum": 0 }
+            "minAvailable": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxUnavailable": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         },
-        "affinity": { "type": "object" },
-        "tolerations": { "type": "array" },
-        "topologySpreadConstraints": { "type": "array" },
-        "nodeSelector": { "type": "object" },
-        "podSecurityContext": { "type": "object" },
-        "containerSecurityContext": { "type": "object" },
-        "serviceAccountName": { "type": "string" },
-        "priorityClassName": { "type": "string" }
+        "affinity": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "serviceAccountName": {
+          "type": "string"
+        },
+        "priorityClassName": {
+          "type": "string"
+        }
       }
     }
   },
-  "required": ["services"],
+  "required": [
+    "services"
+  ],
   "$defs": {
     "resources": {
       "type": "object",
@@ -296,16 +467,24 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "cpu": { "type": "string" },
-            "memory": { "type": "string" }
+            "cpu": {
+              "type": "string"
+            },
+            "memory": {
+              "type": "string"
+            }
           }
         },
         "limits": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "cpu": { "type": "string" },
-            "memory": { "type": "string" }
+            "cpu": {
+              "type": "string"
+            },
+            "memory": {
+              "type": "string"
+            }
           }
         }
       }
@@ -313,7 +492,9 @@
     "serviceEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["image"],
+      "required": [
+        "image"
+      ],
       "properties": {
         "nameOverride": {
           "type": "string",
@@ -322,30 +503,75 @@
         "image": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["repository"],
+          "required": [
+            "repository"
+          ],
           "properties": {
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
             "pullPolicy": {
               "type": "string",
-              "enum": ["Always", "IfNotPresent", "Never"]
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
             },
-            "fluxImagePolicy": { "type": "string" }
+            "fluxImagePolicy": {
+              "type": "string"
+            },
+            "imagePullSecrets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         },
         "scaling": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "minScale": { "type": "integer", "minimum": 0 },
-            "maxScale": { "type": "integer", "minimum": 1 },
-            "target": { "type": "integer", "minimum": 1 },
-            "containerConcurrency": { "type": "integer", "minimum": 0 },
-            "timeoutSeconds": { "type": "integer", "minimum": 1 },
-            "class": { "type": "string" }
+            "minScale": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxScale": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "target": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "containerConcurrency": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "class": {
+              "type": "string"
+            }
           }
         },
-        "resources": { "$ref": "#/$defs/resources" },
+        "resources": {
+          "$ref": "#/$defs/resources"
+        },
         "port": {
           "type": "integer",
           "const": 8080
@@ -354,29 +580,51 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "liveness": { "$ref": "#/$defs/probe" },
-            "readiness": { "$ref": "#/$defs/probe" }
+            "liveness": {
+              "$ref": "#/$defs/probe"
+            },
+            "readiness": {
+              "$ref": "#/$defs/probe"
+            }
           }
         },
-        "env": { "type": "array" },
-        "envFrom": { "type": "array" },
+        "env": {
+          "type": "array"
+        },
+        "envFrom": {
+          "type": "array"
+        },
         "securityContext": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "runAsNonRoot": { "type": "boolean" },
-            "runAsUser": { "type": "integer" },
-            "readOnlyRootFilesystem": { "type": "boolean" },
-            "allowPrivilegeEscalation": { "type": "boolean" },
+            "runAsNonRoot": {
+              "type": "boolean"
+            },
+            "runAsUser": {
+              "type": "integer"
+            },
+            "readOnlyRootFilesystem": {
+              "type": "boolean"
+            },
+            "allowPrivilegeEscalation": {
+              "type": "boolean"
+            },
             "seccompProfile": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["RuntimeDefault", "Localhost", "Unconfined"]
+                  "enum": [
+                    "RuntimeDefault",
+                    "Localhost",
+                    "Unconfined"
+                  ]
                 },
-                "localhostProfile": { "type": "string" }
+                "localhostProfile": {
+                  "type": "string"
+                }
               }
             },
             "capabilities": {
@@ -385,32 +633,53 @@
               "properties": {
                 "drop": {
                   "type": "array",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "add": {
                   "type": "array",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "volumeMounts": { "type": "array" },
-        "volumes": { "type": "array" },
-        "podAnnotations": { "type": "object" },
-        "annotations": { "type": "object" },
-        "labels": { "type": "object" },
+        "volumeMounts": {
+          "type": "array"
+        },
+        "volumes": {
+          "type": "array"
+        },
+        "podAnnotations": {
+          "type": "object"
+        },
+        "annotations": {
+          "type": "object"
+        },
+        "labels": {
+          "type": "object"
+        },
         "flagger": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
+            "enabled": {
+              "type": "boolean"
+            },
             "analysis": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "interval": { "type": "string" },
-                "threshold": { "type": "integer", "minimum": 1 },
+                "interval": {
+                  "type": "string"
+                },
+                "threshold": {
+                  "type": "integer",
+                  "minimum": 1
+                },
                 "maxWeight": {
                   "type": "integer",
                   "minimum": 10,
@@ -421,7 +690,10 @@
                   "minimum": 1,
                   "maximum": 50
                 },
-                "progressDeadlineSeconds": { "type": "integer", "minimum": 1 }
+                "progressDeadlineSeconds": {
+                  "type": "integer",
+                  "minimum": 1
+                }
               }
             },
             "metrics": {
@@ -433,25 +705,44 @@
                   "minimum": 0,
                   "maximum": 100
                 },
-                "latencyP99ThresholdMs": { "type": "integer", "minimum": 1 },
-                "prometheusAddress": { "type": "string" }
+                "latencyP99ThresholdMs": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "prometheusAddress": {
+                  "type": "string"
+                }
               }
             },
             "loadTest": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "enabled": { "type": "boolean" },
-                "webhookUrl": { "type": "string" },
-                "vus": { "type": "integer", "minimum": 1 },
-                "duration": { "type": "string" },
-                "p95ThresholdMs": { "type": "integer", "minimum": 1 },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "webhookUrl": {
+                  "type": "string"
+                },
+                "vus": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "duration": {
+                  "type": "string"
+                },
+                "p95ThresholdMs": {
+                  "type": "integer",
+                  "minimum": 1
+                },
                 "errorRateThreshold": {
                   "type": "number",
                   "minimum": 0,
                   "maximum": 1
                 },
-                "script": { "type": "string" }
+                "script": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -461,19 +752,34 @@
     "kafkaSourceEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["topic", "sink"],
+      "required": [
+        "topic",
+        "sink"
+      ],
       "properties": {
-        "topic": { "type": "string" },
-        "consumerGroup": { "type": "string" },
+        "topic": {
+          "type": "string"
+        },
+        "consumerGroup": {
+          "type": "string"
+        },
         "bootstrapServers": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "consumers": { "type": "integer", "minimum": 1 },
+        "consumers": {
+          "type": "integer",
+          "minimum": 1
+        },
         "initialOffset": {
           "type": "string",
-          "enum": ["latest", "earliest"]
+          "enum": [
+            "latest",
+            "earliest"
+          ]
         },
         "sink": {
           "type": "string",
@@ -483,36 +789,58 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "retry": { "type": "integer", "minimum": 0 },
+            "retry": {
+              "type": "integer",
+              "minimum": 0
+            },
             "backoffPolicy": {
               "type": "string",
-              "enum": ["linear", "exponential"]
+              "enum": [
+                "linear",
+                "exponential"
+              ]
             },
-            "backoffDelay": { "type": "string" }
+            "backoffDelay": {
+              "type": "string"
+            }
           }
         },
         "dlq": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
+            "enabled": {
+              "type": "boolean"
+            },
             "image": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "repository": { "type": "string" },
-                "tag": { "type": "string" }
+                "repository": {
+                  "type": "string"
+                },
+                "tag": {
+                  "type": "string"
+                }
               }
             },
             "scaling": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "minScale": { "type": "integer", "minimum": 0 },
-                "maxScale": { "type": "integer", "minimum": 1 }
+                "minScale": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "maxScale": {
+                  "type": "integer",
+                  "minimum": 1
+                }
               }
             },
-            "resources": { "$ref": "#/$defs/resources" }
+            "resources": {
+              "$ref": "#/$defs/resources"
+            }
           }
         }
       }
@@ -521,24 +849,48 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "path": { "type": "string" },
-        "port": { "type": "integer" },
-        "initialDelaySeconds": { "type": "integer", "minimum": 0 },
-        "periodSeconds": { "type": "integer", "minimum": 1 },
-        "timeoutSeconds": { "type": "integer", "minimum": 1 },
-        "failureThreshold": { "type": "integer", "minimum": 1 }
+        "path": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "issuerRef": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
+        "name": {
+          "type": "string"
+        },
         "kind": {
           "type": "string",
-          "enum": ["Issuer", "ClusterIssuer", ""]
+          "enum": [
+            "Issuer",
+            "ClusterIssuer",
+            ""
+          ]
         },
-        "group": { "type": "string" }
+        "group": {
+          "type": "string"
+        }
       }
     }
   }
