@@ -43,6 +43,8 @@ services:
       repository: ""
       tag: "latest"
       pullPolicy: IfNotPresent
+      # List of imagePullSecrets to attach to the pod spec (private registries)
+      imagePullSecrets: []
       # Flux image policy annotation
       fluxImagePolicy: ""
 
@@ -345,7 +347,7 @@ dragonfly:
     annotations: {}
     labels: {}
 
-  # PodDisruptionBudget (minAvailable and maxUnavailable are mutually exclusive)
+  # PodDisruptionBudget (minAvailable is used unless maxUnavailable > 0, which then wins; the two are mutually exclusive)
   pdb:
     minAvailable: 2
     maxUnavailable: 0
