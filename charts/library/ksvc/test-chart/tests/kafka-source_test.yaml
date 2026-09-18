@@ -76,6 +76,15 @@ tests:
           path: spec.delivery.deadLetterSink.ref.name
           value: test-release-events-dlq
 
+  - it: "should honor the sink service's nameOverride in the sink ref (regression: dangling ref)"
+    set:
+      services.api.nameOverride: "prod-api"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-prod-api
+
   - it: should render only the service when no kafka sources defined
     set:
       kafka.sources: null

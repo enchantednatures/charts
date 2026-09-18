@@ -6,7 +6,9 @@ The source.sink field must reference a valid key in .Values.services.
 */}}
 {{- define "ksvc.class.kafkaSource" -}}
 {{- $source := .source -}}
-{{- $sinkServiceName := include "ksvc.serviceName" (dict "root" .root "key" $source.sink) -}}
+{{- /* Resolve the sink service name using the sink's own config (honours nameOverride). */ -}}
+{{- $sinkSvc := index .root.Values.services $source.sink -}}
+{{- $sinkServiceName := include "ksvc.serviceName" (dict "root" .root "key" $source.sink "svc" $sinkSvc) -}}
 {{- $sourceName := include "ksvc.kafkaSourceName" . -}}
 {{- $dlqName := include "ksvc.kafkaDlqName" . -}}
 apiVersion: sources.knative.dev/v1beta1
