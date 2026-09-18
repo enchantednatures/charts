@@ -171,6 +171,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "enabled" false
     "version" "16"
     "instances" 3
+    "imageCatalog" (dict "name" "postgresql")
     "parameters" (dict "ssl" "on" "ssl_min_protocol_version" "TLSv1.3" "ssl_max_protocol_version" "TLSv1.3" "shared_buffers" "2Gi" "max_connections" "300" "synchronous_commit" "remote_apply" "synchronous_standby_names" "ANY 1 (*)" "archive_timeout" "5min" "wal_compression" "on")
     "sharedPreloadLibraries" (list "pg_stat_statements")
     "postInitSQL" (list "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;" "ALTER SYSTEM SET log_statement = 'all';" "ALTER SYSTEM SET log_min_duration_statement = '1000';")

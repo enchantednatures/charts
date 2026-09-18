@@ -161,6 +161,11 @@ postgres:
   version: "16"
   instances: 3
 
+  # Name of the ClusterImageCatalog to pull the postgres image from.
+  # imageCatalogRef requires a name (CNPG rejects the Cluster without it).
+  imageCatalog:
+    name: "postgresql"
+
   parameters:
     ssl: "on"
     ssl_min_protocol_version: "TLSv1.3"
