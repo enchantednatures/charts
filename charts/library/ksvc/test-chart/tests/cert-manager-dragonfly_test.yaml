@@ -111,3 +111,11 @@ tests:
       - equal:
           path: spec.tlsSecretRef.name
           value: manual-secret
+
+  - it: "should fail when certManager is enabled with no issuer name (regression: empty issuerRef → invalid Certificate)"
+    set:
+      global.certManager.issuerRef.name: ""
+      dragonfly.tls.certManager.issuerRef.name: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.tls.certManager: issuerRef.name must be set (locally or via global.certManager.issuerRef.name) when certManager is enabled — an empty issuerRef produces an invalid Certificate"

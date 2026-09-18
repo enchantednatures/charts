@@ -43,4 +43,22 @@ Call this from the loader to catch misconfigurations early.
       {{- end -}}
     {{- end -}}
   {{- end -}}
+
+  {{/* cert-manager issuer validation: an enabled certManager block must resolve to a non-empty issuer name (locally or via global.certManager.issuerRef.name) */}}
+  {{- $globalIssuerName := "" }}
+  {{- if and .Values.global .Values.global.certManager -}}
+    {{- $globalIssuerName = .Values.global.certManager.issuerRef.name | default "" -}}
+  {{- end -}}
+  {{- if and .Values.postgres.enabled .Values.postgres.certManager .Values.postgres.certManager.enabled -}}
+    {{- $issuerName := .Values.postgres.certManager.issuerRef.name | default $globalIssuerName | toString | trim -}}
+    {{- if not $issuerName -}}
+      {{- fail "postgres.certManager: issuerRef.name must be set (locally or via global.certManager.issuerRef.name) when certManager is enabled — an empty issuerRef produces an invalid Certificate" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if and .Values.dragonfly.enabled .Values.dragonfly.tls .Values.dragonfly.tls.certManager .Values.dragonfly.tls.certManager.enabled -}}
+    {{- $issuerName := .Values.dragonfly.tls.certManager.issuerRef.name | default $globalIssuerName | toString | trim -}}
+    {{- if not $issuerName -}}
+      {{- fail "dragonfly.tls.certManager: issuerRef.name must be set (locally or via global.certManager.issuerRef.name) when certManager is enabled — an empty issuerRef produces an invalid Certificate" -}}
+    {{- end -}}
+  {{- end -}}
 {{- end }}
