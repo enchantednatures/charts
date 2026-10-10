@@ -116,6 +116,7 @@ Each key in `services:` defines a Knative Service. The key becomes a name suffix
 | `services.<key>.scaling.containerConcurrency` | Max concurrent requests per pod | `100` |
 | `services.<key>.scaling.timeoutSeconds` | Request timeout | `300` |
 | `services.<key>.scaling.class` | Autoscaler class | `""` |
+| `services.<key>.scaling.metric` | Autoscaling metric (`concurrency`, `rps`; `cpu`/`memory`/custom require the HPA class). Empty falls back to the Knative default (`concurrency`) | `""` |
 | `services.<key>.resources` | Container CPU/Memory resources | 100m/64Mi req, 500m/256Mi lim |
 | `services.<key>.port` | Container port | `8080` |
 | `services.<key>.probes.liveness` | Liveness probe config | See values.yaml |

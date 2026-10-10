@@ -8,6 +8,8 @@ services:
       minScale: 2
       maxScale: 20
       target: 100
+      # Scale on requests-per-second instead of the default concurrency metric
+      metric: rps
     resources:
       requests:
         cpu: "250m"
