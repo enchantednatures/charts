@@ -30,6 +30,9 @@ spec:
         autoscaling.knative.dev/min-scale: {{ $svc.scaling.minScale | quote }}
         autoscaling.knative.dev/max-scale: {{ $svc.scaling.maxScale | quote }}
         autoscaling.knative.dev/target: {{ $svc.scaling.target | quote }}
+        {{- if $svc.scaling.metric }}
+        autoscaling.knative.dev/metric: {{ $svc.scaling.metric | quote }}
+        {{- end }}
         {{- if $svc.scaling.class }}
         autoscaling.knative.dev/class: {{ $svc.scaling.class | quote }}
         {{- end }}

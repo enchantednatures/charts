@@ -48,6 +48,21 @@ tests:
           path: spec.template.metadata.annotations["autoscaling.knative.dev/target"]
           value: "50"
 
+  - it: should not render the metric annotation when unset
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/metric"]
+
+  - it: should render the metric annotation when set
+    set:
+      services.api.scaling.metric: rps
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/metric"]
+          value: "rps"
+
   - it: should set resource limits
     set:
       services.api.resources.limits.cpu: "2"

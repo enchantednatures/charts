@@ -99,7 +99,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{/* --- service defaults (applied to each entry in the services map) --- */}}
   {{- $svcDefaults := dict
     "image" (dict "repository" "" "tag" "latest" "pullPolicy" "IfNotPresent" "fluxImagePolicy" "" "imagePullSecrets" (list))
-    "scaling" (dict "minScale" 1 "maxScale" 10 "target" 100 "containerConcurrency" 100 "timeoutSeconds" 300 "class" "")
+    "scaling" (dict "minScale" 1 "maxScale" 10 "target" 100 "containerConcurrency" 100 "timeoutSeconds" 300 "class" "" "metric" "")
     "resources" (dict "requests" (dict "cpu" "100m" "memory" "64Mi") "limits" (dict "cpu" "500m" "memory" "256Mi"))
     "port" 8080
     "probes" (dict

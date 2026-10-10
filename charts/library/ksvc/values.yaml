@@ -56,6 +56,9 @@ services:
       containerConcurrency: 100
       timeoutSeconds: 300
       class: ""
+      # Autoscaler metric: concurrency, rps (KPA), or cpu, memory, custom metric (HPA class only).
+      # Leave empty to use the Knative default (concurrency).
+      metric: ""
 
     # Container resources
     resources:
