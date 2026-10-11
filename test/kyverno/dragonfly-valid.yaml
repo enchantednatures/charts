@@ -1,0 +1,9 @@
+apiVersion: dragonflydb.io/v1alpha1
+kind: Dragonfly
+metadata:
+  name: guardrails-e2e-valid
+  namespace: test-ns
+spec:
+  replicas: 3
+  pdb:
+    minAvailable: 2

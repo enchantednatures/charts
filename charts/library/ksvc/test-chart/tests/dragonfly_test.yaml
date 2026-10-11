@@ -170,17 +170,13 @@ tests:
       - isNull:
           path: spec.pdb
 
-  - it: "should not render both PDB fields at once (regression: mutual exclusivity)"
+  - it: "should reject both PDB fields being non-zero (mutual exclusivity is enforced at render time)"
     set:
       dragonfly.pdb.minAvailable: 2
       dragonfly.pdb.maxUnavailable: 1
-    documentIndex: 1
     asserts:
-      - equal:
-          path: spec.pdb.maxUnavailable
-          value: 1
-      - isNull:
-          path: spec.pdb.minAvailable
+      - failedTemplate:
+          errorMessage: "dragonfly.pdb: minAvailable and maxUnavailable are mutually exclusive — set one of them to 0"
 
   - it: "should not render an empty pdb spec (regression: bare null pdb)"
     set:

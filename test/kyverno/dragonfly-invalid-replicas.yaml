@@ -1,0 +1,7 @@
+apiVersion: dragonflydb.io/v1alpha1
+kind: Dragonfly
+metadata:
+  name: guardrails-e2e-invalid-replicas
+  namespace: test-ns
+spec:
+  replicas: 99

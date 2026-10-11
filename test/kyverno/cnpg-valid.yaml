@@ -1,0 +1,7 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: guardrails-e2e-valid
+  namespace: test-ns
+spec:
+  instances: 3

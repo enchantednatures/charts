@@ -466,6 +466,43 @@
           "type": "string"
         }
       }
+    },
+    "kyverno": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "scaling": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "apiVersion": {
+              "type": "string",
+              "enum": [
+                "policies.kyverno.io/v1beta1",
+                "policies.kyverno.io/v1"
+              ]
+            },
+            "validationActions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "Deny",
+                  "Audit"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          }
+        }
+      }
     }
   },
   "required": [

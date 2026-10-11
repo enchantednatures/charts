@@ -1,0 +1,210 @@
+suite: scaling validation tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # ---------- service scaling (each rule evaluated in order, one violation per case) ----------
+  - it: should fail when service minScale is negative
+    set:
+      services.api.scaling.minScale: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.minScale must be >= 0 (got -1)"
+
+  - it: should fail when service minScale is fractional
+    set:
+      services.api.scaling.minScale: 1.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.minScale must be an integer (got 1.5)"
+
+  - it: should fail when service maxScale is below 1
+    set:
+      services.api.scaling.maxScale: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.maxScale must be >= 1 (got 0)"
+
+  - it: should fail when service maxScale is non-numeric
+    set:
+      services.api.scaling.maxScale: "abc"
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.maxScale must be an integer (got abc)"
+
+  - it: should fail when service minScale exceeds maxScale
+    set:
+      services.api.scaling.minScale: 5
+      services.api.scaling.maxScale: 3
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling: minScale (5) must be <= maxScale (3)"
+
+  - it: should fail when service target is below 1
+    set:
+      services.api.scaling.target: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.target must be >= 1 (got 0)"
+
+  - it: should fail when service containerConcurrency is negative
+    set:
+      services.api.scaling.containerConcurrency: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.containerConcurrency must be >= 0 (got -1)"
+
+  - it: should fail when service containerConcurrency is fractional
+    set:
+      services.api.scaling.containerConcurrency: -0.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.containerConcurrency must be an integer (got -0.5)"
+
+  - it: should fail when service timeoutSeconds is below 1
+    set:
+      services.api.scaling.timeoutSeconds: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.timeoutSeconds must be >= 1 (got 0)"
+
+  # ---------- kafka DLQ scaling (only when dlq.enabled) ----------
+  - it: should fail when DLQ minScale is negative
+    set:
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+      kafka.sources.events.dlq.scaling.minScale: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.dlq.scaling.minScale must be >= 0 (got -1)"
+
+  - it: should fail when DLQ minScale is fractional
+    set:
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+      kafka.sources.events.dlq.scaling.minScale: 0.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.dlq.scaling.minScale must be an integer (got 0.5)"
+
+  - it: should fail when DLQ maxScale is below 1
+    set:
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+      kafka.sources.events.dlq.scaling.maxScale: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.dlq.scaling.maxScale must be >= 1 (got 0)"
+
+  - it: should fail when DLQ minScale exceeds maxScale
+    set:
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+      kafka.sources.events.dlq.scaling.minScale: 5
+      kafka.sources.events.dlq.scaling.maxScale: 2
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.dlq.scaling: minScale (5) must be <= maxScale (2)"
+
+  # ---------- postgres instances ----------
+  - it: should fail when postgres instances is 0
+    set:
+      postgres.enabled: true
+      postgres.backup.enabled: false
+      postgres.instances: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.instances must be >= 1 and <= 16 (got 0)"
+
+  - it: should fail when postgres instances is 17
+    set:
+      postgres.enabled: true
+      postgres.backup.enabled: false
+      postgres.instances: 17
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.instances must be >= 1 and <= 16 (got 17)"
+
+  - it: should fail when postgres instances is fractional
+    set:
+      postgres.enabled: true
+      postgres.backup.enabled: false
+      postgres.instances: 3.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.instances must be an integer (got 3.5)"
+
+  # ---------- postgres pooler instances ----------
+  - it: should fail when pooler instances is 0
+    set:
+      postgres.enabled: true
+      postgres.backup.enabled: false
+      postgres.pooler.instances: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.pooler.instances must be >= 1 (got 0)"
+
+  # ---------- dragonfly replicas ----------
+  - it: should fail when dragonfly replicas is 0
+    set:
+      dragonfly.enabled: true
+      dragonfly.replicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.replicas must be >= 1 and <= 16 (got 0)"
+
+  - it: should fail when dragonfly replicas is 17
+    set:
+      dragonfly.enabled: true
+      dragonfly.replicas: 17
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.replicas must be >= 1 and <= 16 (got 17)"
+
+  - it: should fail when dragonfly replicas is fractional
+    set:
+      dragonfly.enabled: true
+      dragonfly.replicas: 2.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.replicas must be an integer (got 2.5)"
+
+  # ---------- dragonfly PDB ----------
+  - it: should fail when PDB sets both minAvailable and maxUnavailable
+    set:
+      dragonfly.enabled: true
+      dragonfly.pdb.minAvailable: 1
+      dragonfly.pdb.maxUnavailable: 1
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.pdb: minAvailable and maxUnavailable are mutually exclusive — set one of them to 0"
+
+  - it: should fail when PDB minAvailable exceeds replicas
+    set:
+      dragonfly.enabled: true
+      dragonfly.replicas: 3
+      dragonfly.pdb.minAvailable: 4
+      dragonfly.pdb.maxUnavailable: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.pdb.minAvailable (4) must be <= dragonfly.replicas (3)"
+
+  # ---------- happy path ----------
+  - it: should render successfully with valid scaling values
+    set:
+      services.api.scaling.minScale: 2
+      services.api.scaling.maxScale: 5
+      services.api.scaling.target: 50
+      services.api.scaling.containerConcurrency: 10
+      services.api.scaling.timeoutSeconds: 60
+    documentIndex: 0
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: test-release-api

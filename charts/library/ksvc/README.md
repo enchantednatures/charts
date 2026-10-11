@@ -51,7 +51,7 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.2.0
+        version: 0.6.7
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -85,10 +85,13 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
 | **Kafka DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
+| **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
 
 ## Values Reference
 
 > **Schema validation note:** Helm does **not** validate a library chart's `values.schema.json` against consumer values passed through the loader — the schema above `ksvc`'s own install only. Render-time checks enforced by `_validators.tpl` (required fields, cross-references, cert-manager issuers) are the true enforcement; CI validates example values against this schema. If a "required" check matters, also rely on the validator behavior.
+>
+> Scaling and replica/instance counts are also enforced at render time by `_validators.tpl`: service scaling (`minScale`, `maxScale`, `target`, `containerConcurrency`, `timeoutSeconds`), postgres instances (1–16), pooler instances (≥ 1), and Dragonfly replicas (1–16). The Dragonfly PDB rules are checked too: `minAvailable` and `maxUnavailable` are mutually exclusive (setting both non-zero now fails rendering) and `minAvailable` must be `<= replicas`.
 
 ### Global Settings
 
@@ -224,6 +227,28 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `dragonfly.serviceAccountName` | Service account name | `""` |
 | `dragonfly.priorityClassName` | Priority class name | `""` |
 
+### Kyverno Admission Policies (Opt-In)
+
+The chart can render three Kyverno `NamespacedValidatingPolicy` resources that act as a defense-in-depth admission guardrail on top of the render-time validators above. They are disabled by default; enable them with:
+
+```yaml
+kyverno:
+  enabled: true
+  scaling:
+    enabled: true
+```
+
+Policies render into the release namespace (`metadata.namespace: <Release.Namespace>`) and, being namespaced Kyverno policies, apply to **all** matching resources in that namespace — not only the resources created by this release. Each policy sets `failurePolicy: Fail` and targets one resource type: Knative Services (`serving.knative.dev/v1` — scaling annotations, `containerConcurrency`, `timeoutSeconds`), CNPG Clusters (`postgresql.cnpg.io/v1` — `spec.instances` 1–16), and Dragonfly instances (`dragonflydb.io/v1alpha1` — `spec.replicas` 1–16 and PDB bounds).
+
+`validationActions` controls enforcement: `Deny` (default) blocks non-compliant requests; `Audit` only records them. The policy `apiVersion` defaults to `policies.kyverno.io/v1beta1` (Kyverno >= 1.16); set it to `policies.kyverno.io/v1` on Kyverno >= 1.17.
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `kyverno.enabled` | Render the Kyverno admission policies | `false` |
+| `kyverno.scaling.enabled` | Render the scaling/HA guardrail policies | `false` |
+| `kyverno.scaling.apiVersion` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` or `policies.kyverno.io/v1`) | `policies.kyverno.io/v1beta1` |
+| `kyverno.scaling.validationActions` | Enforcement actions (`Deny` and/or `Audit`) | `[Deny]` |
+
 ## Migration from v0.1.x
 
 v0.2.0 is a **breaking change**. The `knativeService:` and top-level `flagger:` / `kafka:` keys have been replaced.
@@ -300,9 +325,9 @@ The [examples/](../../../examples/) directory contains reference implementations
 
 The repository uses GitHub Actions for automated quality assurance:
 
-*   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests.
+*   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI.
 *   **Release**: Triggers on version tags (`v*`) to package and push the chart to GHCR as an OCI artifact.
-*   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations.
+*   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing
 

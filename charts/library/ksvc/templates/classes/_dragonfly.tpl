@@ -91,8 +91,9 @@ spec:
       {{- toYaml $df.serviceSpec.labels | nindent 6 }}
     {{- end }}
   {{- end }}
-  {{- /* PDB: minAvailable and maxUnavailable are mutually exclusive — if
-       both are set, maxUnavailable wins (documented in values.yaml).
+  {{- /* PDB: minAvailable and maxUnavailable are mutually exclusive and
+       render-time validation rejects both being non-zero. This branch is
+       defensive: maxUnavailable wins if it is ever reached with both set.
        Explicit 0 is treated as no constraint rather than a broken manifest. */ -}}
   {{- $pdbMin := int $df.pdb.minAvailable }}
   {{- $pdbMax := int $df.pdb.maxUnavailable }}
