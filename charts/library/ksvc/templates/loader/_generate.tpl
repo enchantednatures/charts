@@ -87,6 +87,14 @@ merged. We must apply defaults explicitly before rendering.
     {{- end }}
   {{- end }}
 
+  {{/* ============================================================ */}}
+  {{/* Kyverno Admission Policies (opt-in)                         */}}
+  {{/* ============================================================ */}}
+  {{- if and .Values.kyverno .Values.kyverno.enabled .Values.kyverno.scaling .Values.kyverno.scaling.enabled }}
+---
+{{- include "ksvc.class.kyvernoScaling" . | nindent 0 }}
+{{- end }}
+
 {{- end }}
 
 {{/*
@@ -221,6 +229,14 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   -}}
   {{- $df := .Values.dragonfly | default dict -}}
   {{- $_ := set .Values "dragonfly" (mustMergeOverwrite $dfDefaults $df) -}}
+
+  {{/* --- kyverno defaults --- */}}
+  {{- $kyvernoDefaults := dict
+    "enabled" false
+    "scaling" (dict "enabled" false "apiVersion" "policies.kyverno.io/v1beta1" "validationActions" (list "Deny"))
+  -}}
+  {{- $kyverno := .Values.kyverno | default dict -}}
+  {{- $_ := set .Values "kyverno" (mustMergeOverwrite $kyvernoDefaults $kyverno) -}}
 
   {{/* --- global defaults --- */}}
   {{- $globalDefaults := dict

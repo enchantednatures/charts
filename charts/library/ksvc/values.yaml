@@ -376,3 +376,18 @@ dragonfly:
 
   # Priority class
   priorityClassName: ""
+
+# =============================================================================
+# Kyverno Admission Policies (opt-in)
+#
+# Renders Kyverno NamespacedValidatingPolicy guardrails into the release
+# namespace. Requires Kyverno >= 1.16 (policies.kyverno.io/v1beta1); use
+# policies.kyverno.io/v1 on Kyverno >= 1.17.
+# =============================================================================
+kyverno:
+  enabled: false
+  scaling:
+    enabled: false
+    apiVersion: policies.kyverno.io/v1beta1
+    validationActions:
+      - Deny

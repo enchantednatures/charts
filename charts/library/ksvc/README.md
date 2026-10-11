@@ -85,6 +85,7 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
 | **Kafka DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
+| **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
 
 ## Values Reference
 
@@ -225,6 +226,28 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `dragonfly.nodeSelector` | Node selector | `{}` |
 | `dragonfly.serviceAccountName` | Service account name | `""` |
 | `dragonfly.priorityClassName` | Priority class name | `""` |
+
+### Kyverno Admission Policies (Opt-In)
+
+The chart can render three Kyverno `NamespacedValidatingPolicy` resources that act as a defense-in-depth admission guardrail on top of the render-time validators above. They are disabled by default; enable them with:
+
+```yaml
+kyverno:
+  enabled: true
+  scaling:
+    enabled: true
+```
+
+Policies render into the release namespace (`metadata.namespace: <Release.Namespace>`) and, being namespaced Kyverno policies, apply to **all** matching resources in that namespace — not only the resources created by this release. Each policy sets `failurePolicy: Fail` and targets one resource type: Knative Services (`serving.knative.dev/v1` — scaling annotations, `containerConcurrency`, `timeoutSeconds`), CNPG Clusters (`postgresql.cnpg.io/v1` — `spec.instances` 1–16), and Dragonfly instances (`dragonflydb.io/v1alpha1` — `spec.replicas` 1–16 and PDB bounds).
+
+`validationActions` controls enforcement: `Deny` (default) blocks non-compliant requests; `Audit` only records them. The policy `apiVersion` defaults to `policies.kyverno.io/v1beta1` (Kyverno >= 1.16); set it to `policies.kyverno.io/v1` on Kyverno >= 1.17.
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `kyverno.enabled` | Render the Kyverno admission policies | `false` |
+| `kyverno.scaling.enabled` | Render the scaling/HA guardrail policies | `false` |
+| `kyverno.scaling.apiVersion` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` or `policies.kyverno.io/v1`) | `policies.kyverno.io/v1beta1` |
+| `kyverno.scaling.validationActions` | Enforcement actions (`Deny` and/or `Audit`) | `[Deny]` |
 
 ## Migration from v0.1.x
 

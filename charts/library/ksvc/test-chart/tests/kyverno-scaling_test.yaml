@@ -1,0 +1,157 @@
+suite: kyverno scaling policy tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should not render kyverno policies by default
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should not render policies when only kyverno.enabled is true
+    set:
+      kyverno.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should not render policies when only kyverno.scaling.enabled is true
+    set:
+      kyverno.scaling.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render the three policies when both toggles are enabled
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  - it: should render the knative scaling policy at index 1
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: NamespacedValidatingPolicy
+      - equal:
+          path: apiVersion
+          value: policies.kyverno.io/v1beta1
+      - equal:
+          path: metadata.name
+          value: test-release-scaling-knative
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: admission-policy
+      - equal:
+          path: spec.failurePolicy
+          value: Fail
+      - equal:
+          path: spec.validationActions
+          value:
+            - Deny
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: "minScale"
+      - matchRegex:
+          path: spec.variables[0].expression
+          pattern: "object\\.spec\\.template\\.metadata\\.annotations"
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: "variables\\.minScale"
+
+  - it: should render the cnpg scaling policy at index 2
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: NamespacedValidatingPolicy
+      - equal:
+          path: metadata.name
+          value: test-release-scaling-cnpg
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: spec.validationActions
+          value:
+            - Deny
+      - equal:
+          path: spec.validations[0].message
+          value: "CNPG Cluster spec.instances must be between 1 and 16."
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: "object.spec.instances"
+
+  - it: should render the dragonfly scaling policy at index 3
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: NamespacedValidatingPolicy
+      - equal:
+          path: metadata.name
+          value: test-release-scaling-dragonfly
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: spec.validationActions
+          value:
+            - Deny
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: "object.spec.replicas"
+      - matchRegex:
+          path: spec.validations[1].expression
+          pattern: "minAvailable"
+      - matchRegex:
+          path: spec.validations[2].expression
+          pattern: "maxUnavailable"
+
+  - it: should honor the custom apiVersion on all three policies
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+      kyverno.scaling.apiVersion: policies.kyverno.io/v1
+    asserts:
+      - equal:
+          path: apiVersion
+          value: policies.kyverno.io/v1
+        documentIndex: 1
+      - equal:
+          path: apiVersion
+          value: policies.kyverno.io/v1
+        documentIndex: 2
+      - equal:
+          path: apiVersion
+          value: policies.kyverno.io/v1
+        documentIndex: 3
+
+  - it: should honor the Audit validationAction
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+      kyverno.scaling.validationActions:
+        - Audit
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.validationActions
+          value:
+            - Audit
