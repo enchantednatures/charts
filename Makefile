@@ -182,12 +182,21 @@ template: ## Render templates for an example (EXAMPLE=minimal)
 .PHONY: lint
 lint: ## Lint all charts and examples
 	helm lint charts/library/ksvc
-	@# App chart needs local dependency resolution
-	@sed -i 's|repository: oci://ghcr.io/enchantednatures/charts|repository: "file://../../library/ksvc"|' charts/app/ksvc/Chart.yaml
-	@helm dependency update charts/app/ksvc
-	@helm lint charts/app/ksvc
-	@git checkout charts/app/ksvc/Chart.yaml
-	@for example in examples/*/; do \
+	@# The app chart and examples resolve dependencies against the local library, which
+	@# rewrites Chart.yaml / Chart.lock in place. Snapshot them first and restore on
+	@# exit — even on failure — so uncommitted edits survive and the tree is unchanged.
+	@set -e; tmpdir=$$(mktemp -d); \
+	cp charts/app/ksvc/Chart.yaml "$$tmpdir/app-Chart.yaml"; \
+	if [ -f charts/app/ksvc/Chart.lock ]; then cp charts/app/ksvc/Chart.lock "$$tmpdir/app-Chart.lock"; fi; \
+	trap 'cp "$$tmpdir/app-Chart.yaml" charts/app/ksvc/Chart.yaml; if [ -f "$$tmpdir/app-Chart.lock" ]; then cp "$$tmpdir/app-Chart.lock" charts/app/ksvc/Chart.lock; else rm -f charts/app/ksvc/Chart.lock; fi; rm -rf "$$tmpdir"' EXIT; \
+	sed -i 's|repository: oci://ghcr.io/enchantednatures/charts|repository: "file://../../library/ksvc"|' charts/app/ksvc/Chart.yaml; \
+	helm dependency update charts/app/ksvc; \
+	helm lint charts/app/ksvc
+	@set -e; tmpdir=$$(mktemp -d); \
+	for f in examples/*/Chart.lock; do [ -f "$$f" ] || continue; cp "$$f" "$$tmpdir/$$(basename "$$(dirname "$$f")").lock"; done; \
+	trap 'for f in "$$tmpdir"/*.lock; do [ -f "$$f" ] || continue; cp "$$f" "examples/$$(basename "$$f" .lock)/Chart.lock"; done; rm -rf "$$tmpdir"' EXIT; \
+	for example in examples/*/; do \
+		[ -f "$$example/Chart.yaml" ] || continue; \
 		echo "--- Linting $$example ---"; \
 		helm dependency update "$$example"; \
 		helm lint "$$example"; \
