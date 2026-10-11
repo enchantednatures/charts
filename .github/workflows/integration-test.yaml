@@ -194,6 +194,10 @@ jobs:
 
       - name: Assert guardrails deny invalid and admit valid fixtures
         run: |
+          # GitHub wraps run steps in `bash -e`; disable errexit so the expected
+          # non-zero exits from denied applies are handled by the retry loops
+          # instead of aborting the step.
+          set +e
           set -uo pipefail
 
           # Poll an invalid fixture until Kyverno denies it with our message.
@@ -259,3 +263,5 @@ jobs:
 
           expect_denied test/kyverno/dragonfly-invalid-replicas.yaml "spec.replicas must be between 1 and 16"
           expect_admitted test/kyverno/dragonfly-valid.yaml
+
+          echo "ALL_GUARDRAIL_ASSERTIONS_PASSED"
