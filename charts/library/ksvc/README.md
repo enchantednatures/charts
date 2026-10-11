@@ -89,6 +89,8 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
 ## Values Reference
 
 > **Schema validation note:** Helm does **not** validate a library chart's `values.schema.json` against consumer values passed through the loader — the schema above `ksvc`'s own install only. Render-time checks enforced by `_validators.tpl` (required fields, cross-references, cert-manager issuers) are the true enforcement; CI validates example values against this schema. If a "required" check matters, also rely on the validator behavior.
+>
+> Scaling and replica/instance counts are also enforced at render time by `_validators.tpl`: service scaling (`minScale`, `maxScale`, `target`, `containerConcurrency`, `timeoutSeconds`), postgres instances (1–16), pooler instances (≥ 1), and Dragonfly replicas (1–16). The Dragonfly PDB rules are checked too: `minAvailable` and `maxUnavailable` are mutually exclusive (setting both non-zero now fails rendering) and `minAvailable` must be `<= replicas`.
 
 ### Global Settings
 
