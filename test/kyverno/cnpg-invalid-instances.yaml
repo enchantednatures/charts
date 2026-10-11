@@ -1,0 +1,7 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: guardrails-e2e-invalid-instances
+  namespace: test-ns
+spec:
+  instances: 17

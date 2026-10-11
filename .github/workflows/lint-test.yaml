@@ -6,11 +6,13 @@ on:
     paths:
       - 'charts/**'
       - 'examples/**'
+      - 'test/**'
       - '.github/workflows/lint-test.yaml'
   pull_request:
     paths:
       - 'charts/**'
       - 'examples/**'
+      - 'test/**'
       - '.github/workflows/lint-test.yaml'
   workflow_dispatch:
 
@@ -184,3 +186,98 @@ jobs:
                 -skip "Canary,MetricTemplate,KafkaSource,Cluster,ScheduledBackup,ObjectStore,Pooler,PodMonitor,PrometheusRule,Dragonfly" \
                 -kubernetes-version 1.28.0
           done
+
+  kyverno-policy-tests:
+    name: Kyverno Policy Tests
+    runs-on: ubuntu-latest
+    env:
+      KYVERNO_VERSION: v1.19.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Install Kyverno CLI
+        run: |
+          curl -sL -o /tmp/kyverno.tar.gz \
+            "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+          mkdir -p /tmp/kyverno-cli
+          tar xzf /tmp/kyverno.tar.gz -C /tmp/kyverno-cli
+          sudo mv /tmp/kyverno-cli/kyverno /usr/local/bin/kyverno
+          kyverno version
+
+      - name: Build test-chart dependency and render policies
+        run: |
+          rm -f charts/library/ksvc/test-chart/charts/*.tgz
+          helm dependency build charts/library/ksvc/test-chart
+          helm template guardrails charts/library/ksvc/test-chart \
+            --namespace test-ns \
+            --set services.api.image.repository=example/app \
+            --set kyverno.enabled=true \
+            --set kyverno.scaling.enabled=true > /tmp/rendered.yaml
+          echo "Rendered kinds:"
+          grep -E "^kind:" /tmp/rendered.yaml | sort | uniq -c
+
+      - name: Extract NamespacedValidatingPolicy documents
+        run: |
+          python3 << 'EOF'
+          import yaml, sys
+          with open('/tmp/rendered.yaml') as f:
+              docs = [d for d in yaml.safe_load_all(f)
+                      if d and d.get('kind') == 'NamespacedValidatingPolicy']
+          if len(docs) != 3:
+              print(f'::error::expected 3 NamespacedValidatingPolicy documents, got {len(docs)}')
+              sys.exit(1)
+          with open('/tmp/policies.yaml', 'w') as out:
+              yaml.safe_dump_all(docs, out, default_flow_style=False, sort_keys=False)
+          print(f'Wrote {len(docs)} policies to /tmp/policies.yaml')
+          EOF
+
+      - name: Positive — valid resources must be admitted
+        run: |
+          # kyverno apply exits 0 on success, but ALSO (dangerously) exits 0 when no
+          # policies are loaded, so assert that a non-zero rule set ran and nothing failed.
+          kyverno apply /tmp/policies.yaml \
+            -r test/kyverno/knative-valid.yaml \
+            -r test/kyverno/cnpg-valid.yaml \
+            -r test/kyverno/dragonfly-valid.yaml > /tmp/kyverno-positive.out 2>&1
+          cat /tmp/kyverno-positive.out
+          if grep -q "Applying 0 policy rule(s)" /tmp/kyverno-positive.out; then
+            echo "::error::No policies were applied — policy extraction failed"
+            exit 1
+          fi
+          if ! grep -q "fail: 0" /tmp/kyverno-positive.out; then
+            echo "::error::A valid resource was denied, or a policy CEL failed to compile"
+            exit 1
+          fi
+          echo "OK: all valid resources admitted (CEL compiled)"
+
+      - name: Negative — invalid resources must be denied
+        run: |
+          check_denied() {
+            file="$1"; expected="$2"
+            echo "--- Expecting denial: $file ---"
+            if kyverno apply /tmp/policies.yaml -r "$file" > /tmp/kyverno-negative.out 2>&1; then
+              echo "::error::$file was NOT denied but should have been"
+              cat /tmp/kyverno-negative.out
+              exit 1
+            fi
+            cat /tmp/kyverno-negative.out
+            if ! grep -qF "$expected" /tmp/kyverno-negative.out; then
+              echo "::error::Expected message not found for $file: $expected"
+              exit 1
+            fi
+            echo "OK: $file denied with expected message"
+          }
+          check_denied test/kyverno/knative-invalid-scale.yaml "min-scale must be <= max-scale"
+          check_denied test/kyverno/cnpg-invalid-instances.yaml "spec.instances must be between 1 and 16"
+          check_denied test/kyverno/dragonfly-invalid-replicas.yaml "spec.replicas must be between 1 and 16"

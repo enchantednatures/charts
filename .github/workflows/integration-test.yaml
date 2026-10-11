@@ -6,12 +6,14 @@ on:
     paths:
       - 'charts/**'
       - 'examples/**'
+      - 'test/**'
       - 'Makefile'
       - '.github/workflows/integration-test.yaml'
   pull_request:
     paths:
       - 'charts/**'
       - 'examples/**'
+      - 'test/**'
       - 'Makefile'
       - '.github/workflows/integration-test.yaml'
   schedule:
@@ -142,3 +144,118 @@ jobs:
             --set services.api.image.tag=v1.0.0 \
             --dry-run=server \
             --timeout 120s
+
+  kyverno-guardrails-e2e:
+    name: Kyverno Guardrails E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: test-cluster
+
+      - name: Install Knative Serving CRDs
+        run: make install-knative
+
+      - name: Install CNPG CRDs
+        run: make install-cnpg
+
+      - name: Install DragonflyDB CRDs
+        run: make install-dragonfly
+
+      - name: Install Kyverno
+        run: make install-kyverno
+
+      - name: Helm dependency update
+        run: helm dependency update examples/minimal
+
+      - name: Install guardrails release
+        run: |
+          helm install guardrails-e2e examples/minimal \
+            --namespace test-ns \
+            --create-namespace \
+            --set kyverno.enabled=true \
+            --set kyverno.scaling.enabled=true
+
+      # Policy readiness status shape is Kyverno-version dependent, so gate on a
+      # plain resource count instead of `kubectl wait --for=condition`.
+      - name: Gate - exactly 3 policy resources present
+        run: |
+          kubectl get namespacedvalidatingpolicy -n test-ns
+          count=$(kubectl get namespacedvalidatingpolicy -n test-ns --no-headers 2>/dev/null | wc -l | tr -d ' ')
+          echo "NamespacedValidatingPolicy count in test-ns: $count"
+          test "$count" -eq 3
+
+      - name: Assert guardrails deny invalid and admit valid fixtures
+        run: |
+          set -uo pipefail
+
+          # Poll an invalid fixture until Kyverno denies it with our message.
+          #   denied with $2        -> success
+          #   admitted (rc=0)       -> enforcement not ready yet; delete + retry
+          #   webhook unavailable   -> transient; retry
+          #   denied, other message -> retry
+          expect_denied() {
+            local file="$1" msg="$2" deadline=$((SECONDS + 240))
+            echo "::group::Expect DENY: $file (message contains: $msg)"
+            while :; do
+              out=$(kubectl apply -f "$file" 2>&1); rc=$?
+              echo "$out"
+              if [ "$rc" -ne 0 ] && grep -qF "$msg" <<<"$out"; then
+                echo "PASS: denied with expected message"
+                echo "::endgroup::"; return 0
+              fi
+              if [ "$rc" -ne 0 ] && grep -qiE 'failed calling webhook|connection refused|no endpoints available|not ready|Internal error occurred' <<<"$out"; then
+                echo "transient webhook failure, retrying..."
+              elif [ "$rc" -eq 0 ]; then
+                echo "admitted before policy enforcement, removing and retrying..."
+                kubectl delete -f "$file" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+              else
+                echo "denied with an unexpected message, retrying..."
+              fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::timed out waiting for denial of $file with: $msg"; exit 1
+              fi
+              sleep 5
+            done
+          }
+
+          # A valid fixture must be admitted. Each valid fixture is checked only
+          # after its matching invalid fixture was denied, so enforcement of that
+          # policy is already proven when this runs.
+          expect_admitted() {
+            local file="$1" deadline=$((SECONDS + 240))
+            echo "::group::Expect ADMIT: $file"
+            while :; do
+              out=$(kubectl apply -f "$file" 2>&1); rc=$?
+              echo "$out"
+              if [ "$rc" -eq 0 ]; then
+                echo "PASS: admitted"
+                echo "::endgroup::"; return 0
+              fi
+              if grep -qiE 'failed calling webhook|connection refused|no endpoints available|not ready|Internal error occurred' <<<"$out"; then
+                echo "transient webhook failure, retrying..."
+              else
+                echo "::error::valid fixture rejected: $file"; exit 1
+              fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::timed out waiting for admission of $file"; exit 1
+              fi
+              sleep 5
+            done
+          }
+
+          expect_denied test/kyverno/knative-invalid-scale.yaml "min-scale must be <= max-scale"
+          expect_admitted test/kyverno/knative-valid.yaml
+
+          expect_denied test/kyverno/cnpg-invalid-instances.yaml "spec.instances must be between 1 and 16"
+          expect_admitted test/kyverno/cnpg-valid.yaml
+
+          expect_denied test/kyverno/dragonfly-invalid-replicas.yaml "spec.replicas must be between 1 and 16"
+          expect_admitted test/kyverno/dragonfly-valid.yaml

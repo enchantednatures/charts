@@ -11,6 +11,7 @@
 #   make install-flagger           Flagger CRDs only
 #   make install-dragonfly         DragonflyDB CRDs only
 #   make install-monitoring        Prometheus Operator CRDs only
+#   make install-kyverno           Kyverno (CRDs + controllers) via Helm
 #   make create-kind-cluster       Create a Kind cluster + install all CRDs
 #   make install-flux-sync         Apply Flux GitRepository + Kustomization
 #   make install-local EXAMPLE=x   Install an example release into Kind
@@ -30,6 +31,7 @@ CNPG_RELEASE          ?= release-1.25
 FLAGGER_BRANCH        ?= main
 KAFKA_EVENTING_VERSION ?= v1.17.0
 DRAGONFLY_BRANCH      ?= main
+KYVERNO_CHART_VERSION ?= 3.9.1
 HELM_VERSION          ?= v3.17.0
 KIND_CLUSTER_NAME     ?= test-cluster
 EXAMPLE               ?= minimal
@@ -107,6 +109,17 @@ install-eventing: ## Install Knative Eventing CRDs (Broker, Trigger)
 .PHONY: install-dragonfly
 install-dragonfly: ## Install DragonflyDB CRDs
 	$(call apply-with-retry,$(DRAGONFLY_CRDS))
+
+.PHONY: install-kyverno
+install-kyverno: ## Install Kyverno (CRDs + admission/background/cleanup/reports controllers)
+	helm repo add --force-update kyverno https://kyverno.github.io/kyverno/
+	helm repo update kyverno > /dev/null
+	helm upgrade --install kyverno kyverno/kyverno \
+		--version $(KYVERNO_CHART_VERSION) \
+		--namespace kyverno \
+		--create-namespace \
+		--wait \
+		--timeout 10m
 
 .PHONY: install-all-crds
 install-all-crds: install-knative install-cnpg install-monitoring install-flagger install-kafka install-eventing install-dragonfly ## Install all CRDs

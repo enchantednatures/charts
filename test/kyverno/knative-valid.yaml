@@ -1,0 +1,18 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: guardrails-e2e-valid
+  namespace: test-ns
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/min-scale: "1"
+        autoscaling.knative.dev/max-scale: "5"
+        autoscaling.knative.dev/target: "100"
+    spec:
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+        - name: app
+          image: example/app:latest
