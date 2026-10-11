@@ -51,7 +51,7 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.2.0
+        version: 0.6.7
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
