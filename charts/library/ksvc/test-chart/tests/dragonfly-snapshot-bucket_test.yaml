@@ -121,24 +121,26 @@ tests:
       - isNull:
           path: spec.env
 
-  # 5) failure cases — no validators yet, so these are red now.
-  #    Todo 7 owns upgrading these to the exact validator message strings.
+  # 5) failure cases.
   - it: should fail when bucketRef is combined with existingPersistentVolumeClaimName
     set:
       dragonfly.snapshot.bucketRef: snapshots
       dragonfly.snapshot.existingPersistentVolumeClaimName: my-pvc
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "dragonfly.snapshot: bucketRef and existingPersistentVolumeClaimName are mutually exclusive"
 
   - it: should fail when bucketRef is set but snapshot is disabled
     set:
       dragonfly.snapshot.bucketRef: snapshots
       dragonfly.snapshot.enabled: false
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "dragonfly.snapshot.bucketRef requires dragonfly.enabled and dragonfly.snapshot.enabled"
 
   - it: should fail when bucketRef references a missing bucket entry
     set:
       dragonfly.snapshot.bucketRef: nope
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "dragonfly.snapshot.bucketRef references 'nope' which does not exist in objectBuckets"

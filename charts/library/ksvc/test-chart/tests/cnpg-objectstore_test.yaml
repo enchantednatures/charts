@@ -149,22 +149,21 @@ tests:
       - failedTemplate:
           errorMessage: "postgres.backup.objectStore.destinationPath is required when postgres backup is enabled"
 
-  # 5a) failure: bucketRef points at an undefined entry. No validator exists yet,
-  #     so the explicit path/endpoint let the render succeed today -> this is RED
-  #     until Todo 7 adds the "references ... which does not exist" validator.
-  - it: "fails when bucketRef references a bucket that is not defined (pending Todo 7 validator)"
+  # 5a) failure: bucketRef points at an undefined entry.
+  - it: "fails when bucketRef references a bucket that is not defined"
     set:
       postgres.backup.objectStore.bucketRef: nope
       postgres.backup.objectStore.destinationPath: "s3://explicit/"
       postgres.backup.objectStore.endpointURL: "http://explicit:9000"
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "postgres.backup.objectStore.bucketRef references 'nope' which does not exist in objectBuckets"
 
-  # 5b) failure: bucketRef set while postgres backup is disabled. No validator
-  #     exists yet -> the render succeeds today -> RED until Todo 7.
-  - it: "fails when bucketRef is set while postgres.backup.enabled is false (pending Todo 7 validator)"
+  # 5b) failure: bucketRef set while postgres backup is disabled.
+  - it: "fails when bucketRef is set while postgres.backup.enabled is false"
     set:
       postgres.backup.enabled: false
       postgres.backup.objectStore.bucketRef: backups
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "postgres.backup.objectStore.bucketRef is set but postgres.backup.enabled is false"

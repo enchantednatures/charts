@@ -157,17 +157,20 @@ tests:
     set:
       objectBuckets.backups.bucketName: my-bucket
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "objectBuckets.backups.storageClassName is required and must name an existing bucket StorageClass"
 
   - it: should fail when an entry key is not a DNS-1123 label
     set:
       objectBuckets.Bad_Key.storageClassName: ceph-bucket
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "objectBuckets.Bad_Key must be a DNS-1123 label"
 
   - it: should fail when bucketName is not S3-safe
     set:
       objectBuckets.backups.storageClassName: ceph-bucket
       objectBuckets.backups.bucketName: UPPER_CASE
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorMessage: "objectBuckets.backups.bucketName must be a valid S3 bucket name (3-63 chars, lowercase letters, digits, dots, hyphens)"
