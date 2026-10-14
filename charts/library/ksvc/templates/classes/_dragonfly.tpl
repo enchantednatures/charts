@@ -1,6 +1,72 @@
 {{- define "ksvc.class.dragonfly" -}}
 {{- $df := .Values.dragonfly -}}
 {{- $dfName := include "ksvc.dragonflyName" . -}}
+{{- $snap := $df.snapshot | default dict -}}
+{{- $snapBucketRef := (index $snap "bucketRef") | default "" | toString -}}
+{{/*
+  Dragonfly S3 snapshot bucket wiring (dragonfly.snapshot.bucketRef).
+  When a bucket reference is set we resolve the objectBuckets entry (bucketName
+  is already defaulted by applyDefaults) and synthesize the credentials env and
+  the derived --s3_endpoint/--s3_use_https args. User-provided env/args are kept
+  first; synthesized entries are appended only when missing.
+*/}}
+{{- $dfEnv := $df.env | default (list) -}}
+{{- $dfArgs := $df.args | default (list) -}}
+{{- $bucketName := "" -}}
+{{- if ne $snapBucketRef "" -}}
+  {{- $entry := index (.Values.objectBuckets | default dict) $snapBucketRef -}}
+  {{- if $entry -}}
+    {{- $bucketName = (index $entry "bucketName") | default "" | toString -}}
+    {{- $claimName := include "ksvc.objectBucketName" (dict "root" . "key" $snapBucketRef) -}}
+    {{- $region := (index $entry "region") | default "" | toString -}}
+    {{- $endpointURL := (index $entry "endpointURL") | default "" | toString -}}
+    {{/* Env synthesis: append only missing names; user entries stay first. */}}
+    {{- $hasAK := false -}}
+    {{- $hasSK := false -}}
+    {{- $hasRegion := false -}}
+    {{- range $e := $dfEnv -}}
+      {{- if kindIs "map" $e -}}
+        {{- $n := (index $e "name") | default "" -}}
+        {{- if eq $n "AWS_ACCESS_KEY_ID" -}}{{- $hasAK = true -}}{{- end -}}
+        {{- if eq $n "AWS_SECRET_ACCESS_KEY" -}}{{- $hasSK = true -}}{{- end -}}
+        {{- if eq $n "AWS_REGION" -}}{{- $hasRegion = true -}}{{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if not $hasAK -}}
+      {{- $dfEnv = append $dfEnv (dict "name" "AWS_ACCESS_KEY_ID" "valueFrom" (dict "secretKeyRef" (dict "name" $claimName "key" "AWS_ACCESS_KEY_ID"))) -}}
+    {{- end -}}
+    {{- if not $hasSK -}}
+      {{- $dfEnv = append $dfEnv (dict "name" "AWS_SECRET_ACCESS_KEY" "valueFrom" (dict "secretKeyRef" (dict "name" $claimName "key" "AWS_SECRET_ACCESS_KEY"))) -}}
+    {{- end -}}
+    {{- if and (ne $region "") (not $hasRegion) -}}
+      {{- $dfEnv = append $dfEnv (dict "name" "AWS_REGION" "value" $region) -}}
+    {{- end -}}
+    {{/* Args synthesis: derive scheme-less endpoint + use_https; append only missing flags. */}}
+    {{- if ne $endpointURL "" -}}
+      {{- $hasEndpoint := false -}}
+      {{- $hasHTTPS := false -}}
+      {{- range $a := $dfArgs -}}
+        {{- $s := $a | toString -}}
+        {{- if hasPrefix "--s3_endpoint" $s -}}{{- $hasEndpoint = true -}}{{- end -}}
+        {{- if hasPrefix "--s3_use_https" $s -}}{{- $hasHTTPS = true -}}{{- end -}}
+      {{- end -}}
+      {{- $useHTTPS := "false" -}}
+      {{- $hostPort := $endpointURL -}}
+      {{- if hasPrefix "https://" $endpointURL -}}
+        {{- $useHTTPS = "true" -}}
+        {{- $hostPort = trimPrefix "https://" $endpointURL -}}
+      {{- else if hasPrefix "http://" $endpointURL -}}
+        {{- $hostPort = trimPrefix "http://" $endpointURL -}}
+      {{- end -}}
+      {{- if not $hasEndpoint -}}
+        {{- $dfArgs = append $dfArgs (printf "--s3_endpoint=%s" $hostPort) -}}
+      {{- end -}}
+      {{- if not $hasHTTPS -}}
+        {{- $dfArgs = append $dfArgs (printf "--s3_use_https=%s" $useHTTPS) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
 apiVersion: dragonflydb.io/v1alpha1
 kind: Dragonfly
 metadata:
@@ -14,13 +80,13 @@ spec:
   {{- if $df.image }}
   image: {{ printf "%s:%s" $df.image $df.imageTag }}
   {{- end }}
-  {{- if $df.args }}
+  {{- if $dfArgs }}
   args:
-    {{- toYaml $df.args | nindent 4 }}
+    {{- toYaml $dfArgs | nindent 4 }}
   {{- end }}
-  {{- if $df.env }}
+  {{- if $dfEnv }}
   env:
-    {{- toYaml $df.env | nindent 4 }}
+    {{- toYaml $dfEnv | nindent 4 }}
   {{- end }}
   {{- if $df.resources }}
   resources:
@@ -45,8 +111,10 @@ spec:
     name: {{ $df.tls.secretName }}
   {{- end }}
   {{- if and $df.snapshot $df.snapshot.enabled }}
-  {{- $snap := $df.snapshot }}
   {{- $snapDir := (index $snap "dir") | default "" | toString }}
+  {{- if and (eq $snapDir "") (ne $bucketName "") -}}
+    {{- $snapDir = printf "s3://%s/" $bucketName -}}
+  {{- end -}}
   {{- $snapExisting := (index $snap "existingPersistentVolumeClaimName") | default "" | toString }}
   snapshot:
     {{- if $snap.cron }}
