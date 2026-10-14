@@ -195,6 +195,21 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $_ := set .Values "objectBuckets" $buckets -}}
 
   {{/* --- postgres defaults --- */}}
+  {{/* Capture RAW consumer objectStore values before the merge so bucketRef
+       derivation can tell "consumer set it" apart from "we defaulted it".
+       NOTE: sprig `dig` type-asserts its dict to map[string]interface{} and
+       rejects chartutil.Values, so walk the nested maps explicitly instead. */}}
+  {{- $pgRaw := .Values.postgres | default dict -}}
+  {{- $pgBackupRaw := $pgRaw.backup | default dict -}}
+  {{- $pgStoreRaw := $pgBackupRaw.objectStore | default dict -}}
+  {{- $pgCredsRaw := $pgStoreRaw.s3Credentials | default dict -}}
+  {{- $rawPgBucketRef := $pgStoreRaw.bucketRef | default "" -}}
+  {{- $rawPgDestPath := $pgStoreRaw.destinationPath | default "" -}}
+  {{- $rawPgEndpoint := $pgStoreRaw.endpointURL | default "" -}}
+  {{- $rawPgCredSecret := $pgCredsRaw.secretName | default "" -}}
+  {{- $rawPgCredAccess := $pgCredsRaw.accessKeyIdKey | default "" -}}
+  {{- $rawPgCredSecretKey := $pgCredsRaw.secretAccessKeyKey | default "" -}}
+  {{- $pgCredsProvided := or $rawPgCredSecret $rawPgCredAccess $rawPgCredSecretKey -}}
   {{- $pgDefaults := dict
     "enabled" false
     "version" "16"
@@ -210,7 +225,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
       "resources" (dict "requests" (dict "cpu" "100m" "memory" "128Mi") "limits" (dict "cpu" "500m" "memory" "256Mi"))
     )
     "backup" (dict "enabled" true "schedule" "0 2 * * *" "target" "prefer-standby" "retentionPolicy" "30d"
-      "objectStore" (dict "destinationPath" "" "endpointURL" ""
+      "objectStore" (dict "bucketRef" "" "destinationPath" "" "endpointURL" ""
         "s3Credentials" (dict "secretName" "postgres-backup-storage" "accessKeyIdKey" "ACCESS_KEY_ID" "secretAccessKeyKey" "ACCESS_SECRET_KEY")
         "data" (dict "compression" "zstd" "jobs" 2)
         "wal" (dict "compression" "gzip" "maxParallel" 4)
@@ -221,6 +236,24 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   -}}
   {{- $pg := .Values.postgres | default dict -}}
   {{- $_ := set .Values "postgres" (mustMergeOverwrite $pgDefaults $pg) -}}
+
+  {{/* --- postgres bucketRef wiring (objectBuckets entries are defaulted above) --- */}}
+  {{- if and $rawPgBucketRef (hasKey (.Values.objectBuckets | default dict) $rawPgBucketRef) -}}
+    {{- $entry := index .Values.objectBuckets $rawPgBucketRef -}}
+    {{- $claimName := include "ksvc.objectBucketName" (dict "root" $ "key" $rawPgBucketRef) -}}
+    {{- $store := .Values.postgres.backup.objectStore -}}
+    {{- if not $rawPgDestPath -}}
+      {{- $_ := set $store "destinationPath" (printf "s3://%s/" $entry.bucketName) -}}
+    {{- end -}}
+    {{- if not $rawPgEndpoint -}}
+      {{- $_ := set $store "endpointURL" $entry.endpointURL -}}
+    {{- end -}}
+    {{- if not $pgCredsProvided -}}
+      {{- $_ := set $store.s3Credentials "secretName" $claimName -}}
+      {{- $_ := set $store.s3Credentials "accessKeyIdKey" "AWS_ACCESS_KEY_ID" -}}
+      {{- $_ := set $store.s3Credentials "secretAccessKeyKey" "AWS_SECRET_ACCESS_KEY" -}}
+    {{- end -}}
+  {{- end -}}
 
   {{/* --- dragonfly defaults --- */}}
   {{- $dfDefaults := dict
