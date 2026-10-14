@@ -1,0 +1,144 @@
+suite: dragonfly snapshot bucketRef tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  dragonfly.enabled: true
+  dragonfly.snapshot.enabled: true
+  objectBuckets.snapshots.storageClassName: ceph-bucket
+  objectBuckets.snapshots.endpointURL: http://ceph-store.rook-ceph.svc:80
+  objectBuckets.snapshots.region: us-east-1
+release:
+  name: test-release
+  namespace: test-ns
+
+# Implemented-state document order for this suite's values
+# (postgres disabled, no kafka sources, dragonfly + snapshot enabled):
+#   doc0 = Knative Service          test-release-api
+#   doc1 = ObjectBucketClaim        test-release-snapshots
+#   doc2 = Dragonfly                test-release-dragonfly
+# The bucket-wiring cases (1-3) target documentIndex 2 (the Dragonfly doc).
+#
+# NOTE (red phase): until the ObjectBucketClaim rendering lands (Todo 4) the
+# OBC document does not exist, so the Dragonfly document is currently doc1 and
+# every documentIndex: 2 assertion fails with "document index 2 is out of
+# range" — the expected red state for Todo 3.
+#
+# The regression case (4) is a phase-stable control: it selects the Dragonfly
+# document by kind via documentSelector so it passes in BOTH the red phase
+# (manual dir mode already works) and the post-implementation green phase,
+# independent of where the OBC document lands.
+
+tests:
+  # 1) base: derived s3 dir, credential env (secretKeyRef), region, and args.
+  - it: should derive s3 dir, credential env, region and scheme-less endpoint args
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.snapshot.dir
+          value: "s3://test-release-snapshots/"
+      - contains:
+          path: spec.env
+          content:
+            name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: test-release-snapshots
+                key: AWS_ACCESS_KEY_ID
+      - contains:
+          path: spec.env
+          content:
+            name: AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: test-release-snapshots
+                key: AWS_SECRET_ACCESS_KEY
+      - contains:
+          path: spec.env
+          content:
+            name: AWS_REGION
+            value: us-east-1
+      - contains:
+          path: spec.args
+          content: --s3_endpoint=ceph-store.rook-ceph.svc:80
+      - contains:
+          path: spec.args
+          content: --s3_use_https=false
+
+  # 2) HTTPS variant: https:// scheme -> use_https=true, scheme-less host.
+  - it: should strip the https scheme and set use_https true
+    set:
+      objectBuckets.snapshots.endpointURL: https://rgw.example
+    documentIndex: 2
+    asserts:
+      - contains:
+          path: spec.args
+          content: --s3_use_https=true
+      - contains:
+          path: spec.args
+          content: --s3_endpoint=rgw.example
+
+  # 3) no duplication: user-provided env/args kept first, synthesized appended once.
+  - it: should keep user env and args and append synthesized entries exactly once
+    set:
+      dragonfly.env:
+        - name: AWS_ACCESS_KEY_ID
+          value: preexisting
+      dragonfly.args:
+        - --s3_use_https=true
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.env
+          value:
+            - name: AWS_ACCESS_KEY_ID
+              value: preexisting
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: test-release-snapshots
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_REGION
+              value: us-east-1
+      - equal:
+          path: spec.args
+          value:
+            - --s3_use_https=true
+            - --s3_endpoint=ceph-store.rook-ceph.svc:80
+
+  # 4) regression: manual dir mode (no bucketRef) unchanged, no auto AWS_* env.
+  #    (PVC-mode coverage stays in dragonfly_test.yaml — not duplicated here.)
+  - it: should keep a manual snapshot dir unchanged and add no AWS env
+    set:
+      dragonfly.snapshot.dir: s3://my-bucket/dragonfly
+    documentSelector:
+      path: kind
+      value: Dragonfly
+    asserts:
+      - equal:
+          path: spec.snapshot.dir
+          value: "s3://my-bucket/dragonfly"
+      - isNull:
+          path: spec.env
+
+  # 5) failure cases — no validators yet, so these are red now.
+  #    Todo 7 owns upgrading these to the exact validator message strings.
+  - it: should fail when bucketRef is combined with existingPersistentVolumeClaimName
+    set:
+      dragonfly.snapshot.bucketRef: snapshots
+      dragonfly.snapshot.existingPersistentVolumeClaimName: my-pvc
+    asserts:
+      - failedTemplate: {}
+
+  - it: should fail when bucketRef is set but snapshot is disabled
+    set:
+      dragonfly.snapshot.bucketRef: snapshots
+      dragonfly.snapshot.enabled: false
+    asserts:
+      - failedTemplate: {}
+
+  - it: should fail when bucketRef references a missing bucket entry
+    set:
+      dragonfly.snapshot.bucketRef: nope
+    asserts:
+      - failedTemplate: {}
