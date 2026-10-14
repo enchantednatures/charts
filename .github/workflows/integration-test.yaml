@@ -35,30 +35,35 @@ jobs:
             install_flagger_crds: false
             install_dragonfly_crds: false
             install_monitoring_crds: false
+            install_object_bucket_crds: false
           - example: full-stack
             install_cnpg_crds: true
             install_kafka_crds: true
             install_flagger_crds: true
             install_dragonfly_crds: true
             install_monitoring_crds: true
+            install_object_bucket_crds: false
           - example: postgres-only
             install_cnpg_crds: true
             install_kafka_crds: false
             install_flagger_crds: false
             install_dragonfly_crds: false
             install_monitoring_crds: true
+            install_object_bucket_crds: true
           - example: kafka-consumer
             install_cnpg_crds: false
             install_kafka_crds: true
             install_flagger_crds: false
             install_dragonfly_crds: false
             install_monitoring_crds: false
+            install_object_bucket_crds: false
           - example: dragonfly-cache
             install_cnpg_crds: false
             install_kafka_crds: false
             install_flagger_crds: false
             install_dragonfly_crds: true
             install_monitoring_crds: false
+            install_object_bucket_crds: true
     steps:
       - uses: actions/checkout@v4
 
@@ -81,6 +86,10 @@ jobs:
       - name: Install Prometheus Operator CRDs
         if: matrix.install_monitoring_crds
         run: make install-monitoring
+
+      - name: Install ObjectBucketClaim CRDs
+        if: matrix.install_object_bucket_crds
+        run: make install-object-bucket
 
       - name: Install Flagger CRDs
         if: matrix.install_flagger_crds
