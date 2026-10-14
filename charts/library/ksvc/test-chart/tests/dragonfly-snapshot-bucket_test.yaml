@@ -32,6 +32,8 @@ release:
 tests:
   # 1) base: derived s3 dir, credential env (secretKeyRef), region, and args.
   - it: should derive s3 dir, credential env, region and scheme-less endpoint args
+    set:
+      dragonfly.snapshot.bucketRef: snapshots
     documentIndex: 2
     asserts:
       - equal:
@@ -68,6 +70,7 @@ tests:
   # 2) HTTPS variant: https:// scheme -> use_https=true, scheme-less host.
   - it: should strip the https scheme and set use_https true
     set:
+      dragonfly.snapshot.bucketRef: snapshots
       objectBuckets.snapshots.endpointURL: https://rgw.example
     documentIndex: 2
     asserts:
@@ -81,6 +84,7 @@ tests:
   # 3) no duplication: user-provided env/args kept first, synthesized appended once.
   - it: should keep user env and args and append synthesized entries exactly once
     set:
+      dragonfly.snapshot.bucketRef: snapshots
       dragonfly.env:
         - name: AWS_ACCESS_KEY_ID
           value: preexisting
