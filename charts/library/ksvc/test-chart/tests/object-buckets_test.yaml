@@ -1,0 +1,173 @@
+suite: object bucket claim tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should not render any ObjectBucketClaim when objectBuckets is empty
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render one ObjectBucketClaim with the derived name
+    set:
+      objectBuckets.backups.storageClassName: ceph-bucket
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: ObjectBucketClaim
+      - equal:
+          path: apiVersion
+          value: objectbucket.io/v1alpha1
+      - equal:
+          path: metadata.name
+          value: test-release-backups
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: object-bucket
+      - equal:
+          path: spec.storageClassName
+          value: ceph-bucket
+      - equal:
+          path: spec.bucketName
+          value: test-release-backups
+      - isNull:
+          path: spec.generateBucketName
+
+  - it: should render one claim per entry in sorted key order
+    set:
+      objectBuckets.backups.storageClassName: ceph-bucket
+      objectBuckets.media.storageClassName: ceph-bucket
+    asserts:
+      - isKind:
+          of: ObjectBucketClaim
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: test-release-backups
+        documentIndex: 1
+      - isKind:
+          of: ObjectBucketClaim
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: test-release-media
+        documentIndex: 2
+
+  - it: should honor an explicit bucketName override
+    set:
+      objectBuckets.backups.storageClassName: ceph-bucket
+      objectBuckets.backups.bucketName: my-bucket
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.bucketName
+          value: my-bucket
+
+  - it: should not leak endpointURL or region fields into the claim spec
+    set:
+      objectBuckets.backups.storageClassName: ceph-bucket
+      objectBuckets.backups.endpointURL: http://x:80
+      objectBuckets.backups.region: us-east-1
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.storageClassName
+          value: ceph-bucket
+      - equal:
+          path: spec.bucketName
+          value: test-release-backups
+      - isNull:
+          path: spec.endpointURL
+      - isNull:
+          path: spec.region
+
+  # Resolved document order once implemented:
+  #   doc0 = Knative service
+  #   doc1 = ObjectBucketClaim test-release-backups
+  #   doc2 = ObjectBucketClaim test-release-snapshots
+  #   doc3 = CNPG Cluster
+  #   doc4 = ObjectStore
+  #   doc5 = ScheduledBackup
+  #   doc6 = Dragonfly
+  - it: should render two claims and independent postgres + dragonfly wirings in one release
+    set:
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.monitoring.enabled: false
+      postgres.backup.enabled: true
+      postgres.backup.objectStore.bucketRef: backups
+      dragonfly.enabled: true
+      dragonfly.snapshot.enabled: true
+      dragonfly.snapshot.bucketRef: snapshots
+      objectBuckets.backups.storageClassName: ceph-bucket
+      objectBuckets.backups.endpointURL: http://rgw.example:80
+      objectBuckets.snapshots.storageClassName: ceph-bucket
+      objectBuckets.snapshots.endpointURL: http://ceph-store.example:80
+    asserts:
+      - isKind:
+          of: ObjectBucketClaim
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: test-release-backups
+        documentIndex: 1
+      - isKind:
+          of: ObjectBucketClaim
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: test-release-snapshots
+        documentIndex: 2
+      - isKind:
+          of: ObjectStore
+        documentIndex: 4
+      - equal:
+          path: spec.configuration.destinationPath
+          value: "s3://test-release-backups/"
+        documentIndex: 4
+      - equal:
+          path: spec.configuration.endpointURL
+          value: "http://rgw.example:80"
+        documentIndex: 4
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.name
+          value: test-release-backups
+        documentIndex: 4
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.key
+          value: AWS_ACCESS_KEY_ID
+        documentIndex: 4
+      - equal:
+          path: spec.snapshot.dir
+          value: "s3://test-release-snapshots/"
+        documentIndex: 6
+      - contains:
+          path: spec.args
+          content: --s3_use_https=false
+        documentIndex: 6
+
+  - it: should fail when an entry omits storageClassName
+    set:
+      objectBuckets.backups.bucketName: my-bucket
+    asserts:
+      - failedTemplate: {}
+
+  - it: should fail when an entry key is not a DNS-1123 label
+    set:
+      objectBuckets.Bad_Key.storageClassName: ceph-bucket
+    asserts:
+      - failedTemplate: {}
+
+  - it: should fail when bucketName is not S3-safe
+    set:
+      objectBuckets.backups.storageClassName: ceph-bucket
+      objectBuckets.backups.bucketName: UPPER_CASE
+    asserts:
+      - failedTemplate: {}
