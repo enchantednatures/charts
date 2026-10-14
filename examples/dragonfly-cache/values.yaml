@@ -54,10 +54,14 @@ dragonfly:
     enabled: true
     cron: "0 */4 * * *"
     enableOnMasterOnly: true
-    storage:
-      size: "10Gi"
-      storageClassName: "gp3"
+    bucketRef: "dragonfly-snapshots"
   serviceSpec:
     type: ClusterIP
   pdb:
     minAvailable: 2
+
+objectBuckets:
+  dragonfly-snapshots:
+    storageClassName: "ceph-bucket"
+    endpointURL: "http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80"
+    region: "us-east-1"
