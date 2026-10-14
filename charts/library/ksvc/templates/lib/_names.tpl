@@ -46,6 +46,17 @@ Returns: <fullname>-<suffix>  (or just <fullname> when suffix is empty)
 {{- printf "%s-%s" $fullname $suffix | trunc 63 | trimSuffix "-" | replace "_" "-" }}
 {{- end }}
 
+{{/*
+ksvc.objectBucketName — Derive the ObjectBucketClaim (and generated Secret/ConfigMap)
+name for an objectBuckets entry. Unlike ksvc.serviceName, nameOverride is not
+applicable: the claim is always <fullname>-<key>.
+Expects context: dict with "root" (top-level context) and "key" (bucket map key).
+Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
+*/}}
+{{- define "ksvc.objectBucketName" -}}
+{{- printf "%s-%s" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}
+
 {{- define "ksvc.postgresName" -}}
 {{- printf "%s-postgres" (include "ksvc.fullname" .) }}
 {{- end }}

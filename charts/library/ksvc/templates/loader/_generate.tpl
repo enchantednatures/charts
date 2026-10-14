@@ -34,6 +34,16 @@ merged. We must apply defaults explicitly before rendering.
   {{- end }}
 
   {{/* ============================================================ */}}
+  {{/* Object Buckets (one ObjectBucketClaim per entry)             */}}
+  {{/* ============================================================ */}}
+  {{- if .Values.objectBuckets }}
+    {{- range $key, $bucket := .Values.objectBuckets }}
+---
+  {{- include "ksvc.class.objectBucketClaim" (dict "root" $ "key" $key "bucket" $bucket) | nindent 0 }}
+    {{- end }}
+  {{- end }}
+
+  {{/* ============================================================ */}}
   {{/* CloudNativePG PostgreSQL                                     */}}
   {{/* ============================================================ */}}
   {{- if and .Values.postgres .Values.postgres.enabled }}
@@ -173,6 +183,16 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     {{- $_ := set $kafka.sources $key $merged -}}
   {{- end }}
   {{- $_ := set .Values "kafka" $kafka -}}
+
+  {{/* --- object bucket defaults (applied to each entry in the objectBuckets map) --- */}}
+  {{- $bucketDefaults := dict "bucketName" "" "endpointURL" "" "region" "" -}}
+  {{- $buckets := .Values.objectBuckets | default dict -}}
+  {{- range $key, $bucket := $buckets }}
+    {{- $merged := mustMergeOverwrite (deepCopy $bucketDefaults) $bucket -}}
+    {{- $_ := set $merged "bucketName" (default (include "ksvc.objectBucketName" (dict "root" $ "key" $key)) $merged.bucketName) -}}
+    {{- $_ := set $buckets $key $merged -}}
+  {{- end -}}
+  {{- $_ := set .Values "objectBuckets" $buckets -}}
 
   {{/* --- postgres defaults --- */}}
   {{- $pgDefaults := dict
