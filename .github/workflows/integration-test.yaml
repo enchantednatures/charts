@@ -119,7 +119,7 @@ jobs:
           kubectl create namespace test-ns --dry-run=client -o yaml | kubectl apply -f -
           helm template test-release examples/${{ matrix.example }} \
             --namespace test-ns | \
-            kubectl apply --dry-run=server -f - 2>&1 || true
+            kubectl apply --dry-run=server -f - 2>&1
 
   app-chart:
     name: App Chart Dry-Run
