@@ -52,3 +52,27 @@ tests:
       - equal:
           path: spec.pgbouncer.poolMode
           value: session
+
+  - it: "renders no spec.monitoring block on the Pooler (regression: only a deprecated enablePodMonitor field exists; the chart does not manage pooler monitors)"
+    documentIndex: 2
+    asserts:
+      - notExists:
+          path: spec.monitoring
+      - notExists:
+          path: spec.monitoring.enabled
+      - notExists:
+          path: spec.monitoring.podMonitorEnabled
+
+  - it: "renders pooler resources under template.spec.containers[name=pgbouncer] (regression: PodSpec has no top-level resources and requires containers)"
+    set:
+      postgres.pooler.resources.requests.cpu: "250m"
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: pgbouncer
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: "250m"
+      - notExists:
+          path: spec.template.spec.resources

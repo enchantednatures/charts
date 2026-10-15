@@ -71,8 +71,26 @@ tests:
           path: spec.storage.size
           value: "500Gi"
       - equal:
-          path: spec.storage.storageClassName
+          path: spec.storage.storageClass
           value: "gp3"
+
+  - it: "renders the CNPG storage class field as storageClass, not storageClassName (regression: CNPG CRD has no storageClassName)"
+    set:
+      postgres.storage.storageClassName: "gp3"
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.storage.storageClassName
+
+  - it: "renders no spec.monitoring block on the Cluster (regression: CNPG CRD has no monitoring.enabled/podMonitorEnabled)"
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.monitoring
+      - notExists:
+          path: spec.monitoring.enabled
+      - notExists:
+          path: spec.monitoring.podMonitorEnabled
 
   - it: should include barman plugin when backup enabled
     set:
