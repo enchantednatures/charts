@@ -58,6 +58,10 @@ Every rendered resource carries the standard labels:
 
 All label values and resource `metadata.name`s are rendered as quoted strings, so a numeric-looking `global.fullnameOverride` (for example `"123"`) can never become a YAML integer that the API server would reject. Additional labels are merged in via `global.labels` and, per service, `services.<key>.labels`.
 
+## Annotations
+
+`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
+
 ## Quick Start
 
 1.  Create a new Helm chart:
@@ -70,7 +74,7 @@ All label values and resource `metadata.name`s are rendered as quoted strings, s
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.9
+        version: 0.7.10
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -166,7 +170,7 @@ per-entry schemas are documented in the sections following the table.
 | dragonfly.tls.secretName | string | `""` | Secret containing `tls.crt`/`tls.key`. Ignored when `tls.certManager.enabled` is true. |
 | dragonfly.tolerations | list | `[]` | Pod tolerations. |
 | dragonfly.topologySpreadConstraints | list | `[]` | Pod topology spread constraints. |
-| global.annotations | object | `{}` | Annotations added to every rendered resource. |
+| global.annotations | object | `{}` | Annotations added to every rendered resource (Knative Services and DLQ services, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/ PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates, Kyverno policies). Merged with each resource's own annotations; when empty no resource renders an `annotations:` block. |
 | global.certManager.issuerRef.group | string | `"cert-manager.io"` | API group of the default cert-manager issuer. |
 | global.certManager.issuerRef.kind | string | `"ClusterIssuer"` | Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`). |
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |

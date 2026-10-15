@@ -75,6 +75,11 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "cache" | quote }}
+  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ $df.replicas }}
   {{- if $df.image }}

@@ -7,6 +7,7 @@
 {{- $issuerGroup := $cm.issuerRef.group | default $globalCM.issuerRef.group -}}
 {{- $dfName := include "ksvc.dragonflyName" . -}}
 {{- $secretName := include "ksvc.dragonflyServerTLSSecret" . -}}
+{{- $globalAnnotations := include "ksvc.annotations" . -}}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -15,6 +16,10 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "cache" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -24,6 +29,10 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "cache" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   secretName: {{ $secretName | quote }}
   {{- if $cm.duration }}

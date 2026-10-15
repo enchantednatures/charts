@@ -19,6 +19,11 @@ metadata:
   labels:
     {{- include "ksvc.labels" .root | nindent 4 }}
     app.kubernetes.io/component: {{ "event-source" | quote }}
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   consumerGroup: {{ default (include "ksvc.kafkaConsumerGroup" .) $source.consumerGroup }}
   consumers: {{ $source.consumers }}

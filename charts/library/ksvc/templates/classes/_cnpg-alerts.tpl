@@ -17,6 +17,11 @@ metadata:
     {{- with $ruleLabels }}
     {{- toYaml . | trim | nindent 4 }}
     {{- end }}
+  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   groups:
     - name: postgres.rules
