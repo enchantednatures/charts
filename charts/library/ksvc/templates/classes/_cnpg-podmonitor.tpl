@@ -16,6 +16,11 @@ metadata:
     {{- with $pmLabels }}
     {{- toYaml . | trim | nindent 4 }}
     {{- end }}
+  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   selector:
     matchLabels:

@@ -1,6 +1,7 @@
 {{- define "ksvc.class.kyvernoScaling" -}}
 {{- $apiVersion := .Values.kyverno.scaling.apiVersion -}}
 {{- $actions := .Values.kyverno.scaling.validationActions -}}
+{{- $globalAnnotations := include "ksvc.annotations" . -}}
 apiVersion: {{ $apiVersion }}
 kind: NamespacedValidatingPolicy
 metadata:
@@ -9,6 +10,10 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "admission-policy" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   failurePolicy: Fail
   validationActions:
@@ -57,6 +62,10 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "admission-policy" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   failurePolicy: Fail
   validationActions:
@@ -80,6 +89,10 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "admission-policy" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   failurePolicy: Fail
   validationActions:

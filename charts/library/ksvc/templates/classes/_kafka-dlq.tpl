@@ -14,6 +14,11 @@ metadata:
   labels:
     {{- include "ksvc.labels" .root | nindent 4 }}
     app.kubernetes.io/component: {{ "dlq-handler" | quote }}
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   template:
     metadata:

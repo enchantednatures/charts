@@ -12,7 +12,11 @@ global:
   # -- Labels added to every rendered resource.
   labels: {}
 
-  # -- Annotations added to every rendered resource.
+  # -- Annotations added to every rendered resource (Knative Services and DLQ
+  # services, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/
+  # PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates, Kyverno
+  # policies). Merged with each resource's own annotations; when empty no
+  # resource renders an `annotations:` block.
   annotations: {}
 
   # -- List of imagePullSecrets applied to every rendered workload's pod spec,

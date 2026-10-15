@@ -14,6 +14,11 @@ metadata:
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.serviceLabels" (dict "root" .root "key" .key "svc" .svc) | nindent 4 }}
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   provider: knative
   targetRef:
