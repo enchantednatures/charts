@@ -15,8 +15,8 @@ global:
   # -- Annotations added to every rendered resource (Knative Services and DLQ
   # services, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/
   # PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates and
-  # Issuers, Kyverno policies). Merged with each resource's own annotations;
-  # when empty no resource renders an `annotations:` block.
+  # Issuers, NetworkPolicies, Kyverno policies). Merged with each resource's own
+  # annotations; when empty no resource renders an `annotations:` block.
   annotations: {}
 
   # -- List of imagePullSecrets applied to every rendered workload's pod spec,
@@ -349,6 +349,33 @@ postgres:
       limits:
         cpu: "500m"
         memory: "256Mi"
+    # -- Container security context for the pgbouncer pooler container.
+    # Defaults to a restricted Pod Security Standard profile: non-root, no
+    # privilege escalation, all capabilities dropped and `RuntimeDefault`
+    # seccomp. Override (or set to an explicit empty map to opt out) when your
+    # environment needs a different profile.
+    # @default -- see `values.yaml`
+    securityContext:
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        drop:
+          - ALL
+
+  # Optional ingress-only NetworkPolicy for the CNPG cluster pods.
+  # Disabled by default. When enabled, inbound PostgreSQL traffic is restricted
+  # to pods in the release namespace (plus any `extraIngress` rules). Egress is
+  # untouched, so WAL archiving/backups (S3) and streaming replication keep
+  # working.
+  networkPolicy:
+    # -- Render the NetworkPolicy.
+    enabled: false
+    # -- Extra raw ingress rules appended verbatim to `spec.ingress` (for
+    # example cross-namespace access). Each entry is a standard Kubernetes
+    # `NetworkPolicyIngressRule`.
+    extraIngress: []
 
   backup:
     # -- Enable WAL archiving and scheduled backups.
@@ -581,6 +608,18 @@ dragonfly:
     # exclusive with `minAvailable`).
     maxUnavailable: 0
 
+  # Optional ingress-only NetworkPolicy for the Dragonfly pods.
+  # Disabled by default. When enabled, inbound client traffic (port 6379) is
+  # restricted to pods in the release namespace (plus any `extraIngress`
+  # rules). Egress is untouched (snapshots, replication, DNS).
+  networkPolicy:
+    # -- Render the NetworkPolicy.
+    enabled: false
+    # -- Extra raw ingress rules appended verbatim to `spec.ingress` (for
+    # example cross-namespace access). Each entry is a standard Kubernetes
+    # `NetworkPolicyIngressRule`.
+    extraIngress: []
+
   # Scheduling
   # -- Pod affinity rules.
   affinity: {}
@@ -591,11 +630,28 @@ dragonfly:
   # -- Node selector for the Dragonfly pods.
   nodeSelector: {}
 
-  # Security contexts
+  # Security contexts — restricted Pod Security Standard by default.
+  # The default image (docker.dragonflydb.io/dragonflydb/dragonfly) ships a
+  # non-root `dfly` user (uid 999), so `runAsNonRoot` is safe. `fsGroup: 999`
+  # matches the operator's own default, which is otherwise skipped when a
+  # podSecurityContext is set — keeping snapshot PVC volume ownership working.
+  # Set an explicit empty map ({}) to opt out and render no podSecurityContext.
   # -- Pod-level security context.
-  podSecurityContext: {}
+  podSecurityContext:
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  # Set an explicit empty map ({}) to opt out and render no
+  # containerSecurityContext.
   # -- Container-level security context.
-  containerSecurityContext: {}
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    capabilities:
+      drop:
+        - ALL
 
   # -- ServiceAccount used by the Dragonfly pods.
   serviceAccountName: ""

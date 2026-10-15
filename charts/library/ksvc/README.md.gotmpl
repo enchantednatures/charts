@@ -61,11 +61,41 @@ All label values and resource `metadata.name`s are rendered as quoted strings, s
 
 ## Annotations
 
-`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates and Issuers, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
+`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates and Issuers, NetworkPolicies, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
 
 When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server TLS, server CA, client CA and client (`streaming_replica`) TLS secrets, plus the Dragonfly TLS secret). Each carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
 
 For CloudNativePG the chart issues the certificates itself from your configured `issuerRef`: it creates a **server CA** and a **client CA** `Certificate` (`isCA: true`) signed by that issuer, two namespaced intermediate `Issuer`s backed by the corresponding CA Secrets, and finally the server and `streaming_replica` leaf `Certificate`s signed by those chart-managed issuers. Your issuer must therefore be CA-capable — able to issue a CA certificate and populate its Secret's `ca.crt`, which CloudNativePG reads from the CA Secrets (`serverCASecret` for server validation, `clientCASecret` for verifying general mTLS client certificates).
+
+## Hardening & Network Policies (Opt-In)
+
+The chart renders a hardened security profile by default and can additionally render ingress-only `NetworkPolicy` resources for the datastores. The NetworkPolicies are **opt-in and off by default**.
+
+**Default security contexts.**
+
+*   **PgBouncer pooler** — `postgres.pooler.securityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp, rendered on the `pgbouncer` container of the CNPG `Pooler` pod template. `readOnlyRootFilesystem` is deliberately not set. Note that CloudNativePG release-1.25 also builds the pooler pod from a hardened profile of its own and forces an equivalent container security context (including `readOnlyRootFilesystem: true`) at reconcile time, so conflicting per-field overrides are reconciled back by the operator at runtime; the chart default makes the rendered `Pooler` manifest declare the restricted profile explicitly.
+*   **Dragonfly** — `dragonfly.podSecurityContext` defaults to `seccompProfile: RuntimeDefault` plus `fsGroup: 999` (the Dragonfly operator's own default, preserved so snapshot PVC volume ownership keeps working), and `dragonfly.containerSecurityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp. The default image (`docker.dragonflydb.io/dragonflydb/dragonfly`) ships a non-root `dfly` user (uid 999), so `runAsNonRoot` is safe. Both keys are fully overridable; setting an explicit empty map (`{}`) opts out and renders no security context.
+
+**NetworkPolicies (opt-in).** Enable with `postgres.networkPolicy.enabled: true` and/or `dragonfly.networkPolicy.enabled: true`. Each enabled policy:
+
+*   selects the datastore pods by the operator's own labels — `cnpg.io/cluster: <cluster>` for CNPG (the PostgreSQL instance pods and the pooler pods both carry it, and both serve TCP 5432) and `app: <dragonfly-name>`, `app.kubernetes.io/name: dragonfly`, `app.kubernetes.io/part-of: dragonfly` for Dragonfly;
+*   allows ingress on TCP 5432 (PostgreSQL) / 6379 (Dragonfly) from any pod in the release namespace;
+*   appends any `extraIngress` entries verbatim after that rule, for example cross-namespace clients or Prometheus scraping:
+
+    ```yaml
+    postgres:
+      networkPolicy:
+        enabled: true
+        extraIngress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+    ```
+
+*   declares only `policyTypes: [Ingress]` — egress (S3 backup uploads, streaming replication, snapshot uploads, DNS) is never restricted.
+
+Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); without one the resources are inert. Enabling a policy also blocks cross-namespace metrics scrapes of the selected pods unless they are allowed through `extraIngress`.
 
 ## Quick Start
 
@@ -79,7 +109,7 @@ For CloudNativePG the chart issues the certificates itself from your configured 
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.12
+        version: 0.7.13
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -114,6 +144,7 @@ For CloudNativePG the chart issues the certificates itself from your configured 
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
+| **NetworkPolicies (opt-in)** | NetworkPolicy (CNPG cluster pods, Dragonfly pods) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
 
 ## Values Reference
