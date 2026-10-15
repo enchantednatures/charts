@@ -165,9 +165,10 @@ tests:
       - notExists:
           path: metadata.annotations
         documentIndex: 8 # PrometheusRule
-      - notExists:
-          path: metadata.annotations
-        documentIndex: 9 # cert-manager Secret
+      - equal: # 9 cert-manager postgres server Secret — always carries the keep annotation
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        documentIndex: 9
       - notExists:
           path: metadata.annotations
         documentIndex: 10 # cert-manager Certificate

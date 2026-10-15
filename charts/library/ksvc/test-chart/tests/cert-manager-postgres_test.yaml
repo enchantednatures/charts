@@ -43,6 +43,9 @@ tests:
           value: test-release-postgres-server-tls
       - isNotNull:
           path: metadata.labels["cnpg.io/reload"]
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
 
   - it: should render server Certificate resource
     documentIndex: 3
@@ -90,6 +93,9 @@ tests:
           value: test-release-postgres-client-tls
       - isNotNull:
           path: metadata.labels["cnpg.io/reload"]
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
 
   - it: should render client Certificate resource
     documentIndex: 5
