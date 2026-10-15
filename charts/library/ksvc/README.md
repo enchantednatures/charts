@@ -55,7 +55,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.1
+        version: 0.7.2
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -98,67 +98,149 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 >
 > Scaling and replica/instance counts are also enforced at render time by `_validators.tpl`: service scaling (`minScale`, `maxScale`, `target`, `containerConcurrency`, `timeoutSeconds`), postgres instances (1–16), pooler instances (≥ 1), and Dragonfly replicas (1–16). The Dragonfly PDB rules are checked too: `minAvailable` and `maxUnavailable` are mutually exclusive (setting both non-zero now fails rendering) and `minAvailable` must be `<= replicas`.
 
-### Global Settings
+The table below is generated from [`values.yaml`](values.yaml) by
+[helm-docs](https://github.com/norwoodj/helm-docs) — do not edit it by hand,
+run `make docs` instead.
 
-| Key | Description | Default |
-|-----|-------------|---------|
-| `global.nameOverride` | Override chart name | `""` |
-| `global.fullnameOverride` | Override fullname | `""` |
-| `global.labels` | Labels applied to all resources | `{}` |
-| `global.annotations` | Annotations applied to all resources | `{}` |
+`services`, `kafka.sources`, and `objectBuckets` are keyed maps: use any
+consumer-chosen key. The generated table uses the default example key (`api`)
+for `services`. Because `kafka.sources` and `objectBuckets` ship empty, their
+per-entry schemas are documented in the sections following the table.
 
-### Services (Map)
+## Values
 
-Each key in `services:` defines a Knative Service. The key becomes a name suffix: `<release>-<key>`. Set `nameOverride` to change the suffix or use `""` for no suffix.
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| dragonfly.affinity | object | `{}` | Pod affinity rules. |
+| dragonfly.args | list | `[]` | Extra Dragonfly CLI arguments (e.g. `--cluster_mode=emulated`). |
+| dragonfly.authentication.clientCaCertSecret.key | string | `"ca.crt"` | Key within the client CA Secret. |
+| dragonfly.authentication.clientCaCertSecret.name | string | `""` | Secret containing the mTLS client CA certificate. |
+| dragonfly.authentication.passwordFromSecret.key | string | `"password"` | Key within the password Secret. |
+| dragonfly.authentication.passwordFromSecret.name | string | `""` | Secret containing the Dragonfly password. |
+| dragonfly.containerSecurityContext | object | `{}` | Container-level security context. |
+| dragonfly.enabled | bool | `false` | Enable the DragonflyDB cache cluster. |
+| dragonfly.env | list | `[]` | Extra environment variables for the Dragonfly container. |
+| dragonfly.image | string | `"docker.dragonflydb.io/dragonflydb/dragonfly"` | DragonflyDB container image repository. |
+| dragonfly.imageTag | string | `"v1.21.2"` | DragonflyDB container image tag. |
+| dragonfly.nodeSelector | object | `{}` | Node selector for the Dragonfly pods. |
+| dragonfly.pdb.maxUnavailable | int | `0` | Maximum unavailable pods for the PodDisruptionBudget (mutually exclusive with `minAvailable`). |
+| dragonfly.pdb.minAvailable | int | `2` | Minimum available pods for the PodDisruptionBudget (mutually exclusive with `maxUnavailable`). |
+| dragonfly.podSecurityContext | object | `{}` | Pod-level security context. |
+| dragonfly.priorityClassName | string | `""` | PriorityClass for the Dragonfly pods. |
+| dragonfly.replicas | int | `3` | Total number of Dragonfly instances including the master (1–16). |
+| dragonfly.resources | object | `500m`/`512Mi` requests, `1`/`1Gi` limits (see `values.yaml`) | Dragonfly container CPU/memory requests and limits. |
+| dragonfly.serviceAccountName | string | `""` | ServiceAccount used by the Dragonfly pods. |
+| dragonfly.serviceSpec.annotations | object | `{}` | Annotations for the Dragonfly Service. |
+| dragonfly.serviceSpec.labels | object | `{}` | Labels for the Dragonfly Service. |
+| dragonfly.serviceSpec.name | string | `""` | Override the generated Service name. |
+| dragonfly.serviceSpec.nodePort | int | `0` | Node port (only used when `type` is `NodePort`). |
+| dragonfly.serviceSpec.type | string | `"ClusterIP"` | Kubernetes Service type. |
+| dragonfly.snapshot.cron | string | `"0 */6 * * *"` | Cron schedule for snapshots. |
+| dragonfly.snapshot.dir | string | `""` | S3 backup path (`s3://bucket/path`); mutually exclusive with an existing PVC. Derived from `snapshot.bucketRef` when it is set. |
+| dragonfly.snapshot.enableOnMasterOnly | bool | `true` | Take snapshots only on the master instance. |
+| dragonfly.snapshot.enabled | bool | `false` | Enable snapshot persistence. |
+| dragonfly.snapshot.existingPersistentVolumeClaimName | string | `""` | Use an existing PVC for snapshots (mutually exclusive with `dir` and `snapshot.bucketRef`). |
+| dragonfly.snapshot.storage.size | string | `"10Gi"` | PVC size when neither `dir` nor an existing PVC is set. |
+| dragonfly.snapshot.storage.storageClassName | string | `""` | StorageClass for the snapshot PVC. |
+| dragonfly.tls.certManager.duration | string | `"2160h"` | Requested certificate lifetime. |
+| dragonfly.tls.certManager.enabled | bool | `false` | Generate the Dragonfly TLS certificate via cert-manager. |
+| dragonfly.tls.certManager.issuerRef.group | string | `""` | API group of the Dragonfly cert-manager issuer. |
+| dragonfly.tls.certManager.issuerRef.kind | string | `""` | Kind of the Dragonfly cert-manager issuer. |
+| dragonfly.tls.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for the Dragonfly certificate. |
+| dragonfly.tls.certManager.renewBefore | string | `"360h"` | How long before expiry the certificate is renewed. |
+| dragonfly.tls.secretName | string | `""` | Secret containing `tls.crt`/`tls.key`. Ignored when `tls.certManager.enabled` is true. |
+| dragonfly.tolerations | list | `[]` | Pod tolerations. |
+| dragonfly.topologySpreadConstraints | list | `[]` | Pod topology spread constraints. |
+| global.annotations | object | `{}` | Annotations added to every rendered resource. |
+| global.certManager.issuerRef.group | string | `"cert-manager.io"` | API group of the default cert-manager issuer. |
+| global.certManager.issuerRef.kind | string | `"ClusterIssuer"` | Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`). |
+| global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
+| global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
+| global.labels | object | `{}` | Labels added to every rendered resource. |
+| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
+| kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
+| kyverno.enabled | bool | `false` | Render the Kyverno admission policies. |
+| kyverno.scaling.apiVersion | string | `"policies.kyverno.io/v1beta1"` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` for Kyverno >= 1.16, `policies.kyverno.io/v1` for Kyverno >= 1.17). |
+| kyverno.scaling.enabled | bool | `false` | Render the scaling/HA guardrail policies (Knative Service, CNPG instances, Dragonfly replicas/PDB). |
+| kyverno.scaling.validationActions | list | `["Deny"]` | Enforcement actions (`Deny` and/or `Audit`). |
+| objectBuckets | object | `{}` | Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each key renders an ObjectBucketClaim named `<release>-<key>`; see the Object Buckets section for the per-entry schema. |
+| postgres.backup.enabled | bool | `true` | Enable WAL archiving and scheduled backups. |
+| postgres.backup.objectStore.data.compression | string | `"gzip"` | Compression algorithm for data backups (`snappy`, `gzip`, `bzip2` or `lz4`). |
+| postgres.backup.objectStore.data.jobs | int | `2` | Number of parallel jobs for data backups. |
+| postgres.backup.objectStore.destinationPath | string | `""` | Destination path for backups (e.g. `s3://bucket/path`). Derived from `bucketRef` when it is set. |
+| postgres.backup.objectStore.endpointURL | string | `""` | S3 endpoint URL. Derived from the referenced bucket when `bucketRef` is set. |
+| postgres.backup.objectStore.s3Credentials.accessKeyIdKey | string | `"ACCESS_KEY_ID"` | Key within the credentials Secret holding the access key id. |
+| postgres.backup.objectStore.s3Credentials.secretAccessKeyKey | string | `"ACCESS_SECRET_KEY"` | Key within the credentials Secret holding the secret access key. |
+| postgres.backup.objectStore.s3Credentials.secretName | string | `"postgres-backup-storage"` | Secret holding the S3 credentials. |
+| postgres.backup.objectStore.wal.compression | string | `"gzip"` | Compression algorithm for WAL backups. |
+| postgres.backup.objectStore.wal.maxParallel | int | `4` | Maximum number of parallel WAL uploads. |
+| postgres.backup.retentionPolicy | string | `"30d"` | Backup retention period (e.g. `30d`). |
+| postgres.backup.schedule | string | `"0 2 * * *"` | Cron schedule for backups. |
+| postgres.backup.target | string | `"prefer-standby"` | Backup target (`prefer-standby` or `primary`). |
+| postgres.certManager.enabled | bool | `false` | Generate PostgreSQL TLS certificates via cert-manager. |
+| postgres.certManager.issuerRef.group | string | `""` | API group of the PostgreSQL cert-manager issuer. |
+| postgres.certManager.issuerRef.kind | string | `""` | Kind of the PostgreSQL cert-manager issuer. |
+| postgres.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for PostgreSQL certificates. |
+| postgres.enabled | bool | `false` | Enable the CloudNativePG PostgreSQL cluster. |
+| postgres.imageCatalog.name | string | `"postgresql"` | Name of the ClusterImageCatalog to pull the PostgreSQL image from. |
+| postgres.instances | int | `3` | Number of PostgreSQL instances (1–16). |
+| postgres.monitoring.alerts | object | see `values.yaml` | Alert thresholds for the Prometheus rules. |
+| postgres.monitoring.enabled | bool | `true` | Enable the PodMonitor and Prometheus alert rules. |
+| postgres.parameters | object | see `values.yaml` | PostgreSQL server configuration parameters (TLS 1.3, buffers, synchronous replication, ...). |
+| postgres.pooler.enabled | bool | `true` | Enable the PgBouncer pooler. |
+| postgres.pooler.instances | int | `3` | Number of pooler replicas (>= 1). |
+| postgres.pooler.parameters | object | see `values.yaml` | PgBouncer configuration parameters. |
+| postgres.pooler.poolMode | string | `"transaction"` | Pooler mode (`session` or `transaction`). |
+| postgres.pooler.resources | object | see `values.yaml` | Pooler CPU/memory requests and limits. |
+| postgres.pooler.type | string | `"rw"` | Pooler type (`rw` or `ro`). |
+| postgres.postInitSQL | list | `["CREATE EXTENSION IF NOT EXISTS pg_stat_statements;","ALTER SYSTEM SET log_statement = 'all';","ALTER SYSTEM SET log_min_duration_statement = '1000';"]` | SQL statements run after cluster initialization. |
+| postgres.resources | object | `1`/`2Gi` requests, `2`/`4Gi` limits (see `values.yaml`) | Cluster CPU/memory requests and limits. |
+| postgres.sharedPreloadLibraries | list | `["pg_stat_statements"]` | Shared libraries preloaded by PostgreSQL. |
+| postgres.storage.size | string | `"200Gi"` | Persistent volume size per instance. |
+| postgres.storage.storageClassName | string | `"standard"` | StorageClass for the instance volumes. |
+| postgres.version | string | `"16"` | PostgreSQL major version. |
+| services.api.annotations | object | see `values.yaml` | Annotations added to the Knative Service (Prometheus scraping enabled by default). |
+| services.api.env | list | `[]` | Environment variables for the container. |
+| services.api.envFrom | list | `[]` | envFrom sources (Secrets/ConfigMaps) for the container. |
+| services.api.flagger.analysis.interval | string | `"1m"` | Interval between canary analysis checks (Go duration, e.g. `1m`). |
+| services.api.flagger.analysis.maxWeight | int | `50` | Maximum traffic weight (%) assigned to the canary. |
+| services.api.flagger.analysis.progressDeadlineSeconds | int | `120` | Maximum seconds for the canary to make progress before rollback. |
+| services.api.flagger.analysis.stepWeight | int | `10` | Traffic weight increment (%) per successful step. |
+| services.api.flagger.analysis.threshold | int | `5` | Number of failed checks before the canary is rolled back. |
+| services.api.flagger.enabled | bool | `false` | Enable a Flagger canary for this service. |
+| services.api.flagger.loadTest.duration | string | `"1m"` | Duration of the k6 load test. |
+| services.api.flagger.loadTest.enabled | bool | `true` | Enable k6 load testing during canary analysis. |
+| services.api.flagger.loadTest.errorRateThreshold | float | `0.01` | Maximum error rate (fraction) tolerated by the load test. |
+| services.api.flagger.loadTest.p95ThresholdMs | int | `500` | p95 latency threshold (ms) for the load test. |
+| services.api.flagger.loadTest.script | string | `""` | Override the entire k6 load-test script. |
+| services.api.flagger.loadTest.vus | int | `10` | Number of virtual users for the k6 load test. |
+| services.api.flagger.loadTest.webhookUrl | string | `"http://k6-loadtester.flagger-system/launch-test"` | URL of the k6 webhook service that starts load tests. |
+| services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
+| services.api.flagger.metrics.prometheusAddress | string | `"http://prometheus.observability.svc.cluster.local:9090"` | Prometheus server address used for metric checks. |
+| services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
+| services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |
+| services.api.image.imagePullSecrets | list | `[]` | List of imagePullSecrets attached to the pod spec (private registries). |
+| services.api.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
+| services.api.image.repository | string | `""` | Container image repository. |
+| services.api.image.tag | string | `"latest"` | Container image tag. |
+| services.api.labels | object | `{}` | Additional labels for the Knative Service. |
+| services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default). |
+| services.api.port | int | `8080` | Container port exposed by the Knative Service. |
+| services.api.probes.liveness | object | see `values.yaml` | Liveness probe configuration (`httpGet`). |
+| services.api.probes.readiness | object | see `values.yaml` | Readiness probe configuration (`httpGet`). |
+| services.api.resources | object | `100m`/`64Mi` requests, `500m`/`256Mi` limits (see `values.yaml`) | Container CPU/memory requests and limits. |
+| services.api.scaling.class | string | `""` | Autoscaler class (e.g. `kpa.autoscaling.knative.dev` or `hpa.autoscaling.knative.dev`). |
+| services.api.scaling.containerConcurrency | int | `100` | Maximum concurrent requests per pod. |
+| services.api.scaling.maxScale | int | `10` | Maximum number of replicas. |
+| services.api.scaling.metric | string | `""` | Autoscaling metric: `concurrency`, `rps` (KPA), or `cpu`, `memory`, custom metric (HPA class only). Empty falls back to the Knative default (`concurrency`). |
+| services.api.scaling.minScale | int | `1` | Minimum number of replicas. |
+| services.api.scaling.target | int | `100` | Autoscaling target (requests in flight per pod for the KPA). |
+| services.api.scaling.timeoutSeconds | int | `300` | Request timeout in seconds. |
+| services.api.securityContext | object | see `values.yaml` | Container security context (non-root, read-only root fs, drops all capabilities). |
+| services.api.volumeMounts | list | `[]` | Additional volume mounts for the container. |
+| services.api.volumes | list | `[]` | Additional pod volumes. |
 
-| Key | Description | Default |
-|-----|-------------|---------|
-| `services.<key>.nameOverride` | Override the name suffix (replaces the map key). Set to `""` for no suffix. | *(not set — uses key)* |
-| `services.<key>.image.repository` | Container image repository | `""` |
-| `services.<key>.image.tag` | Container image tag | `"latest"` |
-| `services.<key>.image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `services.<key>.image.fluxImagePolicy` | Flux image policy annotation | `""` |
-| `services.<key>.scaling.minScale` | Minimum replicas | `1` |
-| `services.<key>.scaling.maxScale` | Maximum replicas | `10` |
-| `services.<key>.scaling.target` | Scaling target | `100` |
-| `services.<key>.scaling.containerConcurrency` | Max concurrent requests per pod | `100` |
-| `services.<key>.scaling.timeoutSeconds` | Request timeout | `300` |
-| `services.<key>.scaling.class` | Autoscaler class | `""` |
-| `services.<key>.scaling.metric` | Autoscaling metric (`concurrency`, `rps`; `cpu`/`memory`/custom require the HPA class). Empty falls back to the Knative default (`concurrency`) | `""` |
-| `services.<key>.resources` | Container CPU/Memory resources | 100m/64Mi req, 500m/256Mi lim |
-| `services.<key>.port` | Container port | `8080` |
-| `services.<key>.probes.liveness` | Liveness probe config | See values.yaml |
-| `services.<key>.probes.readiness` | Readiness probe config | See values.yaml |
-| `services.<key>.env` | Environment variables | `[]` |
-| `services.<key>.envFrom` | envFrom sources (Secrets/ConfigMaps) | `[]` |
-| `services.<key>.securityContext` | Container security context | runAsNonRoot, readOnly, drop ALL |
-| `services.<key>.volumeMounts` | Container volume mounts | `[]` |
-| `services.<key>.volumes` | Pod volumes | `[]` |
-| `services.<key>.podAnnotations` | Annotations for the Pod template | Prometheus scraping enabled |
-| `services.<key>.annotations` | Annotations for the Knative Service | Prometheus scraping enabled |
-| `services.<key>.labels` | Additional labels for the Knative Service | `{}` |
-
-### Flagger Canary (Per-Service)
-
-Flagger is configured inside each service entry.
-
-| Key | Description | Default |
-|-----|-------------|---------|
-| `services.<key>.flagger.enabled` | Enable Flagger canary for this service | `false` |
-| `services.<key>.flagger.analysis.interval` | Analysis check interval | `"1m"` |
-| `services.<key>.flagger.analysis.threshold` | Failure threshold before rollback | `5` |
-| `services.<key>.flagger.analysis.maxWeight` | Maximum traffic weight (%) | `50` |
-| `services.<key>.flagger.analysis.stepWeight` | Traffic increment step (%) | `10` |
-| `services.<key>.flagger.analysis.progressDeadlineSeconds` | Max seconds for canary progress | `120` |
-| `services.<key>.flagger.metrics.successRateThreshold` | Min success rate (%) | `99` |
-| `services.<key>.flagger.metrics.latencyP99ThresholdMs` | Max p99 latency (ms) | `500` |
-| `services.<key>.flagger.metrics.prometheusAddress` | Prometheus server address | `http://prometheus.observability...` |
-| `services.<key>.flagger.loadTest.enabled` | Enable k6 load testing | `true` |
-| `services.<key>.flagger.loadTest.webhookUrl` | k6 loadtester webhook URL | `http://k6-loadtester.flagger-system/...` |
-| `services.<key>.flagger.loadTest.vus` | Virtual users | `10` |
-| `services.<key>.flagger.loadTest.duration` | Test duration | `"1m"` |
-
-### Kafka Event Sources (Map)
+## Kafka Event Sources (Map)
 
 Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must reference a valid key in the `services` map (validated at render time).
 
@@ -176,38 +258,13 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
 
-### CloudNativePG PostgreSQL
-
-| Key | Description | Default |
-|-----|-------------|---------|
-| `postgres.enabled` | Enable PostgreSQL cluster | `false` |
-| `postgres.version` | PostgreSQL version | `"16"` |
-| `postgres.instances` | Number of database instances | `3` |
-| `postgres.parameters` | Postgres configuration parameters | TLS 1.3, standard buffers |
-| `postgres.sharedPreloadLibraries` | Libraries to preload | `[pg_stat_statements]` |
-| `postgres.postInitSQL` | SQL commands to run after init | `[]` |
-| `postgres.resources` | Cluster resource limits/requests | 1 CPU, 2Gi RAM requests |
-| `postgres.storage.size` | PVC size | `"200Gi"` |
-| `postgres.storage.storageClassName` | PVC storage class | `"standard"` |
-| `postgres.pooler.enabled` | Enable PgBouncer pooler | `true` |
-| `postgres.pooler.instances` | Number of pooler replicas | `3` |
-| `postgres.pooler.type` | Pooler type (rw/ro) | `rw` |
-| `postgres.pooler.poolMode` | session/transaction | `transaction` |
-| `postgres.backup.enabled` | Enable WAL archiving and backups | `true` |
-| `postgres.backup.schedule` | Cron schedule for backups | `"0 2 * * *"` |
-| `postgres.backup.retentionPolicy` | Retention period | `"30d"` |
-| `postgres.backup.objectStore` | S3/Object storage configuration | See values.yaml |
-| `postgres.backup.objectStore.bucketRef` | Reference an `objectBuckets` entry to derive `destinationPath`, `endpointURL`, and claim-named S3 credentials | `""` |
-| `postgres.monitoring.enabled` | Enable PodMonitor and Alerts | `true` |
-| `postgres.monitoring.alerts` | Thresholds for Prometheus rules | See values.yaml |
-
-### Object Buckets (Ceph RGW)
+## Object Buckets (Ceph RGW)
 
 The chart can provision S3 buckets on Ceph RGW (or any object store fronted by `lib-bucket-provisioner`) so Postgres backups and Dragonfly snapshots land on object storage with no hand-created credential Secrets. Declare buckets in a top-level `objectBuckets` map; the chart renders one `ObjectBucketClaim` per entry and wires any consumer that references it. The feature is off by default: leave `objectBuckets` empty and rendering is unchanged.
 
 The chart references an existing StorageClass by name. It never renders a StorageClass.
 
-#### Prerequisites
+### Prerequisites
 
 *   The `lib-bucket-provisioner` CRDs. Install them with `make install-object-bucket` (the target installs the `ObjectBucketClaim` and `ObjectBucket` CRDs).
 *   An existing bucket StorageClass for your object store. For Rook/Ceph it looks like this:
@@ -227,7 +284,7 @@ The chart references an existing StorageClass by name. It never renders a Storag
     The provisioner is `<objectStoreNamespace>.ceph.rook.io/bucket` (here `rook-ceph.ceph.rook.io/bucket`), and `objectStoreName`/`objectStoreNamespace` identify the CephObjectStore. The chart uses `metadata.name` only.
 *   An RGW endpoint URL reachable from the cluster, for example `http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80`. Set it as `endpointURL` on the bucket entry.
 
-#### Bucket values
+### Bucket values
 
 Each key under `objectBuckets` defines one bucket:
 
@@ -249,7 +306,7 @@ objectBuckets:
     region: us-east-1
 ```
 
-#### PostgreSQL backups
+### PostgreSQL backups
 
 Reference a bucket from `postgres.backup.objectStore.bucketRef`:
 
@@ -272,7 +329,7 @@ If any `s3Credentials` field is set explicitly (`secretName`, `accessKeyIdKey`, 
 
 The bucket entry's `region` is not used on this path.
 
-#### Dragonfly snapshots
+### Dragonfly snapshots
 
 Reference a bucket from `dragonfly.snapshot.bucketRef`:
 
@@ -293,7 +350,7 @@ When `bucketRef` is set the chart derives:
 
 `bucketRef` and `existingPersistentVolumeClaimName` are mutually exclusive. User-supplied `dragonfly.env` entries and `dragonfly.args` flags are never duplicated: the chart appends a derived item only when no entry with the same name or flag is present.
 
-#### Consuming a bucket from an app
+### Consuming a bucket from an app
 
 Each `ObjectBucketClaim` makes the provisioner create, in the release namespace, a Secret and a ConfigMap named after the claim (`<release>-<key>`):
 
@@ -316,14 +373,14 @@ services:
           secretName: test-postgres-only-postgres-backups
 ```
 
-#### Warnings
+### Warnings
 
 *   **Deletion risk.** The referenced StorageClass's `reclaimPolicy` governs the bucket. With `reclaimPolicy: Delete`, `helm uninstall` deletes the bucket and its backups. Prefer `Retain` for backup buckets.
 *   **Unique, immutable names.** Bucket names are unique per object store across all namespaces, and `bucketName` is immutable once the claim binds. Set an explicit `bucketName` when several releases share one object store.
 *   **Cost.** Provisioned buckets consume real RGW capacity and egress.
 *   **Secret scope.** The claim Secret is a plain namespaced Secret. Anyone who can read the namespace can read it, and there is no External Secrets Operator integration.
 
-#### Switching from minio/rustfs
+### Switching from minio/rustfs
 
 Drop the manual endpoint and credential Secret and point at a bucket instead. Before:
 
@@ -366,40 +423,7 @@ postgres:
     enabled: true
 ```
 
-### DragonflyDB Cache Cluster
-
-| Key | Description | Default |
-|-----|-------------|---------|
-| `dragonfly.enabled` | Enable DragonflyDB cluster | `false` |
-| `dragonfly.replicas` | Total instances including master | `3` |
-| `dragonfly.image` | Dragonfly container image | `docker.dragonflydb.io/dragonflydb/dragonfly` |
-| `dragonfly.imageTag` | Container image tag | `"v1.21.2"` |
-| `dragonfly.args` | Extra CLI args (e.g. `--cluster_mode=emulated`) | `[]` |
-| `dragonfly.env` | Environment variables | `[]` |
-| `dragonfly.resources` | Container CPU/Memory resources | 500m/512Mi requests |
-| `dragonfly.authentication.passwordFromSecret.name` | Secret name for auth password | `""` |
-| `dragonfly.authentication.passwordFromSecret.key` | Secret key for auth password | `password` |
-| `dragonfly.authentication.clientCaCertSecret.name` | Secret name for mTLS client CA | `""` |
-| `dragonfly.tls.secretName` | TLS Secret (tls.crt/tls.key) | `""` |
-| `dragonfly.snapshot.enabled` | Enable snapshot persistence | `false` |
-| `dragonfly.snapshot.cron` | Snapshot cron schedule | `"0 */6 * * *"` |
-| `dragonfly.snapshot.enableOnMasterOnly` | Snapshot only on master | `true` |
-| `dragonfly.snapshot.dir` | S3 backup path (mutually exclusive with PVC) | `""` |
-| `dragonfly.snapshot.existingPersistentVolumeClaimName` | Use existing PVC | `""` |
-| `dragonfly.snapshot.bucketRef` | Reference an `objectBuckets` entry for S3 snapshots (derives `dir`, credential env, `--s3_endpoint`, `--s3_use_https`); mutually exclusive with `existingPersistentVolumeClaimName` | `""` |
-| `dragonfly.snapshot.storage.size` | PVC size (when dir/existingPVC empty) | `"10Gi"` |
-| `dragonfly.snapshot.storage.storageClassName` | PVC storage class | `""` |
-| `dragonfly.serviceSpec.type` | Kubernetes Service type | `ClusterIP` |
-| `dragonfly.pdb.minAvailable` | Min available pods for PDB | `2` |
-| `dragonfly.pdb.maxUnavailable` | Max unavailable pods for PDB | `0` |
-| `dragonfly.affinity` | Pod affinity rules | `{}` |
-| `dragonfly.tolerations` | Pod tolerations | `[]` |
-| `dragonfly.topologySpreadConstraints` | Topology spread constraints | `[]` |
-| `dragonfly.nodeSelector` | Node selector | `{}` |
-| `dragonfly.serviceAccountName` | Service account name | `""` |
-| `dragonfly.priorityClassName` | Priority class name | `""` |
-
-### Kyverno Admission Policies (Opt-In)
+## Kyverno Admission Policies (Opt-In)
 
 The chart can render three Kyverno `NamespacedValidatingPolicy` resources that act as a defense-in-depth admission guardrail on top of the render-time validators above. They are disabled by default; enable them with:
 
@@ -414,12 +438,7 @@ Policies render into the release namespace (`metadata.namespace: <Release.Namesp
 
 `validationActions` controls enforcement: `Deny` (default) blocks non-compliant requests; `Audit` only records them. The policy `apiVersion` defaults to `policies.kyverno.io/v1beta1` (Kyverno >= 1.16); set it to `policies.kyverno.io/v1` on Kyverno >= 1.17.
 
-| Key | Description | Default |
-|-----|-------------|---------|
-| `kyverno.enabled` | Render the Kyverno admission policies | `false` |
-| `kyverno.scaling.enabled` | Render the scaling/HA guardrail policies | `false` |
-| `kyverno.scaling.apiVersion` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` or `policies.kyverno.io/v1`) | `policies.kyverno.io/v1beta1` |
-| `kyverno.scaling.validationActions` | Enforcement actions (`Deny` and/or `Audit`) | `[Deny]` |
+The relevant values (`kyverno.enabled`, `kyverno.scaling.enabled`, `kyverno.scaling.apiVersion`, `kyverno.scaling.validationActions`) are listed in the generated values table above.
 
 ## Migration from v0.1.x
 
@@ -497,8 +516,8 @@ The [examples/](../../../examples/) directory contains reference implementations
 
 The repository uses GitHub Actions for automated quality assurance:
 
-*   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI.
-*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.7.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
+*   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
+*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.7.1`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing
@@ -517,4 +536,7 @@ helm unittest test-chart
 2.  Register the new class in `charts/library/ksvc/templates/loader/_generate.tpl`.
 3.  Add corresponding unit tests in `charts/library/ksvc/test-chart/tests/`.
 4.  Update example configurations in `examples/` to reflect new capabilities.
-5.  Run `helm lint` and `helm unittest` before submitting changes.
+5.  Run `make lint`, `make test`, and `make docs` before submitting changes.
+
+----------------------------------------------
+Autogenerated from chart metadata using [helm-docs v1.14.2](https://github.com/norwoodj/helm-docs/releases/v1.14.2)
