@@ -195,12 +195,24 @@ jobs:
         with:
           fetch-depth: 1
 
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Login to OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ${{ env.REGISTRY }} \
+              --username ${{ github.actor }} \
+              --password-stdin
+
       - name: Update dependent app charts and create PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASED='${{ needs.detect.outputs.matrix }}'
           UPDATED_ANY="false"
+          UPDATED_DIRS=""
           BRANCH_NAME="chore/bump-deps-$(date +%s)"
           PR_BODY="Automated dependency bump triggered by library chart release.\n\n**Updated dependencies:**\n"
 
@@ -249,6 +261,7 @@ jobs:
 
               PR_BODY+="- \`$APP_NAME\` $OLD_APP_VERSION → $NEW_APP_VERSION (dep \`$LIB_NAME\` → $LIB_VERSION)\n"
               UPDATED_ANY="true"
+              UPDATED_DIRS+=" $(dirname "$app_chart")"
             done
           done
 
@@ -257,7 +270,15 @@ jobs:
             exit 0
           fi
 
-          git add charts/app/*/Chart.yaml
+          # Regenerate each updated chart's committed Chart.lock so it tracks the
+          # just-released library version; CI resolves dependencies with
+          # `helm dependency build`, which requires the lock to be in sync.
+          for app_dir in $UPDATED_DIRS; do
+            echo "Refreshing Chart.lock for $app_dir"
+            helm dependency update "$app_dir"
+          done
+
+          git add charts/app/*/Chart.yaml charts/app/*/Chart.lock
           git commit -m "chore: bump dependent chart versions"
           git push origin "$BRANCH_NAME"
 

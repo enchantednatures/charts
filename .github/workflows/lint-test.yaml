@@ -50,7 +50,7 @@ jobs:
         run: |
           for example in examples/*/; do
             echo "--- Linting $example ---"
-            helm dependency update "$example"
+            helm dependency build "$example"
             helm lint "$example"
           done
 
@@ -122,7 +122,7 @@ jobs:
           for example in examples/*/; do
             name=$(basename "$example")
             echo "--- Rendering $name ---"
-            helm dependency update "$example"
+            helm dependency build "$example"
             helm template "test-${name}" "$example" \
               --namespace test-ns > "/tmp/rendered-${name}.yaml"
             yamllint -d relaxed "/tmp/rendered-${name}.yaml"
@@ -171,7 +171,7 @@ jobs:
           for example in examples/*/; do
             name=$(basename "$example")
             echo "--- Validating $name ---"
-            helm dependency update "$example"
+            helm dependency build "$example"
             helm template "test-${name}" "$example" --namespace test-ns | \
               kubeconform \
                 -strict \
