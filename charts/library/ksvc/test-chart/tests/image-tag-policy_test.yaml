@@ -1,0 +1,96 @@
+suite: image tag policy tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # --- digest support -------------------------------------------------------
+  - it: "renders repository@digest and ignores the tag when a digest is set"
+    set:
+      services.api.image.tag: "v1.0.0"
+      services.api.image.digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "test/image@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+  - it: "renders repository:tag when no digest is set"
+    set:
+      services.api.image.tag: "v1.0.0"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "test/image:v1.0.0"
+
+  - it: "allows an empty tag when a digest is provided"
+    set:
+      services.api.image.tag: ""
+      services.api.image.digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "test/image@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+  # --- empty tag validation -------------------------------------------------
+  - it: "fails when the tag is empty and no digest is set"
+    set:
+      services.api.image.tag: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.image.tag is required (or set services.api.image.digest)"
+
+  # --- pull policy for the mutable latest tag -------------------------------
+  - it: "forces imagePullPolicy Always for the default latest tag"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+
+  - it: "forces imagePullPolicy Always for latest even when pullPolicy is IfNotPresent"
+    set:
+      services.api.image.tag: "latest"
+      services.api.image.pullPolicy: IfNotPresent
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+
+  # --- configured pull policy is respected otherwise ------------------------
+  - it: "respects the configured pullPolicy for an explicit non-latest tag"
+    set:
+      services.api.image.tag: "v1.0.0"
+      services.api.image.pullPolicy: IfNotPresent
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+
+  - it: "respects an explicit Never pullPolicy for a pinned tag"
+    set:
+      services.api.image.tag: "v1.0.0"
+      services.api.image.pullPolicy: Never
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Never
+
+  - it: "does not force Always for a digest resolved from a literal latest tag"
+    set:
+      services.api.image.tag: "latest"
+      services.api.image.digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      services.api.image.pullPolicy: IfNotPresent
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent

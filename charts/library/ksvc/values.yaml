@@ -79,9 +79,18 @@ services:
     image:
       # -- Container image repository.
       repository: ""
-      # -- Container image tag.
+      # -- Container image tag. `latest` is mutable, so deploys are
+      # non-reproducible and can silently change; it also forces the image pull
+      # policy to `Always` (see `image.pullPolicy`). Pin an immutable tag, or set
+      # `image.digest` for full reproducibility.
       tag: "latest"
-      # -- Image pull policy.
+      # -- Immutable container image digest (e.g. `sha256:...`). When set the
+      # image renders as `repository@digest` and `tag` is ignored — the
+      # cache-safe, reproducible alternative to a mutable tag.
+      digest: ""
+      # -- Image pull policy. Forced to `Always` when the resolved image is the
+      # mutable `latest` tag (and no `digest` is set), so nodes never serve a
+      # stale cached image; otherwise this value is used as-is.
       pullPolicy: IfNotPresent
       # -- List of imagePullSecrets attached to the pod spec (private registries).
       imagePullSecrets: []

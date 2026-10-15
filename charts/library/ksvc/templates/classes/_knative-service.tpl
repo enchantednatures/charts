@@ -6,6 +6,19 @@ and "svc" (the merged service config dict).
 {{- define "ksvc.class.knativeService" -}}
 {{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key "svc" .svc) -}}
 {{- $svc := .svc -}}
+{{- /* Image reference: a digest pins the exact image (immutable, reproducible);
+       otherwise fall back to the mutable tag. */ -}}
+{{- $imageRef := printf "%s:%s" $svc.image.repository $svc.image.tag -}}
+{{- if $svc.image.digest -}}
+{{- $imageRef = printf "%s@%s" $svc.image.repository $svc.image.digest -}}
+{{- end -}}
+{{- /* `latest` is mutable, so a node may otherwise serve a stale cached image
+       forever under IfNotPresent; force Always whenever the resolved reference
+       is a `latest` tag (a digest is immutable and needs no forcing). */ -}}
+{{- $pullPolicy := $svc.image.pullPolicy -}}
+{{- if and (not $svc.image.digest) (eq $svc.image.tag "latest") -}}
+{{- $pullPolicy = "Always" -}}
+{{- end -}}
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -49,12 +62,12 @@ spec:
       containers:
         - name: service
           {{- if $svc.image.fluxImagePolicy }}
-          image: {{ $svc.image.repository }}:{{ $svc.image.tag }} # {{ printf "{\"$imagepolicy\": \"%s\"}" $svc.image.fluxImagePolicy }}
+          image: {{ $imageRef }} # {{ printf "{\"$imagepolicy\": \"%s\"}" $svc.image.fluxImagePolicy }}
           {{- else }}
-          image: {{ $svc.image.repository }}:{{ $svc.image.tag }}
+          image: {{ $imageRef }}
           {{- end }}
-          {{- if $svc.image.pullPolicy }}
-          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          {{- if $pullPolicy }}
+          imagePullPolicy: {{ $pullPolicy }}
           {{- end }}
           ports:
             - containerPort: {{ $svc.port }}
