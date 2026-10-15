@@ -53,7 +53,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- with $svc.image.imagePullSecrets }}
+      {{- /* Effective secrets = the service's own list then the global list;
+             empty (both empty) renders nothing. */}}
+      {{- with (concat (default (list) $svc.image.imagePullSecrets) (default (list) .root.Values.global.imagePullSecrets)) }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}

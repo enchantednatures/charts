@@ -169,6 +169,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
     "dlq" (dict "enabled" true
       "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "v1.17.0")
+      "imagePullSecrets" (list)
       "scaling" (dict "minScale" 0 "maxScale" 2)
       "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
       "securityContext" (dict
@@ -223,6 +224,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "version" "16"
     "instances" 3
     "imageCatalog" (dict "name" "postgresql")
+    "imagePullSecrets" (list)
     "parameters" (dict "ssl" "on" "ssl_min_protocol_version" "TLSv1.3" "ssl_max_protocol_version" "TLSv1.3" "shared_buffers" "2Gi" "max_connections" "300" "synchronous_commit" "remote_apply" "synchronous_standby_names" "ANY 1 (*)" "archive_timeout" "5min" "wal_compression" "on")
     "sharedPreloadLibraries" (list "pg_stat_statements")
     "postInitSQL" (list "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;")
@@ -305,6 +307,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "fullnameOverride" ""
     "labels" (dict)
     "annotations" (dict)
+    "imagePullSecrets" (list)
     "certManager" (dict "issuerRef" (dict "name" "" "kind" "ClusterIssuer" "group" "cert-manager.io"))
   -}}
   {{- $global := .Values.global | default dict -}}

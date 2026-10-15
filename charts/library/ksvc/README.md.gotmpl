@@ -128,6 +128,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display:v1.17.0` |
 | `kafka.sources.<key>.dlq.securityContext` | Container security context for the DLQ service (same restricted profile as main services) | non-root, read-only root fs, drops all capabilities, `RuntimeDefault` seccomp |
+| `kafka.sources.<key>.dlq.imagePullSecrets` | List of imagePullSecrets attached to the DLQ pod spec (private registries), applied in addition to `global.imagePullSecrets` | `[]` |
 
 ## Object Buckets (Ceph RGW)
 

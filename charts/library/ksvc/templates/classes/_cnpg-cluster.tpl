@@ -10,6 +10,12 @@ metadata:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
 spec:
+  {{- /* Effective secrets = the cluster's own list then the global list; empty
+         (both empty) renders nothing. */}}
+  {{- with (concat (default (list) $pg.imagePullSecrets) (default (list) .Values.global.imagePullSecrets)) }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   instances: {{ $pg.instances }}
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io

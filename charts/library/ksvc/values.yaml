@@ -14,6 +14,14 @@ global:
   # -- Annotations added to every rendered resource.
   annotations: {}
 
+  # -- List of imagePullSecrets applied to every rendered workload's pod spec,
+  # in addition to that workload's own `imagePullSecrets`: the Knative
+  # Services (`services.<key>.image.imagePullSecrets`), the Kafka DLQ service
+  # (`kafka.sources.<key>.dlq.imagePullSecrets`), and the CNPG PostgreSQL
+  # cluster (`postgres.imagePullSecrets`). Same shape as the per-service field
+  # — a list of `{name: <secret>}` objects.
+  imagePullSecrets: []
+
   # Default cert-manager issuer for all Certificate resources.
   # Individual components (postgres.certManager, dragonfly.tls.certManager) can
   # override this with their own issuerRef.
@@ -247,6 +255,12 @@ postgres:
   version: "16"
   # -- Number of PostgreSQL instances (1–16).
   instances: 3
+
+  # -- List of imagePullSecrets for the CNPG PostgreSQL cluster pods (private
+  # registries), applied in addition to `global.imagePullSecrets`. Same shape
+  # as `services.<key>.image.imagePullSecrets` — a list of `{name: <secret>}`
+  # objects.
+  imagePullSecrets: []
 
   # Name of the ClusterImageCatalog to pull the postgres image from.
   # imageCatalogRef requires a name (CNPG rejects the Cluster without it).

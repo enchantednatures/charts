@@ -21,6 +21,12 @@ spec:
         autoscaling.knative.dev/min-scale: {{ $dlq.scaling.minScale | quote }}
         autoscaling.knative.dev/max-scale: {{ $dlq.scaling.maxScale | quote }}
     spec:
+      {{- /* Effective secrets = the DLQ's own list then the global list; empty
+             (both empty) renders nothing. */}}
+      {{- with (concat (default (list) $dlq.imagePullSecrets) (default (list) .root.Values.global.imagePullSecrets)) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: dlq-handler
           image: {{ $dlq.image.repository }}:{{ $dlq.image.tag }}

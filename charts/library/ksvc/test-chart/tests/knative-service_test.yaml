@@ -182,3 +182,45 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: api
+
+  - it: should render per-service imagePullSecrets
+    set:
+      services.api.image.imagePullSecrets:
+        - name: svc-pull
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: svc-pull
+
+  - it: should thread global.imagePullSecrets into the service pod spec
+    set:
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: global-pull
+
+  - it: should combine the service's own and global imagePullSecrets (own first)
+    set:
+      services.api.image.imagePullSecrets:
+        - name: svc-pull
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: svc-pull
+            - name: global-pull
+
+  - it: should not render imagePullSecrets when both lists are empty
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
