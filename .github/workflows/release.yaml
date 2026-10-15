@@ -29,7 +29,7 @@ jobs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
       has_library: ${{ steps.build-matrix.outputs.has_library }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 2
 
@@ -118,9 +118,9 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.0
 
@@ -148,8 +148,14 @@ jobs:
 
           helm lint "$CHART_PATH"
 
+      - name: Cache helm-unittest plugin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/share/helm/plugins
+          key: unittest-v0.8.2-${{ runner.os }}
+
       - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
+        run: helm plugin list | grep -q unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
 
       - name: Run unit tests (library charts)
         if: matrix.type == 'library'
@@ -205,7 +211,7 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.oci-check.outputs.exists != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ matrix.tag }}
           name: "${{ matrix.name }} v${{ matrix.version }}"
@@ -219,11 +225,11 @@ jobs:
     needs: [detect, release]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.has_library == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.0
 

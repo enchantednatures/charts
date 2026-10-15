@@ -19,6 +19,7 @@
 #   make template EXAMPLE=x        Render templates for an example
 #   make lint                      Lint all charts and examples
 #   make test                      Run helm-unittest
+#   make docs                      Regenerate the chart README with helm-docs
 # =============================================================================
 
 SHELL := /bin/bash
@@ -34,6 +35,7 @@ KAFKA_EVENTING_VERSION ?= v1.17.0
 DRAGONFLY_BRANCH      ?= main
 KYVERNO_CHART_VERSION ?= 3.9.1
 HELM_VERSION          ?= v3.17.0
+HELM_DOCS_VERSION     ?= v1.14.2
 KIND_CLUSTER_NAME     ?= test-cluster
 EXAMPLE               ?= minimal
 NAMESPACE             ?= test-ns
@@ -266,6 +268,18 @@ lint: ## Lint all charts and examples
 test: ## Run helm unit tests
 	helm dependency build charts/library/ksvc/test-chart
 	helm unittest charts/library/ksvc/test-chart
+
+.PHONY: docs
+docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-docs
+	@# Runs the pinned helm-docs image; scans only the library chart and skips
+	@# the test-chart wrapper and anything else listed in .helmdocsignore.
+	docker run --rm \
+		--volume "$(CURDIR):/helm-docs" \
+		--workdir /helm-docs \
+		--user "$(shell id -u):$(shell id -g)" \
+		jnorwood/helm-docs:$(HELM_DOCS_VERSION) \
+		--chart-search-root=charts/library \
+		--template-files=README.md.gotmpl
 
 .PHONY: update-locks
 update-locks: ## Refresh Chart.lock files (test-chart, examples, app chart) from current sources
