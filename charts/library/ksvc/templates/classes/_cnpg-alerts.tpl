@@ -9,7 +9,14 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app: {{ $pgName }}
-    prometheus: kube-prometheus
+    {{- $mon := .Values.postgres.monitoring }}
+    {{- $ruleLabels := $mon.prometheusRuleLabels }}
+    {{- if not (hasKey $mon "prometheusRuleLabels") }}
+      {{- $ruleLabels = dict "prometheus" "kube-prometheus" }}
+    {{- end }}
+    {{- with $ruleLabels }}
+    {{- toYaml . | trim | nindent 4 }}
+    {{- end }}
 spec:
   groups:
     - name: postgres.rules
