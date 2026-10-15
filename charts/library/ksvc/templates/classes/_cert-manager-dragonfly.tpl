@@ -10,22 +10,22 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ $secretName }}
+  name: {{ $secretName | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cache
+    app.kubernetes.io/component: {{ "cache" | quote }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ $dfName }}-server-cert
+  name: "{{ $dfName }}-server-cert"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cache
+    app.kubernetes.io/component: {{ "cache" | quote }}
 spec:
-  secretName: {{ $secretName }}
+  secretName: {{ $secretName | quote }}
   {{- if $cm.duration }}
   duration: {{ $cm.duration }}
   {{- end }}
@@ -40,7 +40,7 @@ spec:
     - {{ $dfName }}.{{ .Release.Namespace }}.svc
     - {{ $dfName }}.{{ .Release.Namespace }}.svc.cluster.local
   issuerRef:
-    name: {{ $issuerName }}
+    name: {{ $issuerName | quote }}
     kind: {{ $issuerKind }}
     group: {{ $issuerGroup }}
 {{- end }}

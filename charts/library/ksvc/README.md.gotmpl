@@ -44,6 +44,21 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
 
 ObjectBucketClaim names are sanitized the same way as the others: truncated to 63 chars, trailing `-` trimmed, and `_` replaced with `-`. The provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
 
+## Labels
+
+Every rendered resource carries the standard labels:
+
+| Label | Value |
+|-------|-------|
+| `app.kubernetes.io/name` | The **application**: the consumer chart name, or `global.nameOverride` when set. It identifies the app, never the release instance. On per-service resources it is the service map key (the component). |
+| `app.kubernetes.io/instance` | The **release instance** — the fullname (`global.fullnameOverride` when set, otherwise the release name). |
+| `app.kubernetes.io/component` | The component within the release (`database`, `cache`, `event-source`, …); on per-service resources it is the service map key. |
+| `app.kubernetes.io/version` | The consumer chart's `appVersion`. |
+| `app.kubernetes.io/managed-by` | The Helm release service (`Helm`). |
+| `helm.sh/chart` | The **consumer** chart name and version (for example `my-service-0.1.0`). It reflects the chart that pulls in `ksvc`, not `ksvc` itself — intentional library behavior. |
+
+All label values and resource `metadata.name`s are rendered as quoted strings, so a numeric-looking `global.fullnameOverride` (for example `"123"`) can never become a YAML integer that the API server would reject. Additional labels are merged in via `global.labels` and, per service, `services.<key>.labels`.
+
 ## Quick Start
 
 1.  Create a new Helm chart:

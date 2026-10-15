@@ -34,6 +34,23 @@ tests:
           path: metadata.labels.prometheus
           value: kube-prometheus
 
+  # app.kubernetes.io/name identifies the application (the consumer chart),
+  # not the release instance; instance carries the fullname.
+  - it: "sets app.kubernetes.io/name to the consumer chart name on global resources"
+    documentSelector:
+      path: kind
+      value: PodMonitor
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: ksvc-test
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: test-release
+      - equal:
+          path: metadata.labels["helm.sh/chart"]
+          value: ksvc-test-0.0.1
+
   # Overrides land in addition to the standard chart + app labels.
   - it: "applies a custom podMonitorLabels override alongside the standard labels"
     set:

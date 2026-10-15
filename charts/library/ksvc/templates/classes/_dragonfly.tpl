@@ -70,11 +70,11 @@
 apiVersion: dragonflydb.io/v1alpha1
 kind: Dragonfly
 metadata:
-  name: {{ $dfName }}
+  name: {{ $dfName | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cache
+    app.kubernetes.io/component: {{ "cache" | quote }}
 spec:
   replicas: {{ $df.replicas }}
   {{- if $df.image }}
@@ -95,20 +95,20 @@ spec:
   {{- if and $df.authentication $df.authentication.passwordFromSecret $df.authentication.passwordFromSecret.name }}
   authentication:
     passwordFromSecret:
-      name: {{ $df.authentication.passwordFromSecret.name }}
+      name: {{ $df.authentication.passwordFromSecret.name | quote }}
       key: {{ $df.authentication.passwordFromSecret.key | default "password" }}
     {{- if and $df.authentication.clientCaCertSecret $df.authentication.clientCaCertSecret.name }}
     clientCaCertSecret:
-      name: {{ $df.authentication.clientCaCertSecret.name }}
+      name: {{ $df.authentication.clientCaCertSecret.name | quote }}
       key: {{ $df.authentication.clientCaCertSecret.key | default "ca.crt" }}
     {{- end }}
   {{- end }}
   {{- if and $df.tls $df.tls.certManager $df.tls.certManager.enabled }}
   tlsSecretRef:
-    name: {{ include "ksvc.dragonflyServerTLSSecret" . }}
+    name: {{ include "ksvc.dragonflyServerTLSSecret" . | quote }}
   {{- else if and $df.tls $df.tls.secretName }}
   tlsSecretRef:
-    name: {{ $df.tls.secretName }}
+    name: {{ $df.tls.secretName | quote }}
   {{- end }}
   {{- if and $df.snapshot $df.snapshot.enabled }}
   {{- $snapDir := (index $snap "dir") | default "" | toString }}
@@ -145,7 +145,7 @@ spec:
   serviceSpec:
     type: {{ $df.serviceSpec.type | default "ClusterIP" }}
     {{- if $df.serviceSpec.name }}
-    name: {{ $df.serviceSpec.name }}
+    name: {{ $df.serviceSpec.name | quote }}
     {{- end }}
     {{- if $df.serviceSpec.nodePort }}
     nodePort: {{ $df.serviceSpec.nodePort }}

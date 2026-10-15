@@ -10,7 +10,7 @@ and "svc" (the merged service config dict containing flagger sub-config).
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
-  name: {{ $serviceName }}
+  name: {{ $serviceName | quote }}
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.serviceLabels" (dict "root" .root "key" .key "svc" .svc) | nindent 4 }}
@@ -19,7 +19,7 @@ spec:
   targetRef:
     apiVersion: serving.knative.dev/v1
     kind: Service
-    name: {{ $serviceName }}
+    name: {{ $serviceName | quote }}
   progressDeadlineSeconds: {{ $flagger.analysis.progressDeadlineSeconds }}
   analysis:
     interval: {{ $flagger.analysis.interval }}

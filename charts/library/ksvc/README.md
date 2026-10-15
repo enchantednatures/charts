@@ -43,6 +43,21 @@ Use `nameOverride: ""` on a service entry to produce just `<release>` with no su
 
 ObjectBucketClaim names are sanitized the same way as the others: truncated to 63 chars, trailing `-` trimmed, and `_` replaced with `-`. The provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
 
+## Labels
+
+Every rendered resource carries the standard labels:
+
+| Label | Value |
+|-------|-------|
+| `app.kubernetes.io/name` | The **application**: the consumer chart name, or `global.nameOverride` when set. It identifies the app, never the release instance. On per-service resources it is the service map key (the component). |
+| `app.kubernetes.io/instance` | The **release instance** — the fullname (`global.fullnameOverride` when set, otherwise the release name). |
+| `app.kubernetes.io/component` | The component within the release (`database`, `cache`, `event-source`, …); on per-service resources it is the service map key. |
+| `app.kubernetes.io/version` | The consumer chart's `appVersion`. |
+| `app.kubernetes.io/managed-by` | The Helm release service (`Helm`). |
+| `helm.sh/chart` | The **consumer** chart name and version (for example `my-service-0.1.0`). It reflects the chart that pulls in `ksvc`, not `ksvc` itself — intentional library behavior. |
+
+All label values and resource `metadata.name`s are rendered as quoted strings, so a numeric-looking `global.fullnameOverride` (for example `"123"`) can never become a YAML integer that the API server would reject. Additional labels are merged in via `global.labels` and, per service, `services.<key>.labels`.
+
 ## Quick Start
 
 1.  Create a new Helm chart:
@@ -158,7 +173,7 @@ per-entry schemas are documented in the sections following the table.
 | global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
 | global.imagePullSecrets | list | `[]` | List of imagePullSecrets applied to every rendered workload's pod spec, in addition to that workload's own `imagePullSecrets`: the Knative Services (`services.<key>.image.imagePullSecrets`), the Kafka DLQ service (`kafka.sources.<key>.dlq.imagePullSecrets`), and the CNPG PostgreSQL cluster (`postgres.imagePullSecrets`). Same shape as the per-service field — a list of `{name: <secret>}` objects. |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
-| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
+| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). Also sets the `app.kubernetes.io/name` label on every rendered resource. |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
 | kyverno.enabled | bool | `false` | Render the Kyverno admission policies. |
 | kyverno.scaling.apiVersion | string | `"policies.kyverno.io/v1beta1"` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` for Kyverno >= 1.16, `policies.kyverno.io/v1` for Kyverno >= 1.17). |
