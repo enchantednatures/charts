@@ -69,6 +69,74 @@ tests:
           path: metadata.name
           value: test-release-events-dlq
 
+  - it: should pin the DLQ image to a versioned tag
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:v1.17.0
+
+  - it: should allow overriding the DLQ image tag
+    set:
+      kafka.sources.events.dlq.image.tag: "v1.18.0"
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:v1.18.0
+
+  # The DLQ container must get the same restricted profile as main services.
+  - it: should apply the restricted security context to the DLQ container
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 10001
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value:
+            - ALL
+
+  - it: should add a writable tmp volume for the read-only root filesystem
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /tmp
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.volumes[0].emptyDir
+          value: {}
+
+  - it: should allow overriding the DLQ security context
+    set:
+      kafka.sources.events.dlq.securityContext.runAsUser: 20002
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 20002
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+
   - it: should set dead letter sink when DLQ enabled
     documentIndex: 1
     asserts:
