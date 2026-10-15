@@ -75,10 +75,40 @@ OBJECT_BUCKET_CRDS := \
 define apply-with-retry
 	@for url in $(1); do \
 		echo "Installing CRD: $$url"; \
+		success=0; \
 		for i in 1 2 3; do \
-			kubectl apply --server-side -f "$$url" && break; \
-			echo "  Attempt $$i failed, retrying in 5s..." && sleep 5; \
+			if kubectl apply --server-side -f "$$url"; then success=1; break; fi; \
+			echo "  Attempt $$i failed, retrying in 5s..."; \
+			sleep 5; \
 		done; \
+		if [ "$$success" -ne 1 ]; then \
+			echo "ERROR: failed to apply $$url after 3 attempts"; \
+			exit 1; \
+		fi; \
+	done
+endef
+
+# ---------------------------------------------------------------------------
+# Helper: wait for CRDs to become Established, with retries
+#
+# A freshly applied CRD may not yet have .status.conditions populated when
+# kubectl reads it, which makes `kubectl wait` abort with an "accessor error"
+# instead of retrying. Retry the wait so the transient race does not fail CI,
+# and only report failure (non-zero) after the final attempt.
+# ---------------------------------------------------------------------------
+define wait-established
+	@for crd in $(1); do \
+		echo "Waiting for CRD to be Established: $$crd"; \
+		success=0; \
+		for i in 1 2 3 4 5; do \
+			if kubectl wait --for=condition=Established "crd/$$crd" --timeout=30s; then success=1; break; fi; \
+			echo "  Attempt $$i failed, retrying in 5s..."; \
+			sleep 5; \
+		done; \
+		if [ "$$success" -ne 1 ]; then \
+			echo "ERROR: crd/$$crd did not become Established after 5 attempts"; \
+			exit 1; \
+		fi; \
 	done
 endef
 
@@ -88,7 +118,7 @@ endef
 .PHONY: install-knative
 install-knative: ## Install Knative Serving CRDs
 	$(call apply-with-retry,$(KNATIVE_SERVING_CRDS))
-	kubectl wait --for=condition=Established crd/services.serving.knative.dev --timeout=60s
+	$(call wait-established,services.serving.knative.dev)
 
 .PHONY: install-cnpg
 install-cnpg: ## Install CloudNativePG CRDs
@@ -109,8 +139,7 @@ install-kafka: ## Install Kafka (KafkaSource) CRDs
 .PHONY: install-eventing
 install-eventing: ## Install Knative Eventing CRDs (Broker, Trigger)
 	$(call apply-with-retry,$(EVENTING_CRDS))
-	kubectl wait --for=condition=Established crd/brokers.eventing.knative.dev --timeout=60s
-	kubectl wait --for=condition=Established crd/triggers.eventing.knative.dev --timeout=60s
+	$(call wait-established,brokers.eventing.knative.dev triggers.eventing.knative.dev)
 
 .PHONY: install-dragonfly
 install-dragonfly: ## Install DragonflyDB CRDs
