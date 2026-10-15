@@ -4,11 +4,11 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: {{ $pgName }}
+  name: {{ $pgName | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: database
+    app.kubernetes.io/component: {{ "database" | quote }}
 spec:
   {{- /* Effective secrets = the cluster's own list then the global list; empty
          (both empty) renders nothing. */}}

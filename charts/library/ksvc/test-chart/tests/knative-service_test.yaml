@@ -141,12 +141,18 @@ tests:
       - hasDocuments:
           count: 1
 
-  - it: should include component label
+  - it: should set standard app labels (name = service key, instance = release fullname)
     documentIndex: 0
     asserts:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: api
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: api
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: test-release
 
   - it: should render multiple services
     set:
@@ -182,6 +188,22 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: api
+
+  - it: should render a numeric fullnameOverride as a quoted string label and name
+    set:
+      global.fullnameOverride: "123"
+      services.api.nameOverride: ""
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: api
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: "123"
+      - equal:
+          path: metadata.name
+          value: "123"
 
   - it: should render per-service imagePullSecrets
     set:

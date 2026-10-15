@@ -4,11 +4,11 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: {{ $pgName }}-alerts
+  name: "{{ $pgName }}-alerts"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app: {{ $pgName }}
+    app: {{ $pgName | quote }}
     {{- $mon := .Values.postgres.monitoring }}
     {{- $ruleLabels := $mon.prometheusRuleLabels }}
     {{- if not (hasKey $mon "prometheusRuleLabels") }}

@@ -11,23 +11,23 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ $serverSecretName }}
+  name: {{ $serverSecretName | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: database
+    app.kubernetes.io/component: {{ "database" | quote }}
     cnpg.io/reload: ""
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ $pgName }}-server-cert
+  name: "{{ $pgName }}-server-cert"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: database
+    app.kubernetes.io/component: {{ "database" | quote }}
 spec:
-  secretName: {{ $serverSecretName }}
+  secretName: {{ $serverSecretName | quote }}
   usages:
     - server auth
   dnsNames:
@@ -41,35 +41,35 @@ spec:
     - {{ $pgName }}-ro.{{ .Release.Namespace }}
     - {{ $pgName }}-ro.{{ .Release.Namespace }}.svc
   issuerRef:
-    name: {{ $issuerName }}
+    name: {{ $issuerName | quote }}
     kind: {{ $issuerKind }}
     group: {{ $issuerGroup }}
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ $clientSecretName }}
+  name: {{ $clientSecretName | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: database
+    app.kubernetes.io/component: {{ "database" | quote }}
     cnpg.io/reload: ""
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ $pgName }}-client-cert
+  name: "{{ $pgName }}-client-cert"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: database
+    app.kubernetes.io/component: {{ "database" | quote }}
 spec:
-  secretName: {{ $clientSecretName }}
+  secretName: {{ $clientSecretName | quote }}
   usages:
     - client auth
   commonName: streaming_replica
   issuerRef:
-    name: {{ $issuerName }}
+    name: {{ $issuerName | quote }}
     kind: {{ $issuerKind }}
     group: {{ $issuerGroup }}
 {{- end }}

@@ -22,7 +22,7 @@ and "svc" (the merged service config dict).
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: {{ $serviceName }}
+  name: {{ $serviceName | quote }}
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.serviceLabels" (dict "root" .root "key" .key "svc" $svc) | nindent 4 }}

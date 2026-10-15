@@ -9,11 +9,11 @@ and "source" (the merged kafka source config dict containing dlq sub-config).
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: {{ $dlqName }}
+  name: {{ $dlqName | quote }}
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.labels" .root | nindent 4 }}
-    app.kubernetes.io/component: dlq-handler
+    app.kubernetes.io/component: {{ "dlq-handler" | quote }}
 spec:
   template:
     metadata:

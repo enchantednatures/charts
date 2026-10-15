@@ -4,14 +4,14 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Pooler
 metadata:
-  name: {{ $pgName }}-pooler
+  name: "{{ $pgName }}-pooler"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: database
+    app.kubernetes.io/component: {{ "database" | quote }}
 spec:
   cluster:
-    name: {{ $pgName }}
+    name: {{ $pgName | quote }}
   instances: {{ $pooler.instances }}
   type: {{ $pooler.type }}
   pgbouncer:
