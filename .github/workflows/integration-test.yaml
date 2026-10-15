@@ -140,9 +140,7 @@ jobs:
         run: make install-knative
 
       - name: Resolve app chart dependency locally
-        run: |
-          sed -i 's|repository: oci://ghcr.io/enchantednatures/charts|repository: "file://../../library/ksvc"|' charts/app/ksvc/Chart.yaml
-          helm dependency update charts/app/ksvc
+        run: hack/lint-app.sh
 
       - name: Helm dry-run install app chart
         run: |
