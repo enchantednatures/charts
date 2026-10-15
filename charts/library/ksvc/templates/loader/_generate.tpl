@@ -227,7 +227,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "backup" (dict "enabled" true "schedule" "0 2 * * *" "target" "prefer-standby" "retentionPolicy" "30d"
       "objectStore" (dict "bucketRef" "" "destinationPath" "" "endpointURL" ""
         "s3Credentials" (dict "secretName" "postgres-backup-storage" "accessKeyIdKey" "ACCESS_KEY_ID" "secretAccessKeyKey" "ACCESS_SECRET_KEY")
-        "data" (dict "compression" "zstd" "jobs" 2)
+        "data" (dict "compression" "gzip" "jobs" 2)
         "wal" (dict "compression" "gzip" "maxParallel" 4)
       )
     )

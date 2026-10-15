@@ -55,7 +55,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.0
+        version: 0.7.1
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 

@@ -25,7 +25,7 @@ spec:
     {{- toYaml $pg.resources | nindent 4 }}
   storage:
     size: {{ $pg.storage.size | quote }}
-    storageClassName: {{ $pg.storage.storageClassName | quote }}
+    storageClass: {{ $pg.storage.storageClassName | quote }}
   {{- if $pg.backup.enabled }}
   plugins:
     - name: barman-cloud.cloudnative-pg.io
@@ -44,7 +44,4 @@ spec:
     clientCASecret: {{ include "ksvc.postgresClientTLSSecret" . }}
     replicationTLSSecret: {{ include "ksvc.postgresClientTLSSecret" . }}
   {{- end }}
-  monitoring:
-    enabled: {{ $pg.monitoring.enabled }}
-    podMonitorEnabled: {{ $pg.monitoring.enabled }}
 {{- end }}
