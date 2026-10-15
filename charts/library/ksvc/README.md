@@ -98,6 +98,21 @@ The chart renders a hardened security profile by default and can additionally re
 
 Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); without one the resources are inert. Enabling a policy also blocks cross-namespace metrics scrapes of the selected pods unless they are allowed through `extraIngress`.
 
+## Defaults & value precedence
+
+`ksvc` is a library chart, and **Helm never merges a library chart's `values.yaml` into the consumer's values**. The defaults a release actually uses are computed at render time by `ksvc.loader.generate` from [`templates/loader/_defaults.tpl`](templates/loader/_defaults.tpl):
+
+1.  The **consumer's values** (`values.yaml`, `--set`, `-f`) are the only inputs that exist in `.Values`.
+2.  The loader merges its built-in defaults **under** them — consumer values always win, field by field, via `mustMergeOverwrite` — and renders from that effective result. (`import-values` is **not** used and is not a substitute: it re-publishes a child chart's `.Values`, which would put the defaults back into the consumer's `.Values` and reintroduce the drift this design removes.)
+3.  The loader **never writes the defaults back into `.Values`**. After rendering, `.Values` still contains exactly what the consumer passed — hooks, side templates, and consumer helpers that read `.Values` see raw values, never injected defaults, and a second include cannot re-merge the first include's output.
+
+Consequences:
+
+*   **Include `ksvc.loader.generate` exactly once per release.** It renders the complete resource set; a second include renders every resource again (duplicated manifests), even though it no longer corrupts `.Values`.
+*   **The library `values.yaml` is documentation, not runtime input.** It is the [helm-docs](https://github.com/norwoodj/helm-docs) source for the [values reference](#values-reference) below and the schema validated in CI; a running release never reads it.
+*   **Set what you want to control.** Every default listed below can be overridden by setting the key in your own `values.yaml`; unset keys keep the loader default.
+*   **Defaults have a single copy.** The literals live in `templates/loader/_defaults.tpl` and are kept in sync with `values.yaml` by `make check-defaults-parity` (CI job `defaults-parity`), which renders the raw defaults and compares them leaf-by-leaf against `values.yaml`, with a tiny explicit allowlist for intentional divergences (`defaults-parity.allow`). Change a default in one place without the other and CI fails.
+
 ## Quick Start
 
 1.  Create a new Helm chart:
@@ -110,7 +125,7 @@ Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); 
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.14
+        version: 0.7.15
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -336,7 +351,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
 | `kafka.sources.<key>.sink` | **Required.** Key from the `services` map | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
-| `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
+| `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc.cluster.local:9092]` |
 | `kafka.sources.<key>.consumers` | Concurrent consumers per replica | `3` |
 | `kafka.sources.<key>.initialOffset` | `latest` or `earliest` | `latest` |
 | `kafka.sources.<key>.delivery.retry` | Delivery retry count | `5` |
