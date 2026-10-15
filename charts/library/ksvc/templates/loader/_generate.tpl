@@ -53,6 +53,10 @@ merged. We must apply defaults explicitly before rendering.
 ---
   {{- include "ksvc.class.cnpgPooler" . | nindent 0 }}
     {{- end }}
+    {{- if and .Values.postgres.networkPolicy .Values.postgres.networkPolicy.enabled }}
+---
+  {{- include "ksvc.class.cnpgNetworkPolicy" . | nindent 0 }}
+    {{- end }}
     {{- if and .Values.postgres.backup .Values.postgres.backup.enabled }}
 ---
   {{- include "ksvc.class.cnpgObjectStore" . | nindent 0 }}
@@ -91,6 +95,10 @@ merged. We must apply defaults explicitly before rendering.
   {{- if and .Values.dragonfly .Values.dragonfly.enabled }}
 ---
   {{- include "ksvc.class.dragonfly" . | nindent 0 }}
+    {{- if and .Values.dragonfly.networkPolicy .Values.dragonfly.networkPolicy.enabled }}
+---
+  {{- include "ksvc.class.dragonflyNetworkPolicy" . | nindent 0 }}
+    {{- end }}
     {{- if and .Values.dragonfly.tls .Values.dragonfly.tls.certManager .Values.dragonfly.tls.certManager.enabled }}
 ---
   {{- include "ksvc.class.certManagerDragonfly" . | nindent 0 }}
@@ -219,6 +227,14 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $rawPgCredAccess := $pgCredsRaw.accessKeyIdKey | default "" -}}
   {{- $rawPgCredSecretKey := $pgCredsRaw.secretAccessKeyKey | default "" -}}
   {{- $pgCredsProvided := or $rawPgCredSecret $rawPgCredAccess $rawPgCredSecretKey -}}
+  {{/* An explicitly empty securityContext ({} or null) opts out of the
+       hardened pooler default; must be detected on the RAW values because the
+       merge below cannot unset fields. */}}
+  {{- $pgPoolerSCExplicitEmpty := false -}}
+  {{- $pgPoolerRaw := $pgRaw.pooler | default dict -}}
+  {{- if hasKey $pgPoolerRaw "securityContext" -}}
+    {{- $pgPoolerSCExplicitEmpty = eq (len ($pgPoolerRaw.securityContext | default dict)) 0 -}}
+  {{- end -}}
   {{- $pgDefaults := dict
     "enabled" false
     "version" "16"
@@ -233,7 +249,14 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "pooler" (dict "enabled" true "instances" 3 "type" "rw" "poolMode" "transaction"
       "parameters" (dict "max_client_conn" "300" "default_pool_size" "25" "reserve_pool_size" "5" "reserve_pool_timeout" "5" "max_db_connections" "100" "server_lifetime" "3600" "server_idle_timeout" "600" "log_connections" "1" "log_disconnections" "1" "log_pooler_errors" "1")
       "resources" (dict "requests" (dict "cpu" "100m" "memory" "128Mi") "limits" (dict "cpu" "500m" "memory" "256Mi"))
+      "securityContext" (dict
+        "runAsNonRoot" true
+        "allowPrivilegeEscalation" false
+        "seccompProfile" (dict "type" "RuntimeDefault")
+        "capabilities" (dict "drop" (list "ALL"))
+      )
     )
+    "networkPolicy" (dict "enabled" false "extraIngress" (list))
     "backup" (dict "enabled" true "schedule" "0 2 * * *" "target" "prefer-standby" "retentionPolicy" "30d"
       "objectStore" (dict "bucketRef" "" "destinationPath" "" "endpointURL" ""
         "s3Credentials" (dict "secretName" "postgres-backup-storage" "accessKeyIdKey" "ACCESS_KEY_ID" "secretAccessKeyKey" "ACCESS_SECRET_KEY")
@@ -246,6 +269,9 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   -}}
   {{- $pg := .Values.postgres | default dict -}}
   {{- $_ := set .Values "postgres" (mustMergeOverwrite $pgDefaults $pg) -}}
+  {{- if $pgPoolerSCExplicitEmpty -}}
+    {{- $_ := set .Values.postgres.pooler "securityContext" (dict) -}}
+  {{- end -}}
 
   {{/* --- postgres bucketRef wiring (objectBuckets entries are defaulted above) --- */}}
   {{- if and $rawPgBucketRef (hasKey (.Values.objectBuckets | default dict) $rawPgBucketRef) -}}
@@ -266,6 +292,18 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- end -}}
 
   {{/* --- dragonfly defaults --- */}}
+  {{/* Explicitly-empty security contexts ({} or null) opt out of the hardened
+       defaults; detected on the RAW values before the merge, which cannot
+       unset fields. */}}
+  {{- $dfRaw := .Values.dragonfly | default dict -}}
+  {{- $dfPodSCExplicitEmpty := false -}}
+  {{- if hasKey $dfRaw "podSecurityContext" -}}
+    {{- $dfPodSCExplicitEmpty = eq (len ($dfRaw.podSecurityContext | default dict)) 0 -}}
+  {{- end -}}
+  {{- $dfCtrSCExplicitEmpty := false -}}
+  {{- if hasKey $dfRaw "containerSecurityContext" -}}
+    {{- $dfCtrSCExplicitEmpty = eq (len ($dfRaw.containerSecurityContext | default dict)) 0 -}}
+  {{- end -}}
   {{- $dfDefaults := dict
     "enabled" false
     "replicas" 3
@@ -281,17 +319,32 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     )
     "serviceSpec" (dict "type" "ClusterIP" "name" "" "nodePort" 0 "annotations" (dict) "labels" (dict))
     "pdb" (dict "minAvailable" 2 "maxUnavailable" 0)
+    "networkPolicy" (dict "enabled" false "extraIngress" (list))
     "affinity" (dict)
     "tolerations" (list)
     "topologySpreadConstraints" (list)
     "nodeSelector" (dict)
-    "podSecurityContext" (dict)
-    "containerSecurityContext" (dict)
+    "podSecurityContext" (dict
+      "fsGroup" 999
+      "seccompProfile" (dict "type" "RuntimeDefault")
+    )
+    "containerSecurityContext" (dict
+      "runAsNonRoot" true
+      "allowPrivilegeEscalation" false
+      "seccompProfile" (dict "type" "RuntimeDefault")
+      "capabilities" (dict "drop" (list "ALL"))
+    )
     "serviceAccountName" ""
     "priorityClassName" ""
   -}}
   {{- $df := .Values.dragonfly | default dict -}}
   {{- $_ := set .Values "dragonfly" (mustMergeOverwrite $dfDefaults $df) -}}
+  {{- if $dfPodSCExplicitEmpty -}}
+    {{- $_ := set .Values.dragonfly "podSecurityContext" (dict) -}}
+  {{- end -}}
+  {{- if $dfCtrSCExplicitEmpty -}}
+    {{- $_ := set .Values.dragonfly "containerSecurityContext" (dict) -}}
+  {{- end -}}
 
   {{/* --- kyverno defaults --- */}}
   {{- $kyvernoDefaults := dict

@@ -185,6 +185,24 @@
             },
             "resources": {
               "$ref": "#/$defs/resources"
+            },
+            "securityContext": {
+              "type": "object"
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "extraIngress": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
             }
           }
         },
@@ -492,6 +510,21 @@
             "maxUnavailable": {
               "type": "integer",
               "minimum": 0
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "extraIngress": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
             }
           }
         },

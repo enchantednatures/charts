@@ -27,6 +27,10 @@ spec:
     spec:
       containers:
         - name: pgbouncer
+          {{- if $pooler.securityContext }}
+          securityContext:
+            {{- toYaml $pooler.securityContext | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml $pooler.resources | nindent 12 }}
 {{- end }}

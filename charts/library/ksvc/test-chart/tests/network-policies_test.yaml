@@ -1,0 +1,187 @@
+suite: network policy tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  postgres.enabled: true
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: false
+  postgres.pooler.enabled: true
+  dragonfly.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # Default render order: 0 = Knative Service, 1 = CNPG Cluster, 2 = Pooler,
+  # 3 = CNPG NetworkPolicy (opt-in), 4 = Dragonfly, 5 = Dragonfly NetworkPolicy
+  # (opt-in). The opt-in policies are disabled by default, so the baseline
+  # document count must stay at 4.
+  - it: "renders no NetworkPolicy by default (opt-in, policies off)"
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  - it: "renders one NetworkPolicy per datastore when enabled"
+    set:
+      postgres.networkPolicy.enabled: true
+      dragonfly.networkPolicy.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 6
+
+  - it: "renders the CNPG NetworkPolicy as ingress-only, selecting the cluster pods on port 5432"
+    set:
+      postgres.networkPolicy.enabled: true
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: apiVersion
+          value: networking.k8s.io/v1
+      - equal:
+          path: metadata.name
+          value: "test-release-postgres-network-policy"
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: database
+      - equal:
+          path: spec.podSelector.matchLabels["cnpg.io/cluster"]
+          value: test-release-postgres
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - podSelector: {}
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - protocol: TCP
+              port: 5432
+      - notExists:
+          path: spec.egress
+
+  - it: "appends postgres extraIngress rules verbatim"
+    set:
+      postgres.networkPolicy.enabled: true
+      postgres.networkPolicy.extraIngress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: monitoring
+          ports:
+            - protocol: TCP
+              port: 5432
+    documentIndex: 3
+    asserts:
+      - lengthEqual:
+          path: spec.ingress
+          count: 2
+      - equal:
+          path: spec.ingress[1]
+          value:
+            from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+            ports:
+              - protocol: TCP
+                port: 5432
+
+  - it: "renders the Dragonfly NetworkPolicy selecting the operator's pod labels on port 6379"
+    set:
+      dragonfly.networkPolicy.enabled: true
+    documentIndex: 4
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: apiVersion
+          value: networking.k8s.io/v1
+      - equal:
+          path: metadata.name
+          value: "test-release-dragonfly-network-policy"
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: cache
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/name"]
+          value: dragonfly
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/part-of"]
+          value: dragonfly
+      - equal:
+          path: spec.podSelector.matchLabels["app"]
+          value: test-release-dragonfly
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - podSelector: {}
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - protocol: TCP
+              port: 6379
+      - notExists:
+          path: spec.egress
+
+  - it: "appends dragonfly extraIngress rules verbatim"
+    set:
+      dragonfly.networkPolicy.enabled: true
+      dragonfly.networkPolicy.extraIngress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: monitoring
+    documentIndex: 4
+    asserts:
+      - lengthEqual:
+          path: spec.ingress
+          count: 2
+      - equal:
+          path: spec.ingress[1].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: monitoring
+
+  - it: "carries global.annotations on both NetworkPolicies when set"
+    set:
+      postgres.networkPolicy.enabled: true
+      dragonfly.networkPolicy.enabled: true
+      global.annotations.team: platform
+    asserts:
+      - equal:
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 3
+      - equal:
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 5
+
+  - it: "renders no CNPG NetworkPolicy when postgres is disabled even with networkPolicy.enabled"
+    set:
+      postgres.enabled: false
+      postgres.networkPolicy.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: "renders no Dragonfly NetworkPolicy when dragonfly is disabled even with networkPolicy.enabled"
+    set:
+      dragonfly.enabled: false
+      dragonfly.networkPolicy.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3

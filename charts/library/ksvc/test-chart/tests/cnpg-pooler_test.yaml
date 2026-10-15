@@ -76,3 +76,47 @@ tests:
           value: "250m"
       - notExists:
           path: spec.template.spec.resources
+
+  - it: "defaults the pgbouncer container to a restricted securityContext (non-root, no privilege escalation, all caps dropped, RuntimeDefault seccomp)"
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value:
+            - ALL
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+
+  - it: "lets consumers override the pooler securityContext"
+    set:
+      postgres.pooler.securityContext.runAsNonRoot: false
+      postgres.pooler.securityContext.runAsUser: 999
+      postgres.pooler.securityContext.allowPrivilegeEscalation: true
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 999
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: true
+
+  - it: "lets consumers opt out of the pooler securityContext with an explicit empty map"
+    set:
+      postgres.pooler.securityContext: {}
+    documentIndex: 2
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext
