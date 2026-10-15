@@ -61,9 +61,11 @@ All label values and resource `metadata.name`s are rendered as quoted strings, s
 
 ## Annotations
 
-`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
+`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates and Issuers, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
 
-When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server/client TLS secrets and the Dragonfly TLS secret). It carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
+When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server TLS, server CA, client CA and client (`streaming_replica`) TLS secrets, plus the Dragonfly TLS secret). Each carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
+
+For CloudNativePG the chart issues the certificates itself from your configured `issuerRef`: it creates a **server CA** and a **client CA** `Certificate` (`isCA: true`) signed by that issuer, two namespaced intermediate `Issuer`s backed by the corresponding CA Secrets, and finally the server and `streaming_replica` leaf `Certificate`s signed by those chart-managed issuers. Your issuer must therefore be CA-capable — able to issue a CA certificate and populate its Secret's `ca.crt`, which CloudNativePG reads from the CA Secrets (`serverCASecret` for server validation, `clientCASecret` for verifying general mTLS client certificates).
 
 ## Quick Start
 
@@ -77,7 +79,7 @@ When cert-manager integration is enabled the chart additionally renders a minima
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.11
+        version: 0.7.12
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 

@@ -14,9 +14,9 @@ global:
 
   # -- Annotations added to every rendered resource (Knative Services and DLQ
   # services, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/
-  # PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates, Kyverno
-  # policies). Merged with each resource's own annotations; when empty no
-  # resource renders an `annotations:` block.
+  # PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates and
+  # Issuers, Kyverno policies). Merged with each resource's own annotations;
+  # when empty no resource renders an `annotations:` block.
   annotations: {}
 
   # -- List of imagePullSecrets applied to every rendered workload's pod spec,
@@ -412,19 +412,33 @@ postgres:
   # Requires cert-manager CRDs and an Issuer/ClusterIssuer in the cluster.
   certManager:
     # -- Generate PostgreSQL TLS certificates via cert-manager.
-    # The chart also renders a minimal placeholder Secret (metadata only, plus
-    # `helm.sh/resource-policy: keep` — no `data:` field). Helm therefore never
-    # deletes it or reverts it to an empty template on upgrade; cert-manager
-    # owns and populates `tls.crt`/`ca.crt`, and re-issues if the Secret is
-    # missing. The Secret is kept across `helm uninstall`.
+    # The chart renders four distinct placeholder Secrets — server TLS,
+    # **server CA**, **client CA** and client (`streaming_replica`) TLS — plus
+    # the cert-manager resources that populate them: two CA `Certificate`s
+    # (`isCA: true`) signed by `issuerRef`, two namespaced intermediate
+    # `Issuer`s backed by those CA Secrets, and the two leaf `Certificate`s
+    # they sign. CloudNativePG therefore receives a dedicated server CA for
+    # server validation and a dedicated client-auth CA for verifying client
+    # certificates — never a leaf secret (whose `ca.crt` cannot vouch for
+    # general mTLS clients).
+    # `issuerRef` MUST name a CA-capable cert-manager issuer (a CA-backed
+    # `Issuer`/`ClusterIssuer` or a `SelfSigned` issuer) that can issue a CA
+    # certificate and populate its Secret's `ca.crt` — CloudNativePG reads
+    # `ca.crt` from the CA Secrets; the chart-managed intermediate issuers sign
+    # the leaves.
+    # Each placeholder Secret is metadata only (no `data:` field) and carries
+    # `helm.sh/resource-policy: keep`, so Helm never deletes it or reverts it
+    # to an empty template on upgrade; cert-manager owns and populates
+    # `tls.crt`/`ca.crt`, and re-issues if the Secret is missing. The Secrets
+    # are kept across `helm uninstall`.
     enabled: false
     # Override global.certManager.issuerRef for postgres certificates
     issuerRef:
-      # -- Override `global.certManager.issuerRef` for PostgreSQL certificates.
+      # -- Override `global.certManager.issuerRef`. This issuer signs the two generated CA certificates (server CA + client CA); the chart-managed intermediate issuers sign the leaf certificates. Must be CA-capable.
       name: ""
-      # -- Kind of the PostgreSQL cert-manager issuer.
+      # -- Kind of the PostgreSQL cert-manager issuer that signs the generated CA certificates.
       kind: ""
-      # -- API group of the PostgreSQL cert-manager issuer.
+      # -- API group of the PostgreSQL cert-manager issuer that signs the generated CA certificates.
       group: ""
 
 # =============================================================================

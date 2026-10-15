@@ -51,8 +51,8 @@ spec:
   {{- if and $pg.certManager $pg.certManager.enabled }}
   certificates:
     serverTLSSecret: {{ include "ksvc.postgresServerTLSSecret" . }}
-    serverCASecret: {{ include "ksvc.postgresServerTLSSecret" . }}
-    clientCASecret: {{ include "ksvc.postgresClientTLSSecret" . }}
+    serverCASecret: {{ include "ksvc.postgresServerCASecret" . }}
+    clientCASecret: {{ include "ksvc.postgresClientCASecret" . }}
     replicationTLSSecret: {{ include "ksvc.postgresClientTLSSecret" . }}
   {{- end }}
 {{- end }}

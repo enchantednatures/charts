@@ -61,8 +61,26 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- printf "%s-postgres-server-tls" (include "ksvc.fullname" .) }}
 {{- end }}
 
+{{/*
+ksvc.postgresServerCASecret — Secret holding the server CA that signs the CNPG
+server leaf certificate. CloudNativePG reads the `ca.crt` key from it.
+*/}}
+{{- define "ksvc.postgresServerCASecret" -}}
+{{- printf "%s-postgres-server-ca" (include "ksvc.fullname" .) }}
+{{- end }}
+
 {{- define "ksvc.postgresClientTLSSecret" -}}
 {{- printf "%s-postgres-client-tls" (include "ksvc.fullname" .) }}
+{{- end }}
+
+{{/*
+ksvc.postgresClientCASecret — Secret holding the dedicated client-auth CA that
+signs the replication/client leaf certificate. CloudNativePG reads the `ca.crt`
+key from it to verify general mTLS client certificates — it must NOT be the
+replication leaf secret.
+*/}}
+{{- define "ksvc.postgresClientCASecret" -}}
+{{- printf "%s-postgres-client-ca" (include "ksvc.fullname" .) }}
 {{- end }}
 
 {{- define "ksvc.dragonflyServerTLSSecret" -}}

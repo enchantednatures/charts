@@ -23,7 +23,7 @@ keywords:
   - kafka
 dependencies:
   - name: ksvc
-    version: 0.7.11
+    version: 0.7.12
     repository: oci://ghcr.io/enchantednatures/charts
 annotations:
   artifacthub.io/category: integration-delivery

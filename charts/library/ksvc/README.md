@@ -60,9 +60,11 @@ All label values and resource `metadata.name`s are rendered as quoted strings, s
 
 ## Annotations
 
-`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
+`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates and Issuers, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
 
-When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server/client TLS secrets and the Dragonfly TLS secret). It carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
+When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server TLS, server CA, client CA and client (`streaming_replica`) TLS secrets, plus the Dragonfly TLS secret). Each carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
+
+For CloudNativePG the chart issues the certificates itself from your configured `issuerRef`: it creates a **server CA** and a **client CA** `Certificate` (`isCA: true`) signed by that issuer, two namespaced intermediate `Issuer`s backed by the corresponding CA Secrets, and finally the server and `streaming_replica` leaf `Certificate`s signed by those chart-managed issuers. Your issuer must therefore be CA-capable — able to issue a CA certificate and populate its Secret's `ca.crt`, which CloudNativePG reads from the CA Secrets (`serverCASecret` for server validation, `clientCASecret` for verifying general mTLS client certificates).
 
 ## Quick Start
 
@@ -76,7 +78,7 @@ When cert-manager integration is enabled the chart additionally renders a minima
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.11
+        version: 0.7.12
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -172,7 +174,7 @@ per-entry schemas are documented in the sections following the table.
 | dragonfly.tls.secretName | string | `""` | Secret containing `tls.crt`/`tls.key`. Ignored when `tls.certManager.enabled` is true. |
 | dragonfly.tolerations | list | `[]` | Pod tolerations. |
 | dragonfly.topologySpreadConstraints | list | `[]` | Pod topology spread constraints. |
-| global.annotations | object | `{}` | Annotations added to every rendered resource (Knative Services and DLQ services, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/ PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates, Kyverno policies). Merged with each resource's own annotations; when empty no resource renders an `annotations:` block. |
+| global.annotations | object | `{}` | Annotations added to every rendered resource (Knative Services and DLQ services, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/ PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates and Issuers, Kyverno policies). Merged with each resource's own annotations; when empty no resource renders an `annotations:` block. |
 | global.certManager.issuerRef.group | string | `"cert-manager.io"` | API group of the default cert-manager issuer. |
 | global.certManager.issuerRef.kind | string | `"ClusterIssuer"` | Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`). |
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
@@ -199,10 +201,10 @@ per-entry schemas are documented in the sections following the table.
 | postgres.backup.retentionPolicy | string | `"30d"` | Backup retention period (e.g. `30d`). |
 | postgres.backup.schedule | string | `"0 2 * * *"` | Cron schedule for backups. |
 | postgres.backup.target | string | `"prefer-standby"` | Backup target (`prefer-standby` or `primary`). |
-| postgres.certManager.enabled | bool | `false` | Generate PostgreSQL TLS certificates via cert-manager. The chart also renders a minimal placeholder Secret (metadata only, plus `helm.sh/resource-policy: keep` — no `data:` field). Helm therefore never deletes it or reverts it to an empty template on upgrade; cert-manager owns and populates `tls.crt`/`ca.crt`, and re-issues if the Secret is missing. The Secret is kept across `helm uninstall`. |
-| postgres.certManager.issuerRef.group | string | `""` | API group of the PostgreSQL cert-manager issuer. |
-| postgres.certManager.issuerRef.kind | string | `""` | Kind of the PostgreSQL cert-manager issuer. |
-| postgres.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for PostgreSQL certificates. |
+| postgres.certManager.enabled | bool | `false` | Generate PostgreSQL TLS certificates via cert-manager. The chart renders four distinct placeholder Secrets — server TLS, **server CA**, **client CA** and client (`streaming_replica`) TLS — plus the cert-manager resources that populate them: two CA `Certificate`s (`isCA: true`) signed by `issuerRef`, two namespaced intermediate `Issuer`s backed by those CA Secrets, and the two leaf `Certificate`s they sign. CloudNativePG therefore receives a dedicated server CA for server validation and a dedicated client-auth CA for verifying client certificates — never a leaf secret (whose `ca.crt` cannot vouch for general mTLS clients). `issuerRef` MUST name a CA-capable cert-manager issuer (a CA-backed `Issuer`/`ClusterIssuer` or a `SelfSigned` issuer) that can issue a CA certificate and populate its Secret's `ca.crt` — CloudNativePG reads `ca.crt` from the CA Secrets; the chart-managed intermediate issuers sign the leaves. Each placeholder Secret is metadata only (no `data:` field) and carries `helm.sh/resource-policy: keep`, so Helm never deletes it or reverts it to an empty template on upgrade; cert-manager owns and populates `tls.crt`/`ca.crt`, and re-issues if the Secret is missing. The Secrets are kept across `helm uninstall`. |
+| postgres.certManager.issuerRef.group | string | `""` | API group of the PostgreSQL cert-manager issuer that signs the generated CA certificates. |
+| postgres.certManager.issuerRef.kind | string | `""` | Kind of the PostgreSQL cert-manager issuer that signs the generated CA certificates. |
+| postgres.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef`. This issuer signs the two generated CA certificates (server CA + client CA); the chart-managed intermediate issuers sign the leaf certificates. Must be CA-capable. |
 | postgres.enabled | bool | `false` | Enable the CloudNativePG PostgreSQL cluster. |
 | postgres.imageCatalog.name | string | `"postgresql"` | Name of the ClusterImageCatalog to pull the PostgreSQL image from. |
 | postgres.imagePullSecrets | list | `[]` | List of imagePullSecrets for the CNPG PostgreSQL cluster pods (private registries), applied in addition to `global.imagePullSecrets`. Same shape as `services.<key>.image.imagePullSecrets` — a list of `{name: <secret>}` objects. |
