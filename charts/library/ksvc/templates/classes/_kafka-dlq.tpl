@@ -37,4 +37,12 @@ spec:
                   fieldPath: metadata.namespace
           resources:
             {{- toYaml $dlq.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $dlq.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 {{- end }}

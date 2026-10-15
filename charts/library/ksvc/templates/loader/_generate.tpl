@@ -168,9 +168,17 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "sink" ""
     "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
     "dlq" (dict "enabled" true
-      "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "latest")
+      "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "v1.17.0")
       "scaling" (dict "minScale" 0 "maxScale" 2)
       "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
+      "securityContext" (dict
+        "runAsNonRoot" true
+        "runAsUser" 10001
+        "readOnlyRootFilesystem" true
+        "allowPrivilegeEscalation" false
+        "seccompProfile" (dict "type" "RuntimeDefault")
+        "capabilities" (dict "drop" (list "ALL"))
+      )
     )
   -}}
 
