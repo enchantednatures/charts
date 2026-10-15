@@ -21,6 +21,20 @@
         "annotations": {
           "type": "object"
         },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "certManager": {
           "type": "object",
           "additionalProperties": false,
@@ -83,6 +97,20 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 16
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
         },
         "imageCatalog": {
           "type": "object",
@@ -931,6 +959,20 @@
                 },
                 "tag": {
                   "type": "string"
+                }
+              }
+            },
+            "imagePullSecrets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
                 }
               }
             },

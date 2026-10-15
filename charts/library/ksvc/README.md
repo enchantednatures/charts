@@ -156,6 +156,7 @@ per-entry schemas are documented in the sections following the table.
 | global.certManager.issuerRef.kind | string | `"ClusterIssuer"` | Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`). |
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
 | global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
+| global.imagePullSecrets | list | `[]` | List of imagePullSecrets applied to every rendered workload's pod spec, in addition to that workload's own `imagePullSecrets`: the Knative Services (`services.<key>.image.imagePullSecrets`), the Kafka DLQ service (`kafka.sources.<key>.dlq.imagePullSecrets`), and the CNPG PostgreSQL cluster (`postgres.imagePullSecrets`). Same shape as the per-service field — a list of `{name: <secret>}` objects. |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
 | global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
@@ -183,6 +184,7 @@ per-entry schemas are documented in the sections following the table.
 | postgres.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for PostgreSQL certificates. |
 | postgres.enabled | bool | `false` | Enable the CloudNativePG PostgreSQL cluster. |
 | postgres.imageCatalog.name | string | `"postgresql"` | Name of the ClusterImageCatalog to pull the PostgreSQL image from. |
+| postgres.imagePullSecrets | list | `[]` | List of imagePullSecrets for the CNPG PostgreSQL cluster pods (private registries), applied in addition to `global.imagePullSecrets`. Same shape as `services.<key>.image.imagePullSecrets` — a list of `{name: <secret>}` objects. |
 | postgres.instances | int | `3` | Number of PostgreSQL instances (1–16). |
 | postgres.monitoring.alerts | object | see `values.yaml` | Alert thresholds for the Prometheus rules. |
 | postgres.monitoring.enabled | bool | `true` | Enable the PodMonitor and Prometheus alert rules. |
@@ -261,6 +263,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display:v1.17.0` |
 | `kafka.sources.<key>.dlq.securityContext` | Container security context for the DLQ service (same restricted profile as main services) | non-root, read-only root fs, drops all capabilities, `RuntimeDefault` seccomp |
+| `kafka.sources.<key>.dlq.imagePullSecrets` | List of imagePullSecrets attached to the DLQ pod spec (private registries), applied in addition to `global.imagePullSecrets` | `[]` |
 
 ## Object Buckets (Ceph RGW)
 

@@ -159,3 +159,45 @@ tests:
     asserts:
       - hasDocuments:
           count: 1
+
+  - it: should render DLQ imagePullSecrets from dlq.imagePullSecrets
+    set:
+      kafka.sources.events.dlq.imagePullSecrets:
+        - name: dlq-pull
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: dlq-pull
+
+  - it: should thread global.imagePullSecrets into the DLQ pod spec
+    set:
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: global-pull
+
+  - it: should combine the DLQ's own and global imagePullSecrets (own first)
+    set:
+      kafka.sources.events.dlq.imagePullSecrets:
+        - name: dlq-pull
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: dlq-pull
+            - name: global-pull
+
+  - it: should not render DLQ imagePullSecrets when both lists are empty
+    documentIndex: 2
+    asserts:
+      - notExists:
+          path: spec.template.spec.imagePullSecrets

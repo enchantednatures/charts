@@ -124,3 +124,45 @@ tests:
     asserts:
       - hasDocuments:
           count: 1
+
+  - it: should render spec.imagePullSecrets from postgres.imagePullSecrets
+    set:
+      postgres.imagePullSecrets:
+        - name: pg-pull
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imagePullSecrets
+          value:
+            - name: pg-pull
+
+  - it: should thread global.imagePullSecrets into the CNPG cluster
+    set:
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imagePullSecrets
+          value:
+            - name: global-pull
+
+  - it: should combine the cluster's own and global imagePullSecrets (own first)
+    set:
+      postgres.imagePullSecrets:
+        - name: pg-pull
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imagePullSecrets
+          value:
+            - name: pg-pull
+            - name: global-pull
+
+  - it: should not render imagePullSecrets when both lists are empty
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.imagePullSecrets
