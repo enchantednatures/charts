@@ -40,6 +40,16 @@
         "$ref": "#/$defs/serviceEntry"
       }
     },
+    "objectBuckets": {
+      "type": "object",
+      "description": "Map of ObjectBucketClaim entries. Each key becomes a name suffix: <release-name>-<key>",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/objectBucketEntry"
+      }
+    },
     "kafka": {
       "type": "object",
       "additionalProperties": false,
@@ -179,6 +189,10 @@
                 },
                 "endpointURL": {
                   "type": "string"
+                },
+                "bucketRef": {
+                  "type": "string",
+                  "description": "Key of an objectBuckets entry used to derive the CNPG ObjectStore destinationPath/endpointURL/credentials"
                 },
                 "s3Credentials": {
                   "type": "object",
@@ -384,6 +398,10 @@
             "existingPersistentVolumeClaimName": {
               "type": "string"
             },
+            "bucketRef": {
+              "type": "string",
+              "description": "Key of an objectBuckets entry used to derive the Dragonfly S3 snapshot dir/credentials/endpoint"
+            },
             "storage": {
               "type": "object",
               "additionalProperties": false,
@@ -509,6 +527,32 @@
     "services"
   ],
   "$defs": {
+    "objectBucketEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storageClassName"
+      ],
+      "properties": {
+        "storageClassName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of an existing bucket StorageClass (reference only; never rendered by this chart)"
+        },
+        "bucketName": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+        },
+        "endpointURL": {
+          "type": "string",
+          "description": "Full URL of the S3/RGW endpoint (CNPG uses it literally; Dragonfly derives host + --s3_use_https)"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region injected as AWS_REGION for Dragonfly S3 snapshots"
+        }
+      }
+    },
     "resources": {
       "type": "object",
       "additionalProperties": false,

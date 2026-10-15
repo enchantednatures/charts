@@ -1,3 +1,8 @@
+objectBuckets:
+  postgres-backups:
+    storageClassName: "ceph-bucket"
+    endpointURL: "http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80"
+
 services:
   api:
     image:
@@ -41,7 +46,6 @@ postgres:
     schedule: "0 3 * * *"
     retentionPolicy: "14d"
     objectStore:
-      destinationPath: "s3://api-service-backups/"
-      endpointURL: "http://minio.minio.svc.cluster.local:9000"
+      bucketRef: "postgres-backups"
   monitoring:
     enabled: true

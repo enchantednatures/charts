@@ -22,6 +22,33 @@ global:
       group: cert-manager.io
 
 # =============================================================================
+# Object Buckets — Map of ObjectBucketClaim entries (Ceph RGW / any S3 store)
+#
+# Each key renders one ObjectBucketClaim named <release>-<key> and can be
+# referenced by postgres.backup.objectStore.bucketRef and/or
+# dragonfly.snapshot.bucketRef (postgres and dragonfly may use different buckets
+# in the same release).
+#
+# Per entry:
+#   storageClassName: REQUIRED — the name of an EXISTING bucket StorageClass
+#     (e.g. a Rook/Ceph bucket SC). It is referenced only; this chart never
+#     renders a StorageClass.
+#   bucketName: optional — defaults to "<release>-<key>" (truncated to 63).
+#   endpointURL: optional full URL (e.g. http://rgw.example:80). CNPG uses it
+#     literally; Dragonfly derives the host:port and --s3_use_https from it.
+#   region: optional — injected as AWS_REGION for Dragonfly S3 snapshots.
+#
+# Prerequisites (NOT created by this chart): the ObjectBucketClaim CRDs
+# (lib-bucket-provisioner) and a bucket StorageClass must already exist.
+# Example:
+#   objectBuckets:
+#     backups:
+#       storageClassName: ceph-bucket
+#       endpointURL: http://rgw.example:80
+# =============================================================================
+objectBuckets: {}
+
+# =============================================================================
 # Services — Map of Knative Services (one or more)
 #
 # Each key becomes a name suffix: <release-name>-<key>

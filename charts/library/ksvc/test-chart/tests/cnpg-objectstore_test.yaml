@@ -1,0 +1,169 @@
+suite: cnpg postgres backup bucketRef wiring tests
+templates:
+  - templates/common.yaml
+
+# ---------------------------------------------------------------------------
+# Implemented-state document order (once the `objectBuckets` -> ObjectBucketClaim
+# rendering lands). The suite-level `set:` defines one bucket entry (`backups`),
+# so its claim renders as doc1 even while it is unreferenced:
+#   doc0 = Knative Service      (test-release-api)
+#   doc1 = ObjectBucketClaim    (test-release-backups)
+#   doc2 = CNPG Cluster         (test-release-postgres)
+#   doc3 = ObjectStore          (test-release-postgres-backup-store)  <-- asserted
+#   doc4 = ScheduledBackup      (test-release-postgres-daily-backup)
+#
+# RED PHASE NOTE (today): ObjectBucketClaim rendering does not exist yet, so the
+# claim is absent and every index shifts down by one (doc2 = ObjectStore,
+# doc3 = ScheduledBackup). Tests that target doc3 therefore FAIL now (expected
+# red) and turn green once the OBC class + loader land. The manual-mode
+# regression test selects the ObjectStore by `kind` (documentSelector) so it is
+# stable across both red and green phases.
+# ---------------------------------------------------------------------------
+
+set:
+  services.api.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: false
+  postgres.monitoring.enabled: false
+  postgres.backup.enabled: true
+  objectBuckets.backups.storageClassName: ceph-bucket
+  objectBuckets.backups.endpointURL: http://rgw.example:80
+
+release:
+  name: test-release
+  namespace: test-ns
+
+tests:
+  # 1) bucketRef flow: destinationPath / endpointURL / credentials are derived.
+  - it: "wires the postgres backup store to the referenced bucket (bucketRef: backups)"
+    set:
+      postgres.backup.objectStore.bucketRef: backups
+    documentIndex: 3   # doc3 = ObjectStore (implemented state)
+    asserts:
+      - isKind:
+          of: ObjectStore
+      - equal:
+          path: spec.configuration.destinationPath
+          value: "s3://test-release-backups/"
+      - equal:
+          path: spec.configuration.endpointURL
+          value: "http://rgw.example:80"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.name
+          value: "test-release-backups"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.key
+          value: "AWS_ACCESS_KEY_ID"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.name
+          value: "test-release-backups"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.key
+          value: "AWS_SECRET_ACCESS_KEY"
+
+  # 2a) explicit overrides win: an explicit destinationPath is kept as-is.
+  - it: "keeps an explicit destinationPath override while deriving the rest (bucketRef)"
+    set:
+      postgres.backup.objectStore.bucketRef: backups
+      postgres.backup.objectStore.destinationPath: "s3://custom/"
+    documentIndex: 3   # doc3 = ObjectStore (implemented state)
+    asserts:
+      - isKind:
+          of: ObjectStore
+      - equal:
+          path: spec.configuration.destinationPath
+          value: "s3://custom/"
+      - equal:
+          path: spec.configuration.endpointURL
+          value: "http://rgw.example:80"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.name
+          value: "test-release-backups"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.key
+          value: "AWS_ACCESS_KEY_ID"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.name
+          value: "test-release-backups"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.key
+          value: "AWS_SECRET_ACCESS_KEY"
+
+  # 2b) if ANY s3Credentials field is set explicitly, the whole object is
+  #     consumer-owned: keys stay at the manual defaults, NOT AWS_*.
+  - it: "treats the whole s3Credentials object as consumer-owned when any field is set (bucketRef)"
+    set:
+      postgres.backup.objectStore.bucketRef: backups
+      postgres.backup.objectStore.s3Credentials.secretName: manual-secret
+    documentIndex: 3   # doc3 = ObjectStore (implemented state)
+    asserts:
+      - isKind:
+          of: ObjectStore
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.name
+          value: "manual-secret"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.key
+          value: "ACCESS_KEY_ID"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.name
+          value: "manual-secret"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.key
+          value: "ACCESS_SECRET_KEY"
+
+  # 3) regression: no bucketRef -> the manual S3 defaults render unchanged.
+  #    Uses documentSelector (kind) instead of a fixed index so it passes both
+  #    before and after the ObjectBucketClaim document is introduced.
+  - it: "renders the manual S3 defaults when bucketRef is not set (regression)"
+    set:
+      postgres.backup.objectStore.destinationPath: "s3://manual/"
+      postgres.backup.objectStore.endpointURL: "http://manual:9000"
+    documentSelector:
+      path: kind
+      value: ObjectStore
+    asserts:
+      - equal:
+          path: spec.configuration.destinationPath
+          value: "s3://manual/"
+      - equal:
+          path: spec.configuration.endpointURL
+          value: "http://manual:9000"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.name
+          value: "postgres-backup-storage"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.key
+          value: "ACCESS_KEY_ID"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.name
+          value: "postgres-backup-storage"
+      - equal:
+          path: spec.configuration.s3Credentials.secretAccessKey.key
+          value: "ACCESS_SECRET_KEY"
+
+  # 4) legacy guard: backup enabled with no destinationPath/endpointURL still
+  #    fails with the pre-existing message (regression guard, passes today).
+  - it: "still fails with the legacy message when backup is enabled without destinationPath/endpointURL"
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.backup.objectStore.destinationPath is required when postgres backup is enabled"
+
+  # 5a) failure: bucketRef points at an undefined entry.
+  - it: "fails when bucketRef references a bucket that is not defined"
+    set:
+      postgres.backup.objectStore.bucketRef: nope
+      postgres.backup.objectStore.destinationPath: "s3://explicit/"
+      postgres.backup.objectStore.endpointURL: "http://explicit:9000"
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.backup.objectStore.bucketRef references 'nope' which does not exist in objectBuckets"
+
+  # 5b) failure: bucketRef set while postgres backup is disabled.
+  - it: "fails when bucketRef is set while postgres.backup.enabled is false"
+    set:
+      postgres.backup.enabled: false
+      postgres.backup.objectStore.bucketRef: backups
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.backup.objectStore.bucketRef is set but postgres.backup.enabled is false"

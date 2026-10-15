@@ -56,12 +56,39 @@ Call this from the loader to catch misconfigurations early.
     {{- end -}}
   {{- end -}}
 
+  {{/* objectBuckets entry validation (runs after applyDefaults).
+       Per-entry check order is fixed (storageClassName, key, bucketName) so the
+       failure message is deterministic. */}}
+  {{- if .Values.objectBuckets -}}
+    {{- range $key, $bucket := .Values.objectBuckets -}}
+      {{- if not $bucket.storageClassName -}}
+        {{- fail (printf "objectBuckets.%s.storageClassName is required and must name an existing bucket StorageClass" $key) -}}
+      {{- end -}}
+      {{- if or (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $key)) (gt (len $key) 53) -}}
+        {{- fail (printf "objectBuckets.%s must be a DNS-1123 label" $key) -}}
+      {{- end -}}
+      {{- if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" $bucket.bucketName) -}}
+        {{- fail (printf "objectBuckets.%s.bucketName must be a valid S3 bucket name (3-63 chars, lowercase letters, digits, dots, hyphens)" $key) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
   {{/* postgres backup validation */}}
   {{- if and .Values.postgres.enabled .Values.postgres.backup.enabled (not .Values.postgres.backup.objectStore.destinationPath) -}}
     {{- fail "postgres.backup.objectStore.destinationPath is required when postgres backup is enabled" -}}
   {{- end -}}
   {{- if and .Values.postgres.enabled .Values.postgres.backup.enabled (not .Values.postgres.backup.objectStore.endpointURL) -}}
     {{- fail "postgres.backup.objectStore.endpointURL is required when postgres backup is enabled" -}}
+  {{- end -}}
+  {{/* postgres backup bucketRef validation (defensive read: the key may not exist yet if todo 5 has not landed) */}}
+  {{- $pgBucketRef := .Values.postgres.backup.objectStore.bucketRef | default "" -}}
+  {{- if $pgBucketRef -}}
+    {{- if and .Values.postgres.backup.enabled (not (hasKey .Values.objectBuckets $pgBucketRef)) -}}
+      {{- fail (printf "postgres.backup.objectStore.bucketRef references '%s' which does not exist in objectBuckets" $pgBucketRef) -}}
+    {{- end -}}
+    {{- if not .Values.postgres.backup.enabled -}}
+      {{- fail "postgres.backup.objectStore.bucketRef is set but postgres.backup.enabled is false" -}}
+    {{- end -}}
   {{- end -}}
 
   {{/* postgres instance count validation */}}
@@ -145,6 +172,23 @@ Call this from the loader to catch misconfigurations early.
     {{- end -}}
     {{- if and (ne $dfPdbMinAvailable 0) (gt $dfPdbMinAvailable $dfReplicas) -}}
       {{- fail (printf "dragonfly.pdb.minAvailable (%d) must be <= dragonfly.replicas (%d)" $dfPdbMinAvailable $dfReplicas) -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{/* dragonfly snapshot bucketRef validation (defensive read) */}}
+  {{- $dfBucketRef := .Values.dragonfly.snapshot.bucketRef | default "" -}}
+  {{- if $dfBucketRef -}}
+    {{- if or (not .Values.dragonfly.enabled) (not .Values.dragonfly.snapshot.enabled) -}}
+      {{- fail "dragonfly.snapshot.bucketRef requires dragonfly.enabled and dragonfly.snapshot.enabled" -}}
+    {{- end -}}
+    {{- if not (hasKey .Values.objectBuckets $dfBucketRef) -}}
+      {{- fail (printf "dragonfly.snapshot.bucketRef references '%s' which does not exist in objectBuckets" $dfBucketRef) -}}
+    {{- end -}}
+    {{- if .Values.dragonfly.snapshot.existingPersistentVolumeClaimName -}}
+      {{- fail "dragonfly.snapshot: bucketRef and existingPersistentVolumeClaimName are mutually exclusive" -}}
+    {{- end -}}
+    {{- if not (index .Values.objectBuckets $dfBucketRef).endpointURL -}}
+      {{- fail "dragonfly.snapshot.bucketRef requires an endpointURL on the referenced bucket" -}}
     {{- end -}}
   {{- end -}}
 {{- end }}
