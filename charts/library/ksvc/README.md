@@ -186,6 +186,8 @@ per-entry schemas are documented in the sections following the table.
 | postgres.instances | int | `3` | Number of PostgreSQL instances (1–16). |
 | postgres.monitoring.alerts | object | see `values.yaml` | Alert thresholds for the Prometheus rules. |
 | postgres.monitoring.enabled | bool | `true` | Enable the PodMonitor and Prometheus alert rules. |
+| postgres.monitoring.podMonitorLabels | object | `{"release":"prometheus"}` | Labels merged into the rendered PodMonitor's `metadata.labels`, in addition to the standard chart labels. These must match the Prometheus operator's `podMonitorSelector` or the monitor is silently ignored — for kube-prometheus-stack set `release` to the stack's Helm release name. |
+| postgres.monitoring.prometheusRuleLabels | object | `{"prometheus":"kube-prometheus"}` | Labels merged into the rendered PrometheusRule's `metadata.labels`, in addition to the standard chart labels. These must match the Prometheus operator's `ruleSelector` or the rules are silently ignored — for kube-prometheus-stack the default `prometheus: kube-prometheus` matches. |
 | postgres.parameters | object | see `values.yaml` | PostgreSQL server configuration parameters (TLS 1.3, buffers, synchronous replication, ...). |
 | postgres.pooler.enabled | bool | `true` | Enable the PgBouncer pooler. |
 | postgres.pooler.instances | int | `3` | Number of pooler replicas (>= 1). |

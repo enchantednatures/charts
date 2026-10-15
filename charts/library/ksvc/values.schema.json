@@ -277,6 +277,12 @@
                   "minimum": 0
                 }
               }
+            },
+            "podMonitorLabels": {
+              "type": "object"
+            },
+            "prometheusRuleLabels": {
+              "type": "object"
             }
           }
         },

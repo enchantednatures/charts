@@ -368,6 +368,18 @@ postgres:
       replicationLagWarning: 10
       replicationLagCritical: 60
       highConnectionCount: 50
+    # -- Labels merged into the rendered PodMonitor's `metadata.labels`, in
+    # addition to the standard chart labels. These must match the Prometheus
+    # operator's `podMonitorSelector` or the monitor is silently ignored — for
+    # kube-prometheus-stack set `release` to the stack's Helm release name.
+    podMonitorLabels:
+      release: prometheus
+    # -- Labels merged into the rendered PrometheusRule's `metadata.labels`, in
+    # addition to the standard chart labels. These must match the Prometheus
+    # operator's `ruleSelector` or the rules are silently ignored — for
+    # kube-prometheus-stack the default `prometheus: kube-prometheus` matches.
+    prometheusRuleLabels:
+      prometheus: kube-prometheus
 
   # cert-manager integration — generates server + client TLS certificates
   # via CNPG's native spec.certificates support.

@@ -8,7 +8,14 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app: {{ $pgName }}
-    release: prometheus
+    {{- $mon := .Values.postgres.monitoring }}
+    {{- $pmLabels := $mon.podMonitorLabels }}
+    {{- if not (hasKey $mon "podMonitorLabels") }}
+      {{- $pmLabels = dict "release" "prometheus" }}
+    {{- end }}
+    {{- with $pmLabels }}
+    {{- toYaml . | trim | nindent 4 }}
+    {{- end }}
 spec:
   selector:
     matchLabels:
