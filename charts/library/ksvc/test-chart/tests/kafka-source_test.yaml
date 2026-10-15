@@ -1,6 +1,18 @@
 suite: kafka source tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   kafka.sources.events.topic: "events"
@@ -201,3 +213,12 @@ tests:
     asserts:
       - notExists:
           path: spec.template.spec.imagePullSecrets
+
+  - it: should keep a numeric consumer group quoted as a string
+    set:
+      kafka.sources.events.consumerGroup: "12345"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.consumerGroup
+          value: "12345"

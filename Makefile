@@ -42,6 +42,18 @@ NAMESPACE             ?= test-ns
 FLUX_NAMESPACE        ?= flux-system
 
 # ---------------------------------------------------------------------------
+# CRD api versions for Capabilities.APIVersions
+#
+# The library chart gates every CR-based resource behind
+# `.Capabilities.APIVersions.Has`, so resources render on a real cluster only
+# when the operator CRDs are served. Offline `helm template` has no cluster to
+# discover them from — pass these groups with `--api-versions` (comma-separated
+# is accepted by both Helm 3 and Helm 4) so examples render in full. `helm
+# lint` cannot take the flag; guarded resources are skipped there.
+# ---------------------------------------------------------------------------
+API_VERSIONS ?= monitoring.coreos.com/v1,sources.knative.dev/v1,dragonflydb.io/v1alpha1,objectbucket.io/v1alpha1,flagger.app/v1beta1,cert-manager.io/v1,postgresql.cnpg.io/v1,barmancloud.cnpg.io/v1,policies.kyverno.io/v1beta1,policies.kyverno.io/v1
+
+# ---------------------------------------------------------------------------
 # CRD URLs
 # ---------------------------------------------------------------------------
 KNATIVE_SERVING_CRDS := https://github.com/knative/serving/releases/download/knative-$(KNATIVE_VERSION)/serving-crds.yaml
@@ -251,7 +263,8 @@ uninstall-local: ## Uninstall the local example release
 .PHONY: template
 template: ## Render templates for an example (EXAMPLE=minimal)
 	helm dependency update examples/$(EXAMPLE)
-	helm template test-$(EXAMPLE) examples/$(EXAMPLE) --namespace $(NAMESPACE)
+	helm template test-$(EXAMPLE) examples/$(EXAMPLE) --namespace $(NAMESPACE) \
+		--api-versions $(API_VERSIONS)
 
 # ---------------------------------------------------------------------------
 # Lint & Test

@@ -61,6 +61,25 @@ spec:
       {{- end }}
       containerConcurrency: {{ $svc.scaling.containerConcurrency }}
       timeoutSeconds: {{ $svc.scaling.timeoutSeconds }}
+      {{- with $svc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $svc.serviceAccountName }}
+      serviceAccountName: {{ $svc.serviceAccountName }}
+      {{- end }}
       containers:
         - name: service
           {{- if $svc.image.fluxImagePolicy }}

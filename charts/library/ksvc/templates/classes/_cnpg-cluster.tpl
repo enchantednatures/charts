@@ -29,14 +29,16 @@ spec:
     major: {{ $pg.version | int }}
   postgresql:
     parameters:
-      {{- toYaml $pg.parameters | nindent 6 }}
+      {{- include "ksvc.utils.toStringMap" $pg.parameters | nindent 6 }}
     shared_preload_libraries:
       {{- toYaml $pg.sharedPreloadLibraries | nindent 6 }}
   resources:
     {{- toYaml $pg.resources | nindent 4 }}
   storage:
     size: {{ $pg.storage.size | quote }}
+    {{- if $pg.storage.storageClassName }}
     storageClass: {{ $pg.storage.storageClassName | quote }}
+    {{- end }}
   {{- if $pg.backup.enabled }}
   plugins:
     - name: barman-cloud.cloudnative-pg.io

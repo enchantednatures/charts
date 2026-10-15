@@ -1,0 +1,170 @@
+suite: safe name tests
+templates:
+  - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # Byte-identity: names composed from inputs <= 63 chars must keep the exact
+  # `trunc 63 | trimSuffix "-" | replace "_" "-"` output (existing consumers).
+  - it: should keep a short name byte-identical
+    set:
+      services.api.image.repository: test/image
+      services.api.nameOverride: web
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-web
+
+  - it: should keep an exactly-63-char fullname unchanged when the suffix is empty
+    set:
+      services.api.image.repository: test/image
+      global.fullnameOverride: release-name-with-exactly-sixty-three-characters-for-tests-abcd
+      services.api.nameOverride: ""
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-tests-abcd
+
+  # Deterministic collision-free shortening for names > 63 chars.
+  - it: should disambiguate two long service names that share a 63-char prefix
+    set:
+      global.fullnameOverride: release-name-with-exactly-sixty-three-characters-for-tests-abcd
+      services.alpha.image.repository: test/alpha
+      services.beta.image.repository: test/beta
+    asserts:
+      - hasDocuments:
+          count: 2
+
+
+  - it: should cap KafkaSource, DLQ and consumer-group names for two long source keys
+    set:
+      services.api.image.repository: test/image
+      global.fullnameOverride: release-name-with-exactly-sixty-three-characters-for-tests-abcd
+      kafka.sources.other-source.sink: api
+      kafka.sources.other-source.dlq.enabled: true
+      kafka.sources.very-long-source-key.sink: api
+      kafka.sources.very-long-source-key.dlq.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 5
+      - documentIndex: 1
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-86e9a092b2
+      - documentIndex: 1
+        equal:
+          path: spec.consumerGroup
+          value: release-name-with-exactly-sixty-three-characters-for-f9507e7d4c
+      - documentIndex: 2
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-bb1b32c301
+      - documentIndex: 3
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-2f4b06537b
+      - documentIndex: 3
+        equal:
+          path: spec.consumerGroup
+          value: release-name-with-exactly-sixty-three-characters-for-59c85b584f
+      - documentIndex: 4
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-1b1f6cc2a7
+
+  - it: should cap the CNPG cluster name
+    set:
+      services.api.image.repository: test/image
+      global.fullnameOverride: release-name-with-exactly-sixty-three-characters-for-tests-abcd
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.backup.enabled: false
+      postgres.monitoring.enabled: false
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Cluster
+      - equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-e02254dea2
+
+  - it: should cap the ObjectStore name and the ScheduledBackup reference consistently
+    set:
+      services.api.image.repository: test/image
+      global.fullnameOverride: release-name-with-exactly-sixty-three-characters-for-tests-abcd
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.monitoring.enabled: false
+      postgres.backup.enabled: true
+      postgres.backup.objectStore.destinationPath: s3://bucket/
+      postgres.backup.objectStore.endpointURL: http://s3.example
+    asserts:
+      - documentIndex: 2
+        isKind:
+          of: ObjectStore
+      - documentIndex: 2
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-db965104f3
+      - documentIndex: 3
+        isKind:
+          of: ScheduledBackup
+      - documentIndex: 3
+        equal:
+          path: spec.pluginConfiguration.parameters.barmanObjectName
+          value: release-name-with-exactly-sixty-three-characters-for-db965104f3
+
+  - it: should cap the Dragonfly name
+    set:
+      services.api.image.repository: test/image
+      global.fullnameOverride: release-name-with-exactly-sixty-three-characters-for-tests-abcd
+      dragonfly.enabled: true
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Dragonfly
+      - equal:
+          path: metadata.name
+          value: release-name-with-exactly-sixty-three-characters-for-cb9873cf3f
+
+  # A 53-char release name (the Kubernetes maximum) must not produce any name
+  # above 63 chars once the suffix is appended.
+  - it: should cap kafka names for a 53-char release name
+    release:
+      name: release-name-with-exactly-fifty-three-characters-abcd
+    set:
+      services.api.image.repository: test/image
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+    asserts:
+      - documentIndex: 0
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-fifty-three-characters-abcd-api
+      - documentIndex: 1
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-fifty-three-characters-abc-c7573d42b0
+      - documentIndex: 1
+        equal:
+          path: spec.consumerGroup
+          value: release-name-with-exactly-fifty-three-characters-abc-5741807167
+      - documentIndex: 2
+        equal:
+          path: metadata.name
+          value: release-name-with-exactly-fifty-three-characters-abc-75a033db0e

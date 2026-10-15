@@ -22,7 +22,7 @@ spec:
   pgbouncer:
     poolMode: {{ $pooler.poolMode }}
     parameters:
-      {{- toYaml $pooler.parameters | nindent 6 }}
+      {{- include "ksvc.utils.toStringMap" $pooler.parameters | nindent 6 }}
   template:
     spec:
       containers:

@@ -42,7 +42,9 @@ Consumer Chart
 
 Use `nameOverride: ""` on a service entry to produce just `<release>` with no suffix — useful for single-service deployments or kustomize compatibility.
 
-ObjectBucketClaim names are sanitized the same way as the others: truncated to 63 chars, trailing `-` trimmed, and `_` replaced with `-`. The provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
+The fullname is derived from the **release name only** (`global.fullnameOverride` when set, otherwise `Release.Name`) — it does not include the chart name. Two different charts installed under the same release name in the same namespace therefore render colliding resource names; set `global.fullnameOverride` (or use distinct release names) when that can happen.
+
+Every resource name is produced by one shared sanitizer: `_` becomes `-`, the string is capped at 63 characters, and a trailing `-` is trimmed. When the composed name would exceed 63 characters it is instead shortened to `<first 52 chars>-<first 10 hex chars of sha256(composed name)>` — deterministic and collision-resistant, so two long names that share the same 63-character prefix (for example two services under an over-long release name) still get distinct names. Inputs that already fit in 63 characters are never altered. ObjectBucketClaim names use the same scheme; the provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
 
 ## Labels
 
@@ -109,7 +111,7 @@ Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); 
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.13
+        version: 0.7.14
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -146,6 +148,21 @@ Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); 
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
 | **NetworkPolicies (opt-in)** | NetworkPolicy (CNPG cluster pods, Dragonfly pods) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
+
+### CRD availability and offline rendering
+
+Every **Custom Resource** the chart renders is gated behind `.Capabilities.APIVersions.Has`, so it is created only when the matching operator CRD is served by the cluster: Cluster/Pooler/ScheduledBackup (`postgresql.cnpg.io/v1`), ObjectStore (`barmancloud.cnpg.io/v1`), PodMonitor/PrometheusRule (`monitoring.coreos.com/v1`), KafkaSource (`sources.knative.dev/v1`), Dragonfly (`dragonflydb.io/v1alpha1`), ObjectBucketClaim (`objectbucket.io/v1alpha1`), Flagger Canary (`flagger.app/v1beta1`), cert-manager Certificate/Issuer (`cert-manager.io/v1`), and the Kyverno policies (the configured `kyverno.scaling.apiVersion`). The Knative Service (`serving.knative.dev/v1`) is the chart's core dependency and is never gated.
+
+`helm install`/`helm upgrade` against a real cluster discovers the served API versions automatically, so guarded resources appear exactly when their CRDs are installed. An **offline `helm template`** has no cluster to discover from: pass the groups you expect with `--api-versions` (repeatable, or comma-separated), or perform a real `helm install` against a cluster with the CRDs:
+
+```bash
+helm template my-release ./my-chart \
+  --api-versions postgresql.cnpg.io/v1 \
+  --api-versions barmancloud.cnpg.io/v1 \
+  --api-versions monitoring.coreos.com/v1
+```
+
+Without the flag those resources are silently skipped — which is also the intended behavior for a cluster that does not serve them. `helm lint` cannot take the flag, so lint always renders without the guarded resources.
 
 ## Values Reference
 

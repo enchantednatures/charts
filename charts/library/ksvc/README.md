@@ -41,7 +41,9 @@ Consumer Chart
 
 Use `nameOverride: ""` on a service entry to produce just `<release>` with no suffix — useful for single-service deployments or kustomize compatibility.
 
-ObjectBucketClaim names are sanitized the same way as the others: truncated to 63 chars, trailing `-` trimmed, and `_` replaced with `-`. The provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
+The fullname is derived from the **release name only** (`global.fullnameOverride` when set, otherwise `Release.Name`) — it does not include the chart name. Two different charts installed under the same release name in the same namespace therefore render colliding resource names; set `global.fullnameOverride` (or use distinct release names) when that can happen.
+
+Every resource name is produced by one shared sanitizer: `_` becomes `-`, the string is capped at 63 characters, and a trailing `-` is trimmed. When the composed name would exceed 63 characters it is instead shortened to `<first 52 chars>-<first 10 hex chars of sha256(composed name)>` — deterministic and collision-resistant, so two long names that share the same 63-character prefix (for example two services under an over-long release name) still get distinct names. Inputs that already fit in 63 characters are never altered. ObjectBucketClaim names use the same scheme; the provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
 
 ## Labels
 
@@ -108,7 +110,7 @@ Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); 
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.13
+        version: 0.7.14
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -145,6 +147,21 @@ Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); 
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
 | **NetworkPolicies (opt-in)** | NetworkPolicy (CNPG cluster pods, Dragonfly pods) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
+
+### CRD availability and offline rendering
+
+Every **Custom Resource** the chart renders is gated behind `.Capabilities.APIVersions.Has`, so it is created only when the matching operator CRD is served by the cluster: Cluster/Pooler/ScheduledBackup (`postgresql.cnpg.io/v1`), ObjectStore (`barmancloud.cnpg.io/v1`), PodMonitor/PrometheusRule (`monitoring.coreos.com/v1`), KafkaSource (`sources.knative.dev/v1`), Dragonfly (`dragonflydb.io/v1alpha1`), ObjectBucketClaim (`objectbucket.io/v1alpha1`), Flagger Canary (`flagger.app/v1beta1`), cert-manager Certificate/Issuer (`cert-manager.io/v1`), and the Kyverno policies (the configured `kyverno.scaling.apiVersion`). The Knative Service (`serving.knative.dev/v1`) is the chart's core dependency and is never gated.
+
+`helm install`/`helm upgrade` against a real cluster discovers the served API versions automatically, so guarded resources appear exactly when their CRDs are installed. An **offline `helm template`** has no cluster to discover from: pass the groups you expect with `--api-versions` (repeatable, or comma-separated), or perform a real `helm install` against a cluster with the CRDs:
+
+```bash
+helm template my-release ./my-chart \
+  --api-versions postgresql.cnpg.io/v1 \
+  --api-versions barmancloud.cnpg.io/v1 \
+  --api-versions monitoring.coreos.com/v1
+```
+
+Without the flag those resources are silently skipped — which is also the intended behavior for a cluster that does not serve them. `helm lint` cannot take the flag, so lint always renders without the guarded resources.
 
 ## Values Reference
 
@@ -211,10 +228,10 @@ per-entry schemas are documented in the sections following the table.
 | global.certManager.issuerRef.group | string | `"cert-manager.io"` | API group of the default cert-manager issuer. |
 | global.certManager.issuerRef.kind | string | `"ClusterIssuer"` | Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`). |
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
-| global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
+| global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). Must be a valid DNS-1123 label (<= 63 characters, lowercase alphanumerics and dashes). Resource names are derived from the release name alone, so two different charts installed under the same release name in one namespace would collide — set `fullnameOverride` (or use distinct release names) when that can happen. |
 | global.imagePullSecrets | list | `[]` | List of imagePullSecrets applied to every rendered workload's pod spec, in addition to that workload's own `imagePullSecrets`: the Knative Services (`services.<key>.image.imagePullSecrets`), the Kafka DLQ service (`kafka.sources.<key>.dlq.imagePullSecrets`), and the CNPG PostgreSQL cluster (`postgres.imagePullSecrets`). Same shape as the per-service field — a list of `{name: <secret>}` objects. |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
-| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). Also sets the `app.kubernetes.io/name` label on every rendered resource. |
+| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). Also sets the `app.kubernetes.io/name` label on every rendered resource. Must be a valid DNS-1123 label (<= 63 characters, lowercase alphanumerics and dashes). |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
 | kyverno.enabled | bool | `false` | Render the Kyverno admission policies. |
 | kyverno.scaling.apiVersion | string | `"policies.kyverno.io/v1beta1"` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` for Kyverno >= 1.16, `policies.kyverno.io/v1` for Kyverno >= 1.17). |
@@ -262,7 +279,8 @@ per-entry schemas are documented in the sections following the table.
 | postgres.storage.size | string | `"200Gi"` | Persistent volume size per instance. |
 | postgres.storage.storageClassName | string | `"standard"` | StorageClass for the instance volumes. |
 | postgres.version | string | `"16"` | PostgreSQL major version. |
-| services.api.annotations | object | see `values.yaml` | Annotations added to the Knative Service (Prometheus scraping enabled by default). |
+| services.api.affinity | object | `{}` | Pod affinity rules for the Knative Service pod template. |
+| services.api.annotations | object | see `values.yaml` | Annotations added to the Knative Service (Prometheus scraping enabled by default; `prometheus.io/port` follows `services.<key>.port` unless set here explicitly). |
 | services.api.env | list | `[]` | Environment variables for the container. |
 | services.api.envFrom | list | `[]` | envFrom sources (Secrets/ConfigMaps) for the container. |
 | services.api.flagger.analysis.interval | string | `"1m"` | Interval between canary analysis checks (Go duration, e.g. `1m`). |
@@ -280,6 +298,8 @@ per-entry schemas are documented in the sections following the table.
 | services.api.flagger.loadTest.webhookUrl | string | `"http://k6-loadtester.flagger-system/launch-test"` | URL of the k6 webhook service that starts load tests. |
 | services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
 | services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
+| services.api.flagger.postWebhookTimeout | string | `"5m"` | Timeout for the rollout load-test webhook (Go duration, e.g. `5m`). |
+| services.api.flagger.preWebhookTimeout | string | `"1m"` | Timeout for the pre-rollout smoke-test webhook (Go duration, e.g. `1m`). |
 | services.api.image.digest | string | `""` | Immutable container image digest (e.g. `sha256:...`). When set the image renders as `repository@digest` and `tag` is ignored — the cache-safe, reproducible alternative to a mutable tag. |
 | services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |
 | services.api.image.imagePullSecrets | list | `[]` | List of imagePullSecrets attached to the pod spec (private registries). |
@@ -287,7 +307,8 @@ per-entry schemas are documented in the sections following the table.
 | services.api.image.repository | string | `""` | Container image repository. |
 | services.api.image.tag | string | `"latest"` | Container image tag. `latest` is mutable, so deploys are non-reproducible and can silently change; it also forces the image pull policy to `Always` (see `image.pullPolicy`). Pin an immutable tag, or set `image.digest` for full reproducibility. |
 | services.api.labels | object | `{}` | Additional labels for the Knative Service. |
-| services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default). |
+| services.api.nodeSelector | object | `{}` | Node selector for the Knative Service pod template. |
+| services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default; `prometheus.io/port` follows `services.<key>.port` unless set here explicitly). |
 | services.api.port | int | `8080` | Container port exposed by the Knative Service. |
 | services.api.probes.liveness | object | see `values.yaml` | Liveness probe configuration (`httpGet`). |
 | services.api.probes.readiness | object | see `values.yaml` | Readiness probe configuration (`httpGet`). |
@@ -300,6 +321,9 @@ per-entry schemas are documented in the sections following the table.
 | services.api.scaling.target | int | `100` | Autoscaling target (requests in flight per pod for the KPA). |
 | services.api.scaling.timeoutSeconds | int | `300` | Request timeout in seconds. |
 | services.api.securityContext | object | see `values.yaml` | Container security context (non-root, read-only root fs, drops all capabilities). |
+| services.api.serviceAccountName | string | `""` | ServiceAccount used by the Knative Service pod template. |
+| services.api.tolerations | list | `[]` | Pod tolerations for the Knative Service pod template. |
+| services.api.topologySpreadConstraints | list | `[]` | Pod topology spread constraints for the Knative Service pod template. |
 | services.api.volumeMounts | list | `[]` | Additional volume mounts for the container. |
 | services.api.volumes | list | `[]` | Additional pod volumes. |
 

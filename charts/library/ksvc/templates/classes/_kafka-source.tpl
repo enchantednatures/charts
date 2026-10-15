@@ -25,7 +25,7 @@ metadata:
     {{- $globalAnnotations | nindent 4 }}
   {{- end }}
 spec:
-  consumerGroup: {{ default (include "ksvc.kafkaConsumerGroup" .) $source.consumerGroup }}
+  consumerGroup: {{ default (include "ksvc.kafkaConsumerGroup" .) $source.consumerGroup | quote }}
   consumers: {{ $source.consumers }}
   bootstrapServers:
     {{- toYaml $source.bootstrapServers | nindent 4 }}

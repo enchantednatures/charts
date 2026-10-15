@@ -17,6 +17,8 @@ merged. We must apply defaults explicitly before rendering.
 
   {{/* ============================================================ */}}
   {{/* Knative Services (iterate the services map)                  */}}
+  {{/* The Knative Service itself is the chart's core dependency    */}}
+  {{/* (serving.knative.dev/v1) and is never capability-gated.      */}}
   {{/* ============================================================ */}}
   {{- $isFirst := true -}}
   {{- range $key, $svc := .Values.services }}
@@ -26,8 +28,8 @@ merged. We must apply defaults explicitly before rendering.
 ---
     {{- end }}
   {{- include "ksvc.class.knativeService" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
-    {{/* Flagger Canary (per-service opt-in) */}}
-    {{- if and $svc.flagger $svc.flagger.enabled }}
+    {{/* Flagger Canary (per-service opt-in, CRD-gated) */}}
+    {{- if and $svc.flagger $svc.flagger.enabled ($.Capabilities.APIVersions.Has "flagger.app/v1beta1") }}
 ---
   {{- include "ksvc.class.flaggerCanary" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
     {{- end }}
@@ -36,7 +38,7 @@ merged. We must apply defaults explicitly before rendering.
   {{/* ============================================================ */}}
   {{/* Object Buckets (one ObjectBucketClaim per entry)             */}}
   {{/* ============================================================ */}}
-  {{- if .Values.objectBuckets }}
+  {{- if and .Values.objectBuckets ($.Capabilities.APIVersions.Has "objectbucket.io/v1alpha1") }}
     {{- range $key, $bucket := .Values.objectBuckets }}
 ---
   {{- include "ksvc.class.objectBucketClaim" (dict "root" $ "key" $key "bucket" $bucket) | nindent 0 }}
@@ -45,11 +47,18 @@ merged. We must apply defaults explicitly before rendering.
 
   {{/* ============================================================ */}}
   {{/* CloudNativePG PostgreSQL                                     */}}
+  {{/* Every resource below is CRD-gated (rendered only when the    */}}
+  {{/* matching API version is served) so an offline `helm          */}}
+  {{/* template` / a cluster without the CRDs does not emit         */}}
+  {{/* unroutable manifests.                                        */}}
   {{/* ============================================================ */}}
   {{- if and .Values.postgres .Values.postgres.enabled }}
+    {{- $cnpgAPI := $.Capabilities.APIVersions.Has "postgresql.cnpg.io/v1" }}
+    {{- if $cnpgAPI }}
 ---
   {{- include "ksvc.class.cnpgCluster" . | nindent 0 }}
-    {{- if and .Values.postgres.pooler .Values.postgres.pooler.enabled }}
+    {{- end }}
+    {{- if and $cnpgAPI .Values.postgres.pooler .Values.postgres.pooler.enabled }}
 ---
   {{- include "ksvc.class.cnpgPooler" . | nindent 0 }}
     {{- end }}
@@ -57,19 +66,21 @@ merged. We must apply defaults explicitly before rendering.
 ---
   {{- include "ksvc.class.cnpgNetworkPolicy" . | nindent 0 }}
     {{- end }}
-    {{- if and .Values.postgres.backup .Values.postgres.backup.enabled }}
+    {{- if and .Values.postgres.backup .Values.postgres.backup.enabled ($.Capabilities.APIVersions.Has "barmancloud.cnpg.io/v1") }}
 ---
   {{- include "ksvc.class.cnpgObjectStore" . | nindent 0 }}
+    {{- end }}
+    {{- if and $cnpgAPI .Values.postgres.backup .Values.postgres.backup.enabled }}
 ---
   {{- include "ksvc.class.cnpgScheduledBackup" . | nindent 0 }}
     {{- end }}
-    {{- if and .Values.postgres.monitoring .Values.postgres.monitoring.enabled }}
+    {{- if and .Values.postgres.monitoring .Values.postgres.monitoring.enabled ($.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
 ---
   {{- include "ksvc.class.cnpgPodMonitor" . | nindent 0 }}
 ---
   {{- include "ksvc.class.cnpgAlerts" . | nindent 0 }}
     {{- end }}
-    {{- if and .Values.postgres.certManager .Values.postgres.certManager.enabled }}
+    {{- if and .Values.postgres.certManager .Values.postgres.certManager.enabled ($.Capabilities.APIVersions.Has "cert-manager.io/v1") }}
 ---
   {{- include "ksvc.class.certManagerPostgres" . | nindent 0 }}
     {{- end }}
@@ -77,11 +88,15 @@ merged. We must apply defaults explicitly before rendering.
 
   {{/* ============================================================ */}}
   {{/* Kafka Event Sources (iterate the kafka.sources map)          */}}
+  {{/* The KafkaSource is CRD-gated; the DLQ service is a plain     */}}
+  {{/* Knative Service and always renders when enabled.            */}}
   {{/* ============================================================ */}}
   {{- if and .Values.kafka .Values.kafka.sources }}
     {{- range $key, $source := .Values.kafka.sources }}
+      {{- if $.Capabilities.APIVersions.Has "sources.knative.dev/v1" }}
 ---
   {{- include "ksvc.class.kafkaSource" (dict "root" $ "key" $key "source" $source) | nindent 0 }}
+      {{- end }}
       {{- if and $source.dlq $source.dlq.enabled }}
 ---
   {{- include "ksvc.class.kafkaDlq" (dict "root" $ "key" $key "source" $source) | nindent 0 }}
@@ -93,13 +108,15 @@ merged. We must apply defaults explicitly before rendering.
   {{/* DragonflyDB Cache Cluster                                   */}}
   {{/* ============================================================ */}}
   {{- if and .Values.dragonfly .Values.dragonfly.enabled }}
+    {{- if $.Capabilities.APIVersions.Has "dragonflydb.io/v1alpha1" }}
 ---
   {{- include "ksvc.class.dragonfly" . | nindent 0 }}
+    {{- end }}
     {{- if and .Values.dragonfly.networkPolicy .Values.dragonfly.networkPolicy.enabled }}
 ---
   {{- include "ksvc.class.dragonflyNetworkPolicy" . | nindent 0 }}
     {{- end }}
-    {{- if and .Values.dragonfly.tls .Values.dragonfly.tls.certManager .Values.dragonfly.tls.certManager.enabled }}
+    {{- if and .Values.dragonfly.tls .Values.dragonfly.tls.certManager .Values.dragonfly.tls.certManager.enabled ($.Capabilities.APIVersions.Has "cert-manager.io/v1") }}
 ---
   {{- include "ksvc.class.certManagerDragonfly" . | nindent 0 }}
     {{- end }}
@@ -107,10 +124,15 @@ merged. We must apply defaults explicitly before rendering.
 
   {{/* ============================================================ */}}
   {{/* Kyverno Admission Policies (opt-in)                         */}}
+  {{/* Gated on the CONFIGURED kyverno.scaling.apiVersion, so the  */}}
+  {{/* policies render on both Kyverno >= 1.16 (v1beta1) and       */}}
+  {{/* >= 1.17 (v1) clusters and never emit an unserved apiVersion.*/}}
   {{/* ============================================================ */}}
   {{- if and .Values.kyverno .Values.kyverno.enabled .Values.kyverno.scaling .Values.kyverno.scaling.enabled }}
+    {{- if $.Capabilities.APIVersions.Has .Values.kyverno.scaling.apiVersion }}
 ---
 {{- include "ksvc.class.kyvernoScaling" . | nindent 0 }}
+    {{- end }}
 {{- end }}
 
 {{- end }}
@@ -144,13 +166,20 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     )
     "volumeMounts" (list)
     "volumes" (list)
-    "podAnnotations" (dict "prometheus.io/scrape" "true" "prometheus.io/port" "8080" "prometheus.io/path" "/metrics")
-    "annotations" (dict "prometheus.io/scrape" "true" "prometheus.io/port" "8080" "prometheus.io/path" "/metrics")
+    "podAnnotations" (dict "prometheus.io/scrape" "true" "prometheus.io/path" "/metrics")
+    "annotations" (dict "prometheus.io/scrape" "true" "prometheus.io/path" "/metrics")
     "labels" (dict)
+    "affinity" (dict)
+    "tolerations" (list)
+    "topologySpreadConstraints" (list)
+    "nodeSelector" (dict)
+    "serviceAccountName" ""
   -}}
 
   {{- $flaggerDefaults := dict
     "enabled" false
+    "preWebhookTimeout" "1m"
+    "postWebhookTimeout" "5m"
     "analysis" (dict "interval" "1m" "threshold" 5 "maxWeight" 50 "stepWeight" 10 "progressDeadlineSeconds" 120)
     "metrics" (dict "successRateThreshold" 99 "latencyP99ThresholdMs" 500)
     "loadTest" (dict "enabled" true "webhookUrl" "http://k6-loadtester.flagger-system/launch-test" "vus" 10 "duration" "1m" "p95ThresholdMs" 500 "errorRateThreshold" 0.01 "script" "")
@@ -158,10 +187,24 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
 
   {{- $services := .Values.services | default dict -}}
   {{- range $key, $svc := $services }}
+    {{/* Explicit prometheus.io/port annotations always win; when they are not
+         set, the scrape port must follow services.<key>.port instead of the
+         historical hard-coded 8080. Capture the raw annotations before the
+         merge so "consumer set it" can be told apart from "we defaulted it". */}}
+    {{- $rawPodAnnotations := $svc.podAnnotations | default dict -}}
+    {{- $rawAnnotations := $svc.annotations | default dict -}}
     {{- $merged := mustMergeOverwrite (deepCopy $svcDefaults) $svc -}}
     {{/* Merge flagger defaults into the service's flagger config */}}
     {{- $svcFlagger := $merged.flagger | default dict -}}
     {{- $_ := set $merged "flagger" (mustMergeOverwrite (deepCopy $flaggerDefaults) $svcFlagger) -}}
+    {{- $mergedPodAnnotations := $merged.podAnnotations | default dict -}}
+    {{- $mergedAnnotations := $merged.annotations | default dict -}}
+    {{- if and (not (hasKey $rawPodAnnotations "prometheus.io/port")) (eq (toString (index $mergedPodAnnotations "prometheus.io/scrape")) "true") -}}
+      {{- $_ := set $mergedPodAnnotations "prometheus.io/port" (toString $merged.port) -}}
+    {{- end -}}
+    {{- if and (not (hasKey $rawAnnotations "prometheus.io/port")) (eq (toString (index $mergedAnnotations "prometheus.io/scrape")) "true") -}}
+      {{- $_ := set $mergedAnnotations "prometheus.io/port" (toString $merged.port) -}}
+    {{- end -}}
     {{- $_ := set $services $key $merged -}}
   {{- end }}
   {{- $_ := set .Values "services" $services -}}

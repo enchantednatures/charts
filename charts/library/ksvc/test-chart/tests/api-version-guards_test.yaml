@@ -1,0 +1,295 @@
+suite: api version capability guards
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # Capability-gated resources must disappear when the matching CRD api version
+  # is not served (offline `helm template`, cluster without the operator CRDs)
+  # and must render when it is. The Knative Service (serving.knative.dev/v1) is
+  # the chart's core dependency and is never gated.
+  - it: should render only the Knative Service when no CRD api versions are available
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Service
+
+  # ---------- CloudNativePG ----------
+  - it: should omit Cluster, Pooler, PodMonitor and PrometheusRule without postgresql.cnpg.io/v1
+    set:
+      postgres.enabled: true
+      postgres.backup.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render Cluster, Pooler, PodMonitor and PrometheusRule when their api versions are available
+    set:
+      postgres.enabled: true
+      postgres.backup.enabled: false
+    capabilities:
+      apiVersions:
+        - postgresql.cnpg.io/v1
+        - monitoring.coreos.com/v1
+    asserts:
+      - hasDocuments:
+          count: 5
+
+  - it: should omit PodMonitor and PrometheusRule without monitoring.coreos.com/v1
+    set:
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.backup.enabled: false
+    capabilities:
+      apiVersions:
+        - postgresql.cnpg.io/v1
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: should omit ObjectStore and ScheduledBackup without cnpg/barmancloud api versions
+    set: &backup-enabled
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.monitoring.enabled: false
+      postgres.backup.enabled: true
+      postgres.backup.objectStore.destinationPath: s3://bucket/
+      postgres.backup.objectStore.endpointURL: http://s3.example
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render Cluster and ScheduledBackup but not ObjectStore without barmancloud.cnpg.io/v1
+    set: *backup-enabled
+    capabilities:
+      apiVersions:
+        - postgresql.cnpg.io/v1
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: should render ObjectStore and ScheduledBackup when their api versions are available
+    set: *backup-enabled
+    capabilities:
+      apiVersions:
+        - postgresql.cnpg.io/v1
+        - barmancloud.cnpg.io/v1
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  # ---------- cert-manager ----------
+  - it: should omit cert-manager Certificates and Issuers without cert-manager.io/v1
+    set:
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.backup.enabled: false
+      postgres.monitoring.enabled: false
+      postgres.certManager.enabled: true
+      postgres.certManager.issuerRef.name: test-issuer
+    capabilities:
+      apiVersions:
+        - postgresql.cnpg.io/v1
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: should render the postgres cert-manager resources when cert-manager.io/v1 is available
+    set:
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.backup.enabled: false
+      postgres.monitoring.enabled: false
+      postgres.certManager.enabled: true
+      postgres.certManager.issuerRef.name: test-issuer
+    capabilities:
+      apiVersions:
+        - postgresql.cnpg.io/v1
+        - cert-manager.io/v1
+    asserts:
+      - hasDocuments:
+          count: 12
+
+  - it: should render the dragonfly cert-manager resources only when both api versions are available
+    set:
+      dragonfly.enabled: true
+      dragonfly.tls.certManager.enabled: true
+      dragonfly.tls.certManager.issuerRef.name: test-issuer
+    capabilities:
+      apiVersions:
+        - dragonflydb.io/v1alpha1
+        - cert-manager.io/v1
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  # ---------- Kafka ----------
+  - it: should omit the KafkaSource without sources.knative.dev/v1 but keep the DLQ Knative Service
+    set:
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 1
+        isKind:
+          of: Service
+
+  - it: should render the KafkaSource when sources.knative.dev/v1 is available
+    set:
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+    capabilities:
+      apiVersions:
+        - sources.knative.dev/v1
+    asserts:
+      - hasDocuments:
+          count: 3
+      - documentIndex: 1
+        isKind:
+          of: KafkaSource
+
+  # ---------- Dragonfly ----------
+  - it: should omit the Dragonfly without dragonflydb.io/v1alpha1
+    set:
+      dragonfly.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render the Dragonfly when dragonflydb.io/v1alpha1 is available
+    set:
+      dragonfly.enabled: true
+    capabilities:
+      apiVersions:
+        - dragonflydb.io/v1alpha1
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 1
+        isKind:
+          of: Dragonfly
+
+  # ---------- Flagger ----------
+  - it: should omit the Canary without flagger.app/v1beta1
+    set:
+      services.api.flagger.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render the Canary when flagger.app/v1beta1 is available
+    set:
+      services.api.flagger.enabled: true
+    capabilities:
+      apiVersions:
+        - flagger.app/v1beta1
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 1
+        isKind:
+          of: Canary
+
+  # ---------- Object Buckets ----------
+  - it: should omit the ObjectBucketClaim without objectbucket.io/v1alpha1
+    set:
+      objectBuckets.buckets.storageClassName: ceph-bucket
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render the ObjectBucketClaim when objectbucket.io/v1alpha1 is available
+    set:
+      objectBuckets.buckets.storageClassName: ceph-bucket
+    capabilities:
+      apiVersions:
+        - objectbucket.io/v1alpha1
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 1
+        isKind:
+          of: ObjectBucketClaim
+
+  # ---------- Kyverno ----------
+  - it: should omit the Kyverno policies without the configured api version
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render the Kyverno policies when the configured api version is available
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+    capabilities:
+      apiVersions:
+        - policies.kyverno.io/v1beta1
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  - it: should gate Kyverno on the configured api version, not the default (v1 available, v1 configured)
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+      kyverno.scaling.apiVersion: policies.kyverno.io/v1
+    capabilities:
+      apiVersions:
+        - policies.kyverno.io/v1beta1
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render the Kyverno policies when the configured v1 api version is available
+    set:
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+      kyverno.scaling.apiVersion: policies.kyverno.io/v1
+    capabilities:
+      apiVersions:
+        - policies.kyverno.io/v1
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  # ---------- full inventory ----------
+  - it: should render every guarded resource when all api versions are available
+    set:
+      services.api.flagger.enabled: true
+      objectBuckets.buckets.storageClassName: ceph-bucket
+      postgres.enabled: true
+      postgres.backup.enabled: true
+      postgres.backup.objectStore.destinationPath: s3://bucket/
+      postgres.backup.objectStore.endpointURL: http://s3.example
+      postgres.certManager.enabled: true
+      postgres.certManager.issuerRef.name: test-issuer
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+      dragonfly.enabled: true
+      dragonfly.tls.certManager.enabled: true
+      dragonfly.tls.certManager.issuerRef.name: test-issuer
+      kyverno.enabled: true
+      kyverno.scaling.enabled: true
+    capabilities:
+      apiVersions:
+        - monitoring.coreos.com/v1
+        - sources.knative.dev/v1
+        - dragonflydb.io/v1alpha1
+        - objectbucket.io/v1alpha1
+        - flagger.app/v1beta1
+        - cert-manager.io/v1
+        - postgresql.cnpg.io/v1
+        - barmancloud.cnpg.io/v1
+        - policies.kyverno.io/v1beta1
+        - policies.kyverno.io/v1
+    asserts:
+      - hasDocuments:
+          count: 27

@@ -1,6 +1,18 @@
 suite: scaling validation tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
 release:
@@ -208,3 +220,63 @@ tests:
       - equal:
           path: metadata.name
           value: test-release-api
+
+  # ---------- DNS-1123 name fragment validation (item a) ----------
+  - it: should fail when a services key is not a DNS-1123 label
+    set:
+      services.Bad_Key.image.repository: test/image
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.Bad_Key must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)"
+
+  - it: should fail when a services key exceeds 63 chars
+    set:
+      services.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl.image.repository: test/image
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)"
+
+  - it: should fail when a service nameOverride is not a DNS-1123 label
+    set:
+      services.api.nameOverride: Not_A_Label
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.nameOverride must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)"
+
+  - it: should fail when global.nameOverride is not a DNS-1123 label
+    set:
+      global.nameOverride: My_App
+    asserts:
+      - failedTemplate:
+          errorMessage: "global.nameOverride must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)"
+
+  - it: should fail when global.fullnameOverride is not a DNS-1123 label
+    set:
+      global.fullnameOverride: "invalid.name"
+    asserts:
+      - failedTemplate:
+          errorMessage: "global.fullnameOverride must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)"
+
+  - it: should fail when global.fullnameOverride exceeds 63 chars
+    set:
+      global.fullnameOverride: abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl
+    asserts:
+      - failedTemplate:
+          errorMessage: "global.fullnameOverride must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)"
+
+  - it: should fail when a kafka source key is not a DNS-1123 label
+    set:
+      kafka.sources.Bad_Key.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.Bad_Key must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)"
+
+  - it: should accept valid DNS-1123 name fragments
+    set:
+      global.nameOverride: web-app
+      global.fullnameOverride: my-release-1
+      services.api.nameOverride: api-v2
+      kafka.sources.events.sink: api
+    asserts:
+      - hasDocuments:
+          count: 3
