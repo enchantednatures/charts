@@ -1,0 +1,5 @@
+# helm-docs ignore patterns (resolved relative to the repository root).
+#
+# The unit-test wrapper chart is development tooling for the test suite and
+# must not receive generated documentation.
+charts/library/ksvc/test-chart/
