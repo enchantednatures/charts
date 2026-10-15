@@ -7,7 +7,8 @@ test-chart/
 # helm-docs template — development tooling used only to generate README.md.
 README.md.gotmpl
 
-# Documentation and metadata files that do not belong in a packaged chart.
+# Documentation and metadata files that do not belong in a packaged chart
+# (README.md, CHANGELOG.md, and the helm-docs template above are all excluded).
 *.md
 
 # Version control and editor/OS cruft.
