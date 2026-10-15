@@ -2,14 +2,16 @@
 # Global Settings
 # =============================================================================
 global:
-  # Override the chart fullname (default: Release.Name)
+  # -- Override the chart name (defaults to the chart name).
   nameOverride: ""
+  # -- Override the fully qualified release name used for resource names
+  # (defaults to `<release>-<chart>`).
   fullnameOverride: ""
 
-  # Labels applied to ALL resources
+  # -- Labels added to every rendered resource.
   labels: {}
 
-  # Annotations applied to ALL resources
+  # -- Annotations added to every rendered resource.
   annotations: {}
 
   # Default cert-manager issuer for all Certificate resources.
@@ -17,8 +19,11 @@ global:
   # override this with their own issuerRef.
   certManager:
     issuerRef:
+      # -- Name of the default cert-manager Issuer/ClusterIssuer.
       name: ""
+      # -- Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`).
       kind: ClusterIssuer
+      # -- API group of the default cert-manager issuer.
       group: cert-manager.io
 
 # =============================================================================
@@ -46,6 +51,9 @@ global:
 #       storageClassName: ceph-bucket
 #       endpointURL: http://rgw.example:80
 # =============================================================================
+# -- Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each
+# key renders an ObjectBucketClaim named `<release>-<key>`; see the
+# Object Buckets section for the per-entry schema.
 objectBuckets: {}
 
 # =============================================================================
@@ -64,30 +72,43 @@ objectBuckets: {}
 #       image: { repository: ghcr.io/org/app, tag: v1.0.0 }
 # =============================================================================
 services:
+  # The `api` entry below is the default example. Consumers may use any key;
+  # the key becomes the service name suffix (`<release>-<key>`).
   api:
     # Container image configuration
     image:
+      # -- Container image repository.
       repository: ""
+      # -- Container image tag.
       tag: "latest"
+      # -- Image pull policy.
       pullPolicy: IfNotPresent
-      # List of imagePullSecrets to attach to the pod spec (private registries)
+      # -- List of imagePullSecrets attached to the pod spec (private registries).
       imagePullSecrets: []
-      # Flux image policy annotation
+      # -- Flux image policy annotation.
       fluxImagePolicy: ""
 
     # Knative autoscaling
     scaling:
+      # -- Minimum number of replicas.
       minScale: 1
+      # -- Maximum number of replicas.
       maxScale: 10
+      # -- Autoscaling target (requests in flight per pod for the KPA).
       target: 100
+      # -- Maximum concurrent requests per pod.
       containerConcurrency: 100
+      # -- Request timeout in seconds.
       timeoutSeconds: 300
+      # -- Autoscaler class (e.g. `kpa.autoscaling.knative.dev` or `hpa.autoscaling.knative.dev`).
       class: ""
-      # Autoscaler metric: concurrency, rps (KPA), or cpu, memory, custom metric (HPA class only).
-      # Leave empty to use the Knative default (concurrency).
+      # -- Autoscaling metric: `concurrency`, `rps` (KPA), or `cpu`, `memory`,
+      # custom metric (HPA class only). Empty falls back to the Knative default
+      # (`concurrency`).
       metric: ""
 
-    # Container resources
+    # -- Container CPU/memory requests and limits.
+    # @default -- `100m`/`64Mi` requests, `500m`/`256Mi` limits (see `values.yaml`)
     resources:
       requests:
         cpu: "100m"
@@ -96,11 +117,13 @@ services:
         cpu: "500m"
         memory: "256Mi"
 
-    # Container port
+    # -- Container port exposed by the Knative Service.
     port: 8080
 
     # Health probes
     probes:
+      # -- Liveness probe configuration (`httpGet`).
+      # @default -- see `values.yaml`
       liveness:
         path: /health/live
         port: 8080
@@ -108,6 +131,8 @@ services:
         periodSeconds: 10
         timeoutSeconds: 2
         failureThreshold: 3
+      # -- Readiness probe configuration (`httpGet`).
+      # @default -- see `values.yaml`
       readiness:
         path: /health/ready
         port: 8080
@@ -116,13 +141,15 @@ services:
         timeoutSeconds: 3
         failureThreshold: 2
 
-    # Environment variables
+    # -- Environment variables for the container.
     env: []
 
-    # Environment variables from ConfigMaps or Secrets
+    # -- envFrom sources (Secrets/ConfigMaps) for the container.
     envFrom: []
 
-    # Security context for the container
+    # -- Container security context (non-root, read-only root fs, drops all
+    # capabilities).
+    # @default -- see `values.yaml`
     securityContext:
       runAsNonRoot: true
       runAsUser: 10001
@@ -134,68 +161,93 @@ services:
         drop:
           - ALL
 
-    # Additional volume mounts
+    # -- Additional volume mounts for the container.
     volumeMounts: []
 
-    # Additional volumes
+    # -- Additional pod volumes.
     volumes: []
 
-    # Pod-level annotations
+    # -- Annotations added to the pod template (Prometheus scraping enabled by
+    # default).
+    # @default -- see `values.yaml`
     podAnnotations:
       prometheus.io/scrape: "true"
       prometheus.io/port: "8080"
       prometheus.io/path: "/metrics"
 
-    # Service-level annotations
+    # -- Annotations added to the Knative Service (Prometheus scraping enabled
+    # by default).
+    # @default -- see `values.yaml`
     annotations:
       prometheus.io/scrape: "true"
       prometheus.io/port: "8080"
       prometheus.io/path: "/metrics"
 
-    # Service-level labels
+    # -- Additional labels for the Knative Service.
     labels: {}
 
     # Flagger Canary Release (per-service opt-in)
     flagger:
+      # -- Enable a Flagger canary for this service.
       enabled: false
 
       analysis:
+        # -- Interval between canary analysis checks (Go duration, e.g. `1m`).
         interval: 1m
+        # -- Number of failed checks before the canary is rolled back.
         threshold: 5
+        # -- Maximum traffic weight (%) assigned to the canary.
         maxWeight: 50
+        # -- Traffic weight increment (%) per successful step.
         stepWeight: 10
+        # -- Maximum seconds for the canary to make progress before rollback.
         progressDeadlineSeconds: 120
 
       metrics:
+        # -- Minimum success rate (%) required to promote the canary.
         successRateThreshold: 99
+        # -- Maximum p99 latency (ms) allowed during analysis.
         latencyP99ThresholdMs: 500
+        # -- Prometheus server address used for metric checks.
         prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
 
       loadTest:
+        # -- Enable k6 load testing during canary analysis.
         enabled: true
-        # URL of the k6 webhook service (grafana/flagger-k6-webhook)
+        # -- URL of the k6 webhook service that starts load tests.
         webhookUrl: http://k6-loadtester.flagger-system/launch-test
+        # -- Number of virtual users for the k6 load test.
         vus: 10
+        # -- Duration of the k6 load test.
         duration: 1m
+        # -- p95 latency threshold (ms) for the load test.
         p95ThresholdMs: 500
+        # -- Maximum error rate (fraction) tolerated by the load test.
         errorRateThreshold: 0.01
-        # Optional: override the entire k6 script
+        # -- Override the entire k6 load-test script.
         script: ""
 
 # =============================================================================
 # CloudNativePG PostgreSQL
 # =============================================================================
 postgres:
+  # -- Enable the CloudNativePG PostgreSQL cluster.
   enabled: false
 
+  # -- PostgreSQL major version.
   version: "16"
+  # -- Number of PostgreSQL instances (1–16).
   instances: 3
 
   # Name of the ClusterImageCatalog to pull the postgres image from.
   # imageCatalogRef requires a name (CNPG rejects the Cluster without it).
   imageCatalog:
+    # -- Name of the ClusterImageCatalog to pull the PostgreSQL image from.
     name: "postgresql"
 
+  # -- PostgreSQL server configuration parameters (TLS 1.3, buffers,
+  # synchronous replication, ...).
+  # @default -- see `values.yaml`
   parameters:
     ssl: "on"
     ssl_min_protocol_version: "TLSv1.3"
@@ -207,14 +259,18 @@ postgres:
     archive_timeout: "5min"
     wal_compression: "on"
 
+  # -- Shared libraries preloaded by PostgreSQL.
   sharedPreloadLibraries:
     - pg_stat_statements
 
+  # -- SQL statements run after cluster initialization.
   postInitSQL:
     - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
     - "ALTER SYSTEM SET log_statement = 'all';"
     - "ALTER SYSTEM SET log_min_duration_statement = '1000';"
 
+  # -- Cluster CPU/memory requests and limits.
+  # @default -- `1`/`2Gi` requests, `2`/`4Gi` limits (see `values.yaml`)
   resources:
     requests:
       cpu: "1"
@@ -224,14 +280,22 @@ postgres:
       memory: "4Gi"
 
   storage:
+    # -- Persistent volume size per instance.
     size: "200Gi"
+    # -- StorageClass for the instance volumes.
     storageClassName: "standard"
 
   pooler:
+    # -- Enable the PgBouncer pooler.
     enabled: true
+    # -- Number of pooler replicas (>= 1).
     instances: 3
+    # -- Pooler type (`rw` or `ro`).
     type: rw
+    # -- Pooler mode (`session` or `transaction`).
     poolMode: transaction
+    # -- PgBouncer configuration parameters.
+    # @default -- see `values.yaml`
     parameters:
       max_client_conn: "300"
       default_pool_size: "25"
@@ -243,6 +307,8 @@ postgres:
       log_connections: "1"
       log_disconnections: "1"
       log_pooler_errors: "1"
+    # -- Pooler CPU/memory requests and limits.
+    # @default -- see `values.yaml`
     resources:
       requests:
         cpu: "100m"
@@ -252,26 +318,45 @@ postgres:
         memory: "256Mi"
 
   backup:
+    # -- Enable WAL archiving and scheduled backups.
     enabled: true
+    # -- Cron schedule for backups.
     schedule: "0 2 * * *"
+    # -- Backup target (`prefer-standby` or `primary`).
     target: prefer-standby
+    # -- Backup retention period (e.g. `30d`).
     retentionPolicy: "30d"
     objectStore:
+      # -- Destination path for backups (e.g. `s3://bucket/path`). Derived from
+      # `bucketRef` when it is set.
       destinationPath: ""
+      # -- S3 endpoint URL. Derived from the referenced bucket when `bucketRef`
+      # is set.
       endpointURL: ""
       s3Credentials:
+        # -- Secret holding the S3 credentials.
         secretName: postgres-backup-storage
+        # -- Key within the credentials Secret holding the access key id.
         accessKeyIdKey: ACCESS_KEY_ID
+        # -- Key within the credentials Secret holding the secret access key.
         secretAccessKeyKey: ACCESS_SECRET_KEY
       data:
+        # -- Compression algorithm for data backups (`snappy`, `gzip`, `bzip2`
+        # or `lz4`).
         compression: gzip
+        # -- Number of parallel jobs for data backups.
         jobs: 2
       wal:
+        # -- Compression algorithm for WAL backups.
         compression: gzip
+        # -- Maximum number of parallel WAL uploads.
         maxParallel: 4
 
   monitoring:
+    # -- Enable the PodMonitor and Prometheus alert rules.
     enabled: true
+    # -- Alert thresholds for the Prometheus rules.
+    # @default -- see `values.yaml`
     alerts:
       replicationLagWarning: 10
       replicationLagCritical: 60
@@ -281,11 +366,15 @@ postgres:
   # via CNPG's native spec.certificates support.
   # Requires cert-manager CRDs and an Issuer/ClusterIssuer in the cluster.
   certManager:
+    # -- Generate PostgreSQL TLS certificates via cert-manager.
     enabled: false
     # Override global.certManager.issuerRef for postgres certificates
     issuerRef:
+      # -- Override `global.certManager.issuerRef` for PostgreSQL certificates.
       name: ""
+      # -- Kind of the PostgreSQL cert-manager issuer.
       kind: ""
+      # -- API group of the PostgreSQL cert-manager issuer.
       group: ""
 
 # =============================================================================
@@ -304,28 +393,35 @@ postgres:
 #         sink: worker
 # =============================================================================
 kafka:
+  # -- Map of KafkaSource entries, keyed by source name. Each key renders a
+  # KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must
+  # reference a key in `services` (validated at render time). See the Kafka
+  # Event Sources section for the per-entry schema.
   sources: {}
 
 # =============================================================================
 # DragonflyDB Cache Cluster
 # =============================================================================
 dragonfly:
+  # -- Enable the DragonflyDB cache cluster.
   enabled: false
 
-  # Dragonfly container image
+  # -- DragonflyDB container image repository.
   image: docker.dragonflydb.io/dragonflydb/dragonfly
+  # -- DragonflyDB container image tag.
   imageTag: "v1.21.2"
 
-  # Total instances including master
+  # -- Total number of Dragonfly instances including the master (1–16).
   replicas: 3
 
-  # Extra Dragonfly CLI args (e.g. --cluster_mode=emulated)
+  # -- Extra Dragonfly CLI arguments (e.g. `--cluster_mode=emulated`).
   args: []
 
-  # Environment variables
+  # -- Extra environment variables for the Dragonfly container.
   env: []
 
-  # Container resources
+  # -- Dragonfly container CPU/memory requests and limits.
+  # @default -- `500m`/`512Mi` requests, `1`/`1Gi` limits (see `values.yaml`)
   resources:
     requests:
       cpu: "500m"
@@ -337,71 +433,105 @@ dragonfly:
   # Authentication — reference a Secret containing the password
   authentication:
     passwordFromSecret:
+      # -- Secret containing the Dragonfly password.
       name: ""
+      # -- Key within the password Secret.
       key: password
     # Optional mTLS client CA cert
     clientCaCertSecret:
+      # -- Secret containing the mTLS client CA certificate.
       name: ""
+      # -- Key within the client CA Secret.
       key: ca.crt
 
   # TLS — reference a Secret containing tls.crt / tls.key
   tls:
+    # -- Secret containing `tls.crt`/`tls.key`. Ignored when
+    # `tls.certManager.enabled` is true.
     secretName: ""
     # cert-manager integration — generates a Certificate resource whose
     # secret is automatically wired into tlsSecretRef.
     # When enabled, tls.secretName is ignored (auto-generated name is used).
     certManager:
+      # -- Generate the Dragonfly TLS certificate via cert-manager.
       enabled: false
       # Override global.certManager.issuerRef for the dragonfly certificate
       issuerRef:
+        # -- Override `global.certManager.issuerRef` for the Dragonfly certificate.
         name: ""
+        # -- Kind of the Dragonfly cert-manager issuer.
         kind: ""
+        # -- API group of the Dragonfly cert-manager issuer.
         group: ""
+      # -- Requested certificate lifetime.
       duration: "2160h"
+      # -- How long before expiry the certificate is renewed.
       renewBefore: "360h"
 
   # Snapshot / persistence configuration
   snapshot:
+    # -- Enable snapshot persistence.
     enabled: false
+    # -- Cron schedule for snapshots.
     cron: "0 */6 * * *"
+    # -- Take snapshots only on the master instance.
     enableOnMasterOnly: true
-    # S3 backup: set dir to "s3://bucket/path" (mutually exclusive with PVC)
+    # -- S3 backup path (`s3://bucket/path`); mutually exclusive with an
+    # existing PVC. Derived from `snapshot.bucketRef` when it is set.
     dir: ""
-    # Use an existing PVC instead of creating one
+    # -- Use an existing PVC for snapshots (mutually exclusive with `dir` and
+    # `snapshot.bucketRef`).
     existingPersistentVolumeClaimName: ""
     # PVC storage (used only when dir and existingPVC are empty)
     storage:
+      # -- PVC size when neither `dir` nor an existing PVC is set.
       size: "10Gi"
+      # -- StorageClass for the snapshot PVC.
       storageClassName: ""
 
   # Kubernetes Service configuration
   serviceSpec:
+    # -- Kubernetes Service type.
     type: ClusterIP
+    # -- Override the generated Service name.
     name: ""
+    # -- Node port (only used when `type` is `NodePort`).
     nodePort: 0
+    # -- Annotations for the Dragonfly Service.
     annotations: {}
+    # -- Labels for the Dragonfly Service.
     labels: {}
 
   # PodDisruptionBudget (minAvailable and maxUnavailable are mutually exclusive: at most one may be
   # non-zero — setting both fails render-time validation; a field left at 0 is treated as unset)
   pdb:
+    # -- Minimum available pods for the PodDisruptionBudget (mutually exclusive
+    # with `maxUnavailable`).
     minAvailable: 2
+    # -- Maximum unavailable pods for the PodDisruptionBudget (mutually
+    # exclusive with `minAvailable`).
     maxUnavailable: 0
 
   # Scheduling
+  # -- Pod affinity rules.
   affinity: {}
+  # -- Pod tolerations.
   tolerations: []
+  # -- Pod topology spread constraints.
   topologySpreadConstraints: []
+  # -- Node selector for the Dragonfly pods.
   nodeSelector: {}
 
   # Security contexts
+  # -- Pod-level security context.
   podSecurityContext: {}
+  # -- Container-level security context.
   containerSecurityContext: {}
 
-  # Service account
+  # -- ServiceAccount used by the Dragonfly pods.
   serviceAccountName: ""
 
-  # Priority class
+  # -- PriorityClass for the Dragonfly pods.
   priorityClassName: ""
 
 # =============================================================================
@@ -412,9 +542,15 @@ dragonfly:
 # policies.kyverno.io/v1 on Kyverno >= 1.17.
 # =============================================================================
 kyverno:
+  # -- Render the Kyverno admission policies.
   enabled: false
   scaling:
+    # -- Render the scaling/HA guardrail policies (Knative Service, CNPG
+    # instances, Dragonfly replicas/PDB).
     enabled: false
+    # -- Policy `apiVersion` (`policies.kyverno.io/v1beta1` for Kyverno >= 1.16,
+    # `policies.kyverno.io/v1` for Kyverno >= 1.17).
     apiVersion: policies.kyverno.io/v1beta1
+    # -- Enforcement actions (`Deny` and/or `Audit`).
     validationActions:
       - Deny

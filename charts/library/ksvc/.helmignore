@@ -1,0 +1,20 @@
+# Patterns to ignore when building the ksvc library chart package.
+# Uses .gitignore-style glob matching, relative to this chart directory.
+
+# Unit-test wrapper chart — development tooling, not part of the chart.
+test-chart/
+
+# helm-docs template — development tooling used only to generate README.md.
+README.md.gotmpl
+
+# Documentation and metadata files that do not belong in a packaged chart.
+*.md
+
+# Version control and editor/OS cruft.
+.git/
+.gitignore
+.helmignore
+*.tmproj
+.vscode/
+.idea/
+.DS_Store
