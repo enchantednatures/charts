@@ -196,13 +196,10 @@ lint: ## Lint all charts and examples
 	@# hack/lint-app.sh, which rewrites Chart.yaml/Chart.lock in place and always
 	@# restores them on exit (even on failure), so the tree stays unchanged.
 	hack/lint-app.sh helm lint charts/app/ksvc
-	@set -e; tmpdir=$$(mktemp -d); \
-	for f in examples/*/Chart.lock; do [ -f "$$f" ] || continue; cp "$$f" "$$tmpdir/$$(basename "$$(dirname "$$f")").lock"; done; \
-	trap 'for f in "$$tmpdir"/*.lock; do [ -f "$$f" ] || continue; cp "$$f" "examples/$$(basename "$$f" .lock)/Chart.lock"; done; rm -rf "$$tmpdir"' EXIT; \
-	for example in examples/*/; do \
+	@set -e; for example in examples/*/; do \
 		[ -f "$$example/Chart.yaml" ] || continue; \
 		echo "--- Linting $$example ---"; \
-		helm dependency update "$$example"; \
+		helm dependency build "$$example"; \
 		helm lint "$$example"; \
 	done
 
@@ -210,6 +207,16 @@ lint: ## Lint all charts and examples
 test: ## Run helm unit tests
 	helm dependency build charts/library/ksvc/test-chart
 	helm unittest charts/library/ksvc/test-chart
+
+.PHONY: update-locks
+update-locks: ## Refresh Chart.lock files (test-chart, examples, app chart) from current sources
+	helm dependency update charts/library/ksvc/test-chart
+	@set -e; for example in examples/*/; do \
+		[ -f "$$example/Chart.yaml" ] || continue; \
+		echo "--- Updating $$example ---"; \
+		helm dependency update "$$example"; \
+	done
+	helm dependency update charts/app/ksvc
 
 # ---------------------------------------------------------------------------
 # Help

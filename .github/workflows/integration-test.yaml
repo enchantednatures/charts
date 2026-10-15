@@ -103,8 +103,8 @@ jobs:
         if: matrix.install_dragonfly_crds
         run: make install-dragonfly
 
-      - name: Helm dependency update
-        run: helm dependency update examples/${{ matrix.example }}
+      - name: Helm dependency build
+        run: helm dependency build examples/${{ matrix.example }}
 
       - name: Helm dry-run install
         run: |
@@ -179,8 +179,8 @@ jobs:
       - name: Install Kyverno
         run: make install-kyverno
 
-      - name: Helm dependency update
-        run: helm dependency update examples/minimal
+      - name: Helm dependency build
+        run: helm dependency build examples/minimal
 
       - name: Install guardrails release
         run: |
