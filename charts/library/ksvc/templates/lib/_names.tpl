@@ -1,16 +1,4 @@
 {{/*
-Expand the name of the chart.
-Knative services MUST use hyphens, never underscores.
-*/}}
-{{- define "ksvc.name" -}}
-{{- $override := "" }}
-{{- if .Values.global }}
-{{-   $override = .Values.global.nameOverride | default "" }}
-{{- end }}
-{{- default .Chart.Name $override | trunc 63 | trimSuffix "-" | replace "_" "-" }}
-{{- end }}
-
-{{/*
 Create a default fully qualified app name.
 */}}
 {{- define "ksvc.fullname" -}}

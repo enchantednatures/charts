@@ -26,19 +26,6 @@ helm.sh/chart: {{ include "ksvc.chart" . | quote }}
 {{- end }}
 
 {{/*
-Selector labels (subset for matchLabels). Mirrors `ksvc.labels`' identity pair:
-`name` is the application, `instance` is the release fullname. Quoted.
-*/}}
-{{- define "ksvc.selectorLabels" -}}
-{{- $appName := .Chart.Name -}}
-{{- if .Values.global -}}
-{{- $appName = default .Chart.Name .Values.global.nameOverride -}}
-{{- end -}}
-app.kubernetes.io/name: {{ $appName | quote }}
-app.kubernetes.io/instance: {{ include "ksvc.fullname" . | quote }}
-{{- end }}
-
-{{/*
 ksvc.serviceLabels — Labels for a specific service entry.
 Expects context: dict with "root" (top-level context), "key" (service map key),
 and "svc" (the service config dict).

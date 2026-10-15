@@ -226,8 +226,6 @@ services:
         successRateThreshold: 99
         # -- Maximum p99 latency (ms) allowed during analysis.
         latencyP99ThresholdMs: 500
-        # -- Prometheus server address used for metric checks.
-        prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
 
       loadTest:
         # -- Enable k6 load testing during canary analysis.

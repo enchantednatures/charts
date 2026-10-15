@@ -70,7 +70,7 @@ All label values and resource `metadata.name`s are rendered as quoted strings, s
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.2
+        version: 0.7.9
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -235,7 +235,6 @@ per-entry schemas are documented in the sections following the table.
 | services.api.flagger.loadTest.vus | int | `10` | Number of virtual users for the k6 load test. |
 | services.api.flagger.loadTest.webhookUrl | string | `"http://k6-loadtester.flagger-system/launch-test"` | URL of the k6 webhook service that starts load tests. |
 | services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
-| services.api.flagger.metrics.prometheusAddress | string | `"http://prometheus.observability.svc.cluster.local:9090"` | Prometheus server address used for metric checks. |
 | services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
 | services.api.image.digest | string | `""` | Immutable container image digest (e.g. `sha256:...`). When set the image renders as `repository@digest` and `tag` is ignored — the cache-safe, reproducible alternative to a mutable tag. |
 | services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |

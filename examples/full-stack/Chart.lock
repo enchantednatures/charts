@@ -1,6 +1,6 @@
 dependencies:
 - name: ksvc
   repository: file://../../charts/library/ksvc
-  version: 0.7.8
-digest: sha256:69d09cc10b74266db6a11094a10a52462936ce7a5d629950bfd6ae0387a728ec
-generated: "2026-10-15T16:33:13.942283311Z"
+  version: 0.7.9
+digest: sha256:28088d66b5c1c1744bd91e7dca52dd60efb111e30e5a035813407d30af41fb82
+generated: "2026-10-15T16:37:55.754198875Z"
