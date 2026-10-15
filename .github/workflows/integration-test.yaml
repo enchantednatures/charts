@@ -120,17 +120,15 @@ jobs:
         run: helm dependency build examples/${{ matrix.example }}
 
       - name: Helm dry-run install
-        env:
-          API_VERSIONS: ${{ matrix.api_versions }}
         run: |
-          api_args=()
-          if [ -n "$API_VERSIONS" ]; then api_args+=(--api-versions "$API_VERSIONS"); fi
+          # `helm install` discovers API versions from the cluster (the CRDs are
+          # installed above), so the CRD guards need no --api-versions here —
+          # that flag only exists on `helm template`.
           helm install test-release examples/${{ matrix.example }} \
             --namespace test-ns \
             --create-namespace \
             --dry-run=server \
-            --timeout 120s \
-            "${api_args[@]}"
+            --timeout 120s
 
       - name: Verify rendered resources via kubectl
         env:
@@ -210,7 +208,6 @@ jobs:
           helm install guardrails-e2e examples/minimal \
             --namespace test-ns \
             --create-namespace \
-            --api-versions policies.kyverno.io/v1beta1 \
             --set kyverno.enabled=true \
             --set kyverno.scaling.enabled=true
 
