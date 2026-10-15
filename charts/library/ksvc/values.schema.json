@@ -846,9 +846,6 @@
                 "latencyP99ThresholdMs": {
                   "type": "integer",
                   "minimum": 1
-                },
-                "prometheusAddress": {
-                  "type": "string"
                 }
               }
             },
