@@ -1,6 +1,6 @@
 # ksvc
 
-Helm library chart for deploying **multiple Knative services** with integrated CloudNativePG, Kafka event sources, DragonflyDB, and Flagger canary releases.
+Helm library chart for deploying **multiple Knative services** with integrated CloudNativePG, Kafka event sources, DragonflyDB, Flagger canary releases, Ceph RGW object buckets, and optional Kyverno guardrails.
 
 ## Overview
 
@@ -23,7 +23,10 @@ Consumer Chart
               │     └── DLQ Knative Service (opt-in)
               └── Global resources
                     ├── ObjectBucketClaim (per objectBuckets entry, opt-in)
-                    ├── CNPG Cluster, Pooler, Backup, ObjectStore, PodMonitor, Alerts
+                    ├── CNPG Cluster, Pooler, ScheduledBackup, ObjectStore, PodMonitor, PrometheusRule
+                    ├── NetworkPolicy (CNPG / Dragonfly pods, opt-in)
+                    ├── Certificate / Issuer (cert-manager, opt-in)
+                    ├── Kyverno NamespacedValidatingPolicy (opt-in)
                     └── Dragonfly
 ```
 
@@ -76,6 +79,7 @@ The chart renders a hardened security profile by default and can additionally re
 
 *   **PgBouncer pooler** — `postgres.pooler.securityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp, rendered on the `pgbouncer` container of the CNPG `Pooler` pod template. `readOnlyRootFilesystem` is deliberately not set. Note that CloudNativePG release-1.25 also builds the pooler pod from a hardened profile of its own and forces an equivalent container security context (including `readOnlyRootFilesystem: true`) at reconcile time, so conflicting per-field overrides are reconciled back by the operator at runtime; the chart default makes the rendered `Pooler` manifest declare the restricted profile explicitly.
 *   **Dragonfly** — `dragonfly.podSecurityContext` defaults to `seccompProfile: RuntimeDefault` plus `fsGroup: 999` (the Dragonfly operator's own default, preserved so snapshot PVC volume ownership keeps working), and `dragonfly.containerSecurityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp. The default image (`docker.dragonflydb.io/dragonflydb/dragonfly`) ships a non-root `dfly` user (uid 999), so `runAsNonRoot` is safe. Both keys are fully overridable; setting an explicit empty map (`{}`) opts out and renders no security context.
+*   **Kafka DLQ** — the DLQ Knative Service container (`kafka.sources.<key>.dlq.securityContext`) runs the same restricted profile by default: `runAsNonRoot` (uid 10001), read-only root filesystem, no privilege escalation, all capabilities dropped and `RuntimeDefault` seccomp. Its replicas and resources are tunable per source via `dlq.scaling` (`minScale`/`maxScale`) and `dlq.resources`.
 
 **NetworkPolicies (opt-in).** Enable with `postgres.networkPolicy.enabled: true` and/or `dragonfly.networkPolicy.enabled: true`. Each enabled policy:
 
@@ -125,7 +129,7 @@ Consequences:
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.15
+        version: 0.7.16
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -161,6 +165,7 @@ Consequences:
 | **DragonflyDB** | Dragonfly | Global |
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
 | **NetworkPolicies (opt-in)** | NetworkPolicy (CNPG cluster pods, Dragonfly pods) | Global |
+| **cert-manager (opt-in)** | Certificate, Issuer, placeholder Secret (CNPG server CA, client CA and leaf certs; Dragonfly TLS) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
 
 ### CRD availability and offline rendering
@@ -346,11 +351,13 @@ per-entry schemas are documented in the sections following the table.
 
 Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must reference a valid key in the `services` map (validated at render time).
 
+`kafka.sources` ships **empty** in `values.yaml` (`kafka.sources: {}`), so the generated values table above lists no per-entry keys. The defaults below are the loader's per-entry runtime defaults from [`templates/loader/_defaults.tpl`](templates/loader/_defaults.tpl) (`kafkaSourceDefaults`, including its `dlq` block); the loader merges them under each entry, so your values win field by field.
+
 | Key | Description | Default |
 |-----|-------------|---------|
 | `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
-| `kafka.sources.<key>.sink` | **Required.** Key from the `services` map | — |
-| `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
+| `kafka.sources.<key>.sink` | **Required.** Key from the `services` map | `""` (validation fails when unset) |
+| `kafka.sources.<key>.consumerGroup` | Consumer group. Empty falls back to `<fullname>-<key>-consumers` (sanitized) | `""` |
 | `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc.cluster.local:9092]` |
 | `kafka.sources.<key>.consumers` | Concurrent consumers per replica | `3` |
 | `kafka.sources.<key>.initialOffset` | `latest` or `earliest` | `latest` |
@@ -358,8 +365,11 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffPolicy` | `linear` or `exponential` | `exponential` |
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
-| `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display:v1.17.0` |
-| `kafka.sources.<key>.dlq.securityContext` | Container security context for the DLQ service (same restricted profile as main services) | non-root, read-only root fs, drops all capabilities, `RuntimeDefault` seccomp |
+| `kafka.sources.<key>.dlq.image` | DLQ container image, as a `{repository, tag}` object | `gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:v1.17.0` |
+| `kafka.sources.<key>.dlq.scaling.minScale` | DLQ minimum replicas (`autoscaling.knative.dev/min-scale`) | `0` |
+| `kafka.sources.<key>.dlq.scaling.maxScale` | DLQ maximum replicas (`autoscaling.knative.dev/max-scale`) | `2` |
+| `kafka.sources.<key>.dlq.resources` | DLQ container CPU/memory requests and limits | `50m`/`32Mi` requests, `200m`/`128Mi` limits |
+| `kafka.sources.<key>.dlq.securityContext` | Container security context for the DLQ service (same restricted profile as main services) | non-root (uid 10001), read-only root fs, no privilege escalation, drops all capabilities, `RuntimeDefault` seccomp |
 | `kafka.sources.<key>.dlq.imagePullSecrets` | List of imagePullSecrets attached to the DLQ pod spec (private registries), applied in addition to `global.imagePullSecrets` | `[]` |
 
 ## Object Buckets (Ceph RGW)
@@ -546,65 +556,12 @@ The relevant values (`kyverno.enabled`, `kyverno.scaling.enabled`, `kyverno.scal
 
 ## Migration from v0.1.x
 
-v0.2.0 is a **breaking change**. The `knativeService:` and top-level `flagger:` / `kafka:` keys have been replaced.
-
-### Key changes
-
-| v0.1.x | v0.2.0 |
-|--------|--------|
-| `knativeService.image.repository` | `services.<key>.image.repository` |
-| `knativeService.scaling.*` | `services.<key>.scaling.*` |
-| `flagger.enabled` | `services.<key>.flagger.enabled` |
-| `kafka.enabled` | Remove — presence of `kafka.sources` entries enables Kafka |
-| `kafka.source.topic` | `kafka.sources.<key>.topic` |
-| `kafka.source.sink` (implicit) | `kafka.sources.<key>.sink` (explicit, validated) |
-
-### Migration steps
-
-1. Replace `knativeService:` with a named entry under `services:`:
-   ```yaml
-   # Before (v0.1.x)
-   knativeService:
-     image:
-       repository: ghcr.io/org/my-app
-       tag: v1.0.0
-
-   # After (v0.2.0)
-   services:
-     app:
-       image:
-         repository: ghcr.io/org/my-app
-         tag: v1.0.0
-   ```
-
-2. Move `flagger:` inside the service entry:
-   ```yaml
-   # Before
-   flagger:
-     enabled: true
-
-   # After
-   services:
-     app:
-       flagger:
-         enabled: true
-   ```
-
-3. Convert `kafka:` to `kafka.sources:` map with explicit `sink`:
-   ```yaml
-   # Before
-   kafka:
-     enabled: true
-     source:
-       topic: my-events
-
-   # After
-   kafka:
-     sources:
-       events:
-         topic: my-events
-         sink: app    # must match a key in services
-   ```
+The `v0.1.x → v0.2.0` breaking change (the `knativeService:` key and the top-level
+`flagger:` / `kafka:` keys were replaced by the `services` and `kafka.sources`
+maps) lives in [CHANGELOG.md](CHANGELOG.md) along with the migration steps. That
+guide is the only historical entry kept in-repo; per-release notes live in
+[GitHub Releases](https://github.com/enchantednatures/charts/releases) and the
+`<chart>-v<version>` tags.
 
 ## Examples
 
@@ -621,7 +578,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 The repository uses GitHub Actions for automated quality assurance:
 
 *   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
-*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.7.1`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
+*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.7.16`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing
