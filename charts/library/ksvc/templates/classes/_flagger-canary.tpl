@@ -45,7 +45,7 @@ spec:
       - name: smoke-test
         type: pre-rollout
         url: {{ $lt.webhookUrl }}
-        timeout: 1m
+        timeout: {{ $flagger.preWebhookTimeout }}
         metadata:
           type: cmd
           cmd: "k6 run --out json /dev/stdin"
@@ -78,7 +78,7 @@ spec:
       - name: load-test
         type: rollout
         url: {{ $lt.webhookUrl }}
-        timeout: 5m
+        timeout: {{ $flagger.postWebhookTimeout }}
         metadata:
           {{- if $lt.script }}
           script: |

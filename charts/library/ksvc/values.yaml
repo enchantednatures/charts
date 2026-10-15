@@ -3,10 +3,15 @@
 # =============================================================================
 global:
   # -- Override the chart name (defaults to the chart name). Also sets the
-  # `app.kubernetes.io/name` label on every rendered resource.
+  # `app.kubernetes.io/name` label on every rendered resource. Must be a valid
+  # DNS-1123 label (<= 63 characters, lowercase alphanumerics and dashes).
   nameOverride: ""
   # -- Override the fully qualified release name used for resource names
-  # (defaults to `<release>-<chart>`).
+  # (defaults to `<release>-<chart>`). Must be a valid DNS-1123 label
+  # (<= 63 characters, lowercase alphanumerics and dashes). Resource names are
+  # derived from the release name alone, so two different charts installed
+  # under the same release name in one namespace would collide — set
+  # `fullnameOverride` (or use distinct release names) when that can happen.
   fullnameOverride: ""
 
   # -- Labels added to every rendered resource.
@@ -190,28 +195,45 @@ services:
     volumes: []
 
     # -- Annotations added to the pod template (Prometheus scraping enabled by
-    # default).
+    # default; `prometheus.io/port` follows `services.<key>.port` unless set
+    # here explicitly).
     # @default -- see `values.yaml`
     podAnnotations:
       prometheus.io/scrape: "true"
-      prometheus.io/port: "8080"
       prometheus.io/path: "/metrics"
 
     # -- Annotations added to the Knative Service (Prometheus scraping enabled
-    # by default).
+    # by default; `prometheus.io/port` follows `services.<key>.port` unless set
+    # here explicitly).
     # @default -- see `values.yaml`
     annotations:
       prometheus.io/scrape: "true"
-      prometheus.io/port: "8080"
       prometheus.io/path: "/metrics"
 
     # -- Additional labels for the Knative Service.
     labels: {}
 
+    # Scheduling
+    # -- Pod affinity rules for the Knative Service pod template.
+    affinity: {}
+    # -- Pod tolerations for the Knative Service pod template.
+    tolerations: []
+    # -- Pod topology spread constraints for the Knative Service pod template.
+    topologySpreadConstraints: []
+    # -- Node selector for the Knative Service pod template.
+    nodeSelector: {}
+    # -- ServiceAccount used by the Knative Service pod template.
+    serviceAccountName: ""
+
     # Flagger Canary Release (per-service opt-in)
     flagger:
       # -- Enable a Flagger canary for this service.
       enabled: false
+
+      # -- Timeout for the pre-rollout smoke-test webhook (Go duration, e.g. `1m`).
+      preWebhookTimeout: 1m
+      # -- Timeout for the rollout load-test webhook (Go duration, e.g. `5m`).
+      postWebhookTimeout: 5m
 
       analysis:
         # -- Interval between canary analysis checks (Go duration, e.g. `1m`).

@@ -32,8 +32,13 @@ jobs:
       fail-fast: false
       matrix:
         example: [minimal, full-stack, postgres-only, kafka-consumer, dragonfly-cache]
+        # api_versions mirrors the CRDs installed for the example: the chart
+        # capability-gates CR resources, so offline/one-shot renders must be
+        # told which api versions are served (the same set the dry-runs run
+        # against).
         include:
           - example: minimal
+            api_versions: ""
             install_cnpg_crds: false
             install_kafka_crds: false
             install_flagger_crds: false
@@ -41,6 +46,7 @@ jobs:
             install_monitoring_crds: false
             install_object_bucket_crds: false
           - example: full-stack
+            api_versions: postgresql.cnpg.io/v1,barmancloud.cnpg.io/v1,monitoring.coreos.com/v1,sources.knative.dev/v1,dragonflydb.io/v1alpha1,flagger.app/v1beta1
             install_cnpg_crds: true
             install_kafka_crds: true
             install_flagger_crds: true
@@ -48,6 +54,7 @@ jobs:
             install_monitoring_crds: true
             install_object_bucket_crds: false
           - example: postgres-only
+            api_versions: postgresql.cnpg.io/v1,barmancloud.cnpg.io/v1,monitoring.coreos.com/v1,objectbucket.io/v1alpha1
             install_cnpg_crds: true
             install_kafka_crds: false
             install_flagger_crds: false
@@ -55,6 +62,7 @@ jobs:
             install_monitoring_crds: true
             install_object_bucket_crds: true
           - example: kafka-consumer
+            api_versions: sources.knative.dev/v1
             install_cnpg_crds: false
             install_kafka_crds: true
             install_flagger_crds: false
@@ -62,6 +70,7 @@ jobs:
             install_monitoring_crds: false
             install_object_bucket_crds: false
           - example: dragonfly-cache
+            api_versions: dragonflydb.io/v1alpha1,objectbucket.io/v1alpha1
             install_cnpg_crds: false
             install_kafka_crds: false
             install_flagger_crds: false
@@ -111,18 +120,28 @@ jobs:
         run: helm dependency build examples/${{ matrix.example }}
 
       - name: Helm dry-run install
+        env:
+          API_VERSIONS: ${{ matrix.api_versions }}
         run: |
+          api_args=()
+          if [ -n "$API_VERSIONS" ]; then api_args+=(--api-versions "$API_VERSIONS"); fi
           helm install test-release examples/${{ matrix.example }} \
             --namespace test-ns \
             --create-namespace \
             --dry-run=server \
-            --timeout 120s
+            --timeout 120s \
+            "${api_args[@]}"
 
       - name: Verify rendered resources via kubectl
+        env:
+          API_VERSIONS: ${{ matrix.api_versions }}
         run: |
+          api_args=()
+          if [ -n "$API_VERSIONS" ]; then api_args+=(--api-versions "$API_VERSIONS"); fi
           kubectl create namespace test-ns --dry-run=client -o yaml | kubectl apply -f -
           helm template test-release examples/${{ matrix.example }} \
-            --namespace test-ns | \
+            --namespace test-ns \
+            "${api_args[@]}" | \
             kubectl apply --dry-run=server -f - 2>&1
 
   app-chart:
@@ -191,6 +210,7 @@ jobs:
           helm install guardrails-e2e examples/minimal \
             --namespace test-ns \
             --create-namespace \
+            --api-versions policies.kyverno.io/v1beta1 \
             --set kyverno.enabled=true \
             --set kyverno.scaling.enabled=true
 

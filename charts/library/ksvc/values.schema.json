@@ -121,7 +121,9 @@
               "minLength": 1
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         },
         "parameters": {
           "type": "object"
@@ -661,7 +663,7 @@
       "properties": {
         "nameOverride": {
           "type": "string",
-          "description": "Override the name suffix for this service. When set, replaces the map key in the resource name: <release>-<nameOverride>. Set to empty string to produce just <release> with no suffix."
+          "description": "Override the name suffix for this service. When set, replaces the map key in the resource name: <release>-<nameOverride>. Set to empty string to produce just <release> with no suffix. Must be a DNS-1123 label (validated at render time)."
         },
         "image": {
           "type": "object",
@@ -912,8 +914,29 @@
                   "type": "string"
                 }
               }
+            },
+            "preWebhookTimeout": {
+              "type": "string"
+            },
+            "postWebhookTimeout": {
+              "type": "string"
             }
           }
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "serviceAccountName": {
+          "type": "string"
         }
       }
     },

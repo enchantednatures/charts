@@ -84,6 +84,11 @@ jobs:
   template-render:
     name: Template Rendering
     runs-on: ubuntu-latest
+    env:
+      # CR groups the chart can render. Offline `helm template` has no cluster
+      # to discover CRDs from, so guarded resources only render when these are
+      # passed explicitly.
+      API_VERSIONS: monitoring.coreos.com/v1,sources.knative.dev/v1,dragonflydb.io/v1alpha1,objectbucket.io/v1alpha1,flagger.app/v1beta1,cert-manager.io/v1,postgresql.cnpg.io/v1,barmancloud.cnpg.io/v1,policies.kyverno.io/v1beta1,policies.kyverno.io/v1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -102,6 +107,7 @@ jobs:
         run: |
           hack/lint-app.sh helm template test-app charts/app/ksvc \
             --namespace test-ns \
+            --api-versions "$API_VERSIONS" \
             --set services.api.image.repository=ghcr.io/test/app \
             --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
           yamllint -d relaxed /tmp/rendered-app.yaml
@@ -115,7 +121,8 @@ jobs:
             echo "--- Rendering $name ---"
             helm dependency build "$example"
             helm template "test-${name}" "$example" \
-              --namespace test-ns > "/tmp/rendered-${name}.yaml"
+              --namespace test-ns \
+              --api-versions "$API_VERSIONS" > "/tmp/rendered-${name}.yaml"
             yamllint -d relaxed "/tmp/rendered-${name}.yaml"
             echo "Resources rendered for $name:"
             grep -E "^kind:" "/tmp/rendered-${name}.yaml" | sort | uniq -c
@@ -146,6 +153,8 @@ jobs:
   kubeconform:
     name: Kubernetes Schema Validation
     runs-on: ubuntu-latest
+    env:
+      API_VERSIONS: monitoring.coreos.com/v1,sources.knative.dev/v1,dragonflydb.io/v1alpha1,objectbucket.io/v1alpha1,flagger.app/v1beta1,cert-manager.io/v1,postgresql.cnpg.io/v1,barmancloud.cnpg.io/v1,policies.kyverno.io/v1beta1,policies.kyverno.io/v1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -164,7 +173,8 @@ jobs:
             name=$(basename "$example")
             echo "--- Validating $name ---"
             helm dependency build "$example"
-            helm template "test-${name}" "$example" --namespace test-ns | \
+            helm template "test-${name}" "$example" --namespace test-ns \
+              --api-versions "$API_VERSIONS" | \
               kubeconform \
                 -strict \
                 -ignore-missing-schemas \
@@ -207,6 +217,7 @@ jobs:
           helm dependency build charts/library/ksvc/test-chart
           helm template guardrails charts/library/ksvc/test-chart \
             --namespace test-ns \
+            --api-versions policies.kyverno.io/v1beta1 \
             --set services.api.image.repository=example/app \
             --set kyverno.enabled=true \
             --set kyverno.scaling.enabled=true > /tmp/rendered.yaml

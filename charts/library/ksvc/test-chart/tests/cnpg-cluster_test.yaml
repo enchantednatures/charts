@@ -1,6 +1,18 @@
 suite: cnpg cluster tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   postgres.enabled: true
@@ -166,3 +178,24 @@ tests:
     asserts:
       - notExists:
           path: spec.imagePullSecrets
+
+  - it: should omit spec.storage.storageClass when storageClassName is empty
+    set:
+      postgres.storage.storageClassName: ""
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.storage.storageClass
+
+  - it: should coerce numeric and boolean parameter values to strings
+    set:
+      postgres.parameters.max_connections: 300
+      postgres.parameters.wal_compression: true
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.postgresql.parameters.max_connections
+          value: "300"
+      - equal:
+          path: spec.postgresql.parameters.wal_compression
+          value: "true"
