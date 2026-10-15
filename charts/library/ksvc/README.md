@@ -193,7 +193,7 @@ per-entry schemas are documented in the sections following the table.
 | postgres.pooler.poolMode | string | `"transaction"` | Pooler mode (`session` or `transaction`). |
 | postgres.pooler.resources | object | see `values.yaml` | Pooler CPU/memory requests and limits. |
 | postgres.pooler.type | string | `"rw"` | Pooler type (`rw` or `ro`). |
-| postgres.postInitSQL | list | `["CREATE EXTENSION IF NOT EXISTS pg_stat_statements;","ALTER SYSTEM SET log_statement = 'all';","ALTER SYSTEM SET log_min_duration_statement = '1000';"]` | SQL statements run after cluster initialization. |
+| postgres.postInitSQL | list | `["CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"]` | SQL statements run after cluster initialization. The default enables only `pg_stat_statements`. Statement logging is intentionally off because `log_statement = 'all'` writes every statement — including credentials and PII — to the Postgres logs, and `log_min_duration_statement` duplicates slow-query logging. It is opt-in: append the `ALTER SYSTEM` statements shown in the comment below to enable it. |
 | postgres.resources | object | `1`/`2Gi` requests, `2`/`4Gi` limits (see `values.yaml`) | Cluster CPU/memory requests and limits. |
 | postgres.sharedPreloadLibraries | list | `["pg_stat_statements"]` | Shared libraries preloaded by PostgreSQL. |
 | postgres.storage.size | string | `"200Gi"` | Persistent volume size per instance. |
