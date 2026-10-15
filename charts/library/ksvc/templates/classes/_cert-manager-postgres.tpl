@@ -18,10 +18,11 @@ metadata:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "database" | quote }}
     cnpg.io/reload: ""
-  {{- if $globalAnnotations }}
   annotations:
+    helm.sh/resource-policy: keep
+    {{- if $globalAnnotations }}
     {{- $globalAnnotations | nindent 4 }}
-  {{- end }}
+    {{- end }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -63,10 +64,11 @@ metadata:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ "database" | quote }}
     cnpg.io/reload: ""
-  {{- if $globalAnnotations }}
   annotations:
+    helm.sh/resource-policy: keep
+    {{- if $globalAnnotations }}
     {{- $globalAnnotations | nindent 4 }}
-  {{- end }}
+    {{- end }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate

@@ -412,6 +412,11 @@ postgres:
   # Requires cert-manager CRDs and an Issuer/ClusterIssuer in the cluster.
   certManager:
     # -- Generate PostgreSQL TLS certificates via cert-manager.
+    # The chart also renders a minimal placeholder Secret (metadata only, plus
+    # `helm.sh/resource-policy: keep` — no `data:` field). Helm therefore never
+    # deletes it or reverts it to an empty template on upgrade; cert-manager
+    # owns and populates `tls.crt`/`ca.crt`, and re-issues if the Secret is
+    # missing. The Secret is kept across `helm uninstall`.
     enabled: false
     # Override global.certManager.issuerRef for postgres certificates
     issuerRef:
@@ -499,6 +504,11 @@ dragonfly:
     # When enabled, tls.secretName is ignored (auto-generated name is used).
     certManager:
       # -- Generate the Dragonfly TLS certificate via cert-manager.
+      # The chart also renders a minimal placeholder Secret (metadata only, plus
+      # `helm.sh/resource-policy: keep` — no `data:` field). Helm therefore never
+      # deletes it or reverts it to an empty template on upgrade; cert-manager
+      # owns and populates `tls.crt`/`tls.key`, and re-issues if the Secret is
+      # missing. The Secret is kept across `helm uninstall`.
       enabled: false
       # Override global.certManager.issuerRef for the dragonfly certificate
       issuerRef:

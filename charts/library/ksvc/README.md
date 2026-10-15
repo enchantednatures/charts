@@ -62,6 +62,8 @@ All label values and resource `metadata.name`s are rendered as quoted strings, s
 
 `global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
 
+When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server/client TLS secrets and the Dragonfly TLS secret). It carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
+
 ## Quick Start
 
 1.  Create a new Helm chart:
@@ -74,7 +76,7 @@ All label values and resource `metadata.name`s are rendered as quoted strings, s
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.10
+        version: 0.7.11
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -162,7 +164,7 @@ per-entry schemas are documented in the sections following the table.
 | dragonfly.snapshot.storage.size | string | `"10Gi"` | PVC size when neither `dir` nor an existing PVC is set. |
 | dragonfly.snapshot.storage.storageClassName | string | `""` | StorageClass for the snapshot PVC. |
 | dragonfly.tls.certManager.duration | string | `"2160h"` | Requested certificate lifetime. |
-| dragonfly.tls.certManager.enabled | bool | `false` | Generate the Dragonfly TLS certificate via cert-manager. |
+| dragonfly.tls.certManager.enabled | bool | `false` | Generate the Dragonfly TLS certificate via cert-manager. The chart also renders a minimal placeholder Secret (metadata only, plus `helm.sh/resource-policy: keep` — no `data:` field). Helm therefore never deletes it or reverts it to an empty template on upgrade; cert-manager owns and populates `tls.crt`/`tls.key`, and re-issues if the Secret is missing. The Secret is kept across `helm uninstall`. |
 | dragonfly.tls.certManager.issuerRef.group | string | `""` | API group of the Dragonfly cert-manager issuer. |
 | dragonfly.tls.certManager.issuerRef.kind | string | `""` | Kind of the Dragonfly cert-manager issuer. |
 | dragonfly.tls.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for the Dragonfly certificate. |
@@ -197,7 +199,7 @@ per-entry schemas are documented in the sections following the table.
 | postgres.backup.retentionPolicy | string | `"30d"` | Backup retention period (e.g. `30d`). |
 | postgres.backup.schedule | string | `"0 2 * * *"` | Cron schedule for backups. |
 | postgres.backup.target | string | `"prefer-standby"` | Backup target (`prefer-standby` or `primary`). |
-| postgres.certManager.enabled | bool | `false` | Generate PostgreSQL TLS certificates via cert-manager. |
+| postgres.certManager.enabled | bool | `false` | Generate PostgreSQL TLS certificates via cert-manager. The chart also renders a minimal placeholder Secret (metadata only, plus `helm.sh/resource-policy: keep` — no `data:` field). Helm therefore never deletes it or reverts it to an empty template on upgrade; cert-manager owns and populates `tls.crt`/`ca.crt`, and re-issues if the Secret is missing. The Secret is kept across `helm uninstall`. |
 | postgres.certManager.issuerRef.group | string | `""` | API group of the PostgreSQL cert-manager issuer. |
 | postgres.certManager.issuerRef.kind | string | `""` | Kind of the PostgreSQL cert-manager issuer. |
 | postgres.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for PostgreSQL certificates. |
