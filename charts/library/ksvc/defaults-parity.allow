@@ -1,0 +1,22 @@
+# Allowlisted defaults-parity divergences (hack/check-defaults-parity.py).
+#
+# One path pattern per line; `#` starts a comment and blank lines are ignored.
+# A pattern matches the exact path and any path below it. Every entry here is a
+# deliberate, pre-existing divergence between the loader defaults
+# (templates/loader/_defaults.tpl) and the defaults documented in values.yaml.
+# Keep this list tiny — anything not listed fails `make check-defaults-parity`.
+#
+# Loader-only: consumer-facing derived key, set to "" so the loader can tell
+# "consumer set it" apart from "we derived it"; documented in the README
+# (Object Buckets -> PostgreSQL backups), intentionally absent from values.yaml.
+postgres.backup.objectStore.bucketRef
+# Values-only: the CNPG class templates default these label maps themselves
+# (see templates/classes/_cnpg-podmonitor.tpl and _cnpg-alerts.tpl);
+# values.yaml documents the kube-prometheus-stack-usable default.
+postgres.monitoring.podMonitorLabels
+postgres.monitoring.prometheusRuleLabels
+# Values-only: consumer override keys that default to empty and are read with
+# `default ""` (mutually exclusive S3 path vs existing PVC); documented in
+# values.yaml, no loader default needed.
+dragonfly.snapshot.dir
+dragonfly.snapshot.existingPersistentVolumeClaimName

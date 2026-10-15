@@ -1,0 +1,30 @@
+{{/*
+Behavioural probes for `make check-defaults-parity`
+(hack/check-defaults-parity.py). Both sections are opt-in and emit nothing in
+a normal render or unittest run; nothing here is part of a released manifest.
+
+  * the defaults dump — gated inside `ksvc.loader.defaultsDump` on
+    `__ksvcDumpDefaults` — renders every raw loader default dict as YAML;
+  * the mutation probe — gated on `__ksvcProbe` — invokes
+    `ksvc.loader.generate` two more times on top of the include in
+    `templates/common.yaml` (three includes in total), then renders RAW
+    `.Values`. If the loader wrote its defaults back into `.Values`, the raw
+    reads below would show them ("latest", "IfNotPresent", "10", "3") instead
+    of "ABSENT".
+*/}}
+{{- include "ksvc.loader.defaultsDump" . }}
+{{- if .Values.__ksvcProbe }}
+{{ include "ksvc.loader.generate" . }}
+---
+{{ include "ksvc.loader.generate" . }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ksvc-values-probe
+data:
+  services.api.image.tag: {{ .Values.services.api.image.tag | default "ABSENT" | quote }}
+  services.api.image.pullPolicy: {{ .Values.services.api.image.pullPolicy | default "ABSENT" | quote }}
+  services.api.scaling.maxScale: {{ (.Values.services.api.scaling | default dict).maxScale | default "ABSENT" | quote }}
+  postgres.instances: {{ (.Values.postgres | default dict).instances | default "ABSENT" | quote }}
+{{- end }}

@@ -1,0 +1,45 @@
+suite: documented defaults parity pins
+# Unit-level pins for scalar defaults documented in values.yaml and computed by
+# the loader (_defaults.tpl). `make check-defaults-parity` cross-checks the
+# full default sets leaf-by-leaf; these pin the exact values consumers rely on.
+templates:
+  - templates/common.yaml
+capabilities:
+  apiVersions:
+    - postgresql.cnpg.io/v1
+    - dragonflydb.io/v1alpha1
+set:
+  services.api.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: false
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: false
+  dragonfly.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # Documents: [0] Knative Service (api), [1] CNPG Cluster, [2] Dragonfly.
+  - it: postgres defaults to 3 instances and 200Gi storage
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Cluster
+      - equal:
+          path: spec.instances
+          value: 3
+      - equal:
+          path: spec.storage.size
+          value: "200Gi"
+
+  - it: dragonfly defaults to 3 replicas and a PDB with minAvailable 2
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: Dragonfly
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.pdb.minAvailable
+          value: 2

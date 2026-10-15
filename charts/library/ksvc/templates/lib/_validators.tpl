@@ -1,6 +1,8 @@
 {{/*
 Validate required values at template render time.
-Call this from the loader to catch misconfigurations early.
+Called by the loader with the effective-values context (`.Values` is the
+loader-computed effective values, not the consumer's raw values) to catch
+misconfigurations early.
 */}}
 {{- define "ksvc.validate" -}}
   {{/* services map must exist and have at least one entry */}}
