@@ -220,11 +220,12 @@ per-entry schemas are documented in the sections following the table.
 | services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
 | services.api.flagger.metrics.prometheusAddress | string | `"http://prometheus.observability.svc.cluster.local:9090"` | Prometheus server address used for metric checks. |
 | services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
+| services.api.image.digest | string | `""` | Immutable container image digest (e.g. `sha256:...`). When set the image renders as `repository@digest` and `tag` is ignored — the cache-safe, reproducible alternative to a mutable tag. |
 | services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |
 | services.api.image.imagePullSecrets | list | `[]` | List of imagePullSecrets attached to the pod spec (private registries). |
-| services.api.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
+| services.api.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. Forced to `Always` when the resolved image is the mutable `latest` tag (and no `digest` is set), so nodes never serve a stale cached image; otherwise this value is used as-is. |
 | services.api.image.repository | string | `""` | Container image repository. |
-| services.api.image.tag | string | `"latest"` | Container image tag. |
+| services.api.image.tag | string | `"latest"` | Container image tag. `latest` is mutable, so deploys are non-reproducible and can silently change; it also forces the image pull policy to `Always` (see `image.pullPolicy`). Pin an immutable tag, or set `image.digest` for full reproducibility. |
 | services.api.labels | object | `{}` | Additional labels for the Knative Service. |
 | services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default). |
 | services.api.port | int | `8080` | Container port exposed by the Knative Service. |

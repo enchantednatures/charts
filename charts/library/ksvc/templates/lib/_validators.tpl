@@ -22,6 +22,10 @@ Call this from the loader to catch misconfigurations early.
     {{- if not $svc.image.repository -}}
       {{- fail (printf "services.%s.image.repository is required" $key) -}}
     {{- end -}}
+    {{/* an image reference must resolve to an explicit tag or an immutable digest */}}
+    {{- if and (not $svc.image.tag) (not $svc.image.digest) -}}
+      {{- fail (printf "services.%s.image.tag is required (or set services.%s.image.digest)" $key $key) -}}
+    {{- end -}}
     {{/* scaling must be a map; a nil/non-map cannot render and must fail cleanly */}}
     {{- if not (kindIs "map" $svc.scaling) -}}
       {{- fail (printf "services.%s.scaling must be a map (got %v)" $key $svc.scaling) -}}
