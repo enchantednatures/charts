@@ -113,6 +113,35 @@ define wait-established
 endef
 
 # ---------------------------------------------------------------------------
+# Helper: wait for the Kyverno policy admission webhook to actually serve
+#
+# `helm upgrade --install --wait` returns once the Kyverno Deployments report
+# ready, but the validate-policy admission webhook can still refuse connections
+# for a short window afterwards (Service endpoints / TLS bootstrap lag). Any
+# Kyverno policy created in that window is rejected with "connection refused".
+# Poll a real policy creation through the API server until it is admitted:
+# server-side dry-run runs the full admission chain, including the
+# validate-policy webhook, so connection-refused keeps looping instead of
+# passing. Fail loudly if the webhook never serves (~3 min budget).
+# ---------------------------------------------------------------------------
+define wait-kyverno-webhook
+	@echo "Waiting for the Kyverno validate-policy admission webhook to serve requests..."; \
+	probe='apiVersion: policies.kyverno.io/v1beta1\nkind: NamespacedValidatingPolicy\nmetadata:\n  name: ksvc-webhook-readiness-probe\n  namespace: default\nspec:\n  validationActions:\n    - Deny\n  matchConstraints:\n    resourceRules:\n      - apiGroups: [""]\n        apiVersions: ["v1"]\n        resources: ["configmaps"]\n        operations: ["CREATE", "UPDATE"]\n  validations:\n    - expression: "true"\n      message: "readiness probe"\n'; \
+	success=0; \
+	for i in $$(seq 1 36); do \
+		if printf "$$probe" | kubectl create --dry-run=server -f - >/dev/null 2>&1; then success=1; break; fi; \
+		echo "  Attempt $$i/36: webhook not serving yet, retrying in 5s..."; \
+		sleep 5; \
+	done; \
+	if [ "$$success" -ne 1 ]; then \
+		echo "ERROR: Kyverno validate-policy admission webhook did not serve within 180s. Last probe output:"; \
+		printf "$$probe" | kubectl create --dry-run=server -f - || true; \
+		exit 1; \
+	fi; \
+	echo "Kyverno validate-policy admission webhook is serving requests."
+endef
+
+# ---------------------------------------------------------------------------
 # CRD install targets
 # ---------------------------------------------------------------------------
 .PHONY: install-knative
@@ -159,6 +188,7 @@ install-kyverno: ## Install Kyverno (CRDs + admission/background/cleanup/reports
 		--create-namespace \
 		--wait \
 		--timeout 10m
+	$(call wait-kyverno-webhook)
 
 .PHONY: install-all-crds
 install-all-crds: install-knative install-cnpg install-monitoring install-flagger install-kafka install-eventing install-dragonfly install-object-bucket ## Install all CRDs
