@@ -1,0 +1,245 @@
+name: Pre-release
+
+# Runs for EVERY pull request (no `paths:` filter): a PR can change a chart's
+# templates or values without touching Chart.yaml, and cleanup must still run on
+# close.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+# One in-flight run per PR. A new push cancels the previous publish so the
+# registry and the sticky comment always reflect the latest head commit.
+concurrency:
+  group: prerelease-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish:
+    name: Publish pre-release
+    runs-on: ubuntu-latest
+    # Skip fork PRs: GITHUB_TOKEN is read-only for workflows triggered from a
+    # fork, so the registry login/push and the PR comment would all fail. The
+    # same guard is mirrored on the cleanup job so both stay symmetric.
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          # Package the exact PR head commit, not the synthetic merge ref.
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Compute pre-release versions
+        run: |
+          set -euo pipefail
+
+          PR_NUM="${{ github.event.pull_request.number }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          SHORT_SHA="${HEAD_SHA:0:7}"
+
+          # Read the base versions from Chart.yaml so they are never hardcoded.
+          LIB_VERSION=$(grep '^version:' charts/library/ksvc/Chart.yaml | head -1 | awk '{print $2}')
+          APP_VERSION=$(grep '^version:' charts/app/ksvc/Chart.yaml | head -1 | awk '{print $2}')
+
+          LIB_VER="${LIB_VERSION}-pr.${PR_NUM}.${SHORT_SHA}"
+          APP_VER="${APP_VERSION}-pr.${PR_NUM}.${SHORT_SHA}"
+
+          echo "PR_NUM=$PR_NUM" >> "$GITHUB_ENV"
+          echo "LIB_VER=$LIB_VER" >> "$GITHUB_ENV"
+          echo "APP_VER=$APP_VER" >> "$GITHUB_ENV"
+
+          {
+            echo "### Pre-release versions"
+            echo ""
+            echo "| Chart | Version |"
+            echo "| ----- | ------- |"
+            echo "| ksvc (library) | \`$LIB_VER\` |"
+            echo "| ksvc-app (application) | \`$APP_VER\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Login to OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ${{ env.REGISTRY }} \
+              --username ${{ github.actor }} \
+              --password-stdin
+
+      # The app chart depends on the library chart, so ksvc is published FIRST.
+      - name: Publish ksvc library chart
+        run: |
+          set -euo pipefail
+
+          LIB_REF="oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/ksvc"
+
+          # Idempotent re-runs (e.g. synchronize with an unchanged head) must not
+          # fail. If the exact version already exists, there is nothing to push.
+          if helm show chart "$LIB_REF" --version "$LIB_VER" >/dev/null 2>&1; then
+            echo "ksvc ${LIB_VER} already exists in the registry, skipping push"
+            echo "ksvc ${LIB_VER}: already present" >> "$GITHUB_STEP_SUMMARY"
+          else
+            mkdir -p /tmp/charts
+            helm package charts/library/ksvc --version "$LIB_VER" --destination /tmp/charts
+            helm push "/tmp/charts/ksvc-${LIB_VER}.tgz" \
+              oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+            echo "ksvc ${LIB_VER}: pushed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Publish ksvc-app application chart
+        run: |
+          set -euo pipefail
+
+          # Point the app's ksvc dependency at the library prerelease just
+          # pushed, then resolve it from the registry. This awk idiom rewrites
+          # ONLY the `version:` line under the `- name: ksvc` dependency entry,
+          # never the top-level chart version.
+          awk -v lib="ksvc" -v ver="$LIB_VER" '
+            /^dependencies:/ { in_deps=1 }
+            in_deps && /- name:/ { in_dep_entry=1; is_target=0 }
+            in_deps && in_dep_entry && $0 ~ "name: " lib { is_target=1 }
+            in_deps && in_dep_entry && is_target && /version:/ {
+              sub(/version: .*/, "version: " ver)
+              is_target=0; in_dep_entry=0
+            }
+            { print }
+          ' charts/app/ksvc/Chart.yaml > charts/app/ksvc/Chart.yaml.tmp \
+            && mv charts/app/ksvc/Chart.yaml.tmp charts/app/ksvc/Chart.yaml
+
+          helm dependency update charts/app/ksvc
+
+          APP_REF="oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/ksvc-app"
+          if helm show chart "$APP_REF" --version "$APP_VER" >/dev/null 2>&1; then
+            echo "ksvc-app ${APP_VER} already exists in the registry, skipping push"
+            echo "ksvc-app ${APP_VER}: already present" >> "$GITHUB_STEP_SUMMARY"
+          else
+            mkdir -p /tmp/charts
+            helm package charts/app/ksvc --version "$APP_VER" --destination /tmp/charts
+            helm push "/tmp/charts/ksvc-app-${APP_VER}.tgz" \
+              oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+            echo "ksvc-app ${APP_VER}: pushed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment install instructions on PR
+        run: |
+          set -euo pipefail
+
+          PR_NUM="${{ github.event.pull_request.number }}"
+
+          {
+            echo '<!-- prerelease-bot -->'
+            echo ""
+            echo "## Pre-release for PR #${PR_NUM}"
+            echo ""
+            echo "Both charts are published to \`oci://ghcr.io/enchantednatures/charts\` for this commit:"
+            echo ""
+            echo "| Chart | Version |"
+            echo "| ----- | ------- |"
+            echo "| \`ksvc\` (library) | \`${LIB_VER}\` |"
+            echo "| \`ksvc-app\` (application) | \`${APP_VER}\` |"
+            echo ""
+            echo '```bash'
+            echo "helm install my-app oci://ghcr.io/enchantednatures/charts/ksvc-app --version ${APP_VER}"
+            echo '```'
+            echo ""
+            echo "> \`ksvc\` is a library chart published as the app chart's dependency; library charts are not directly installable."
+            echo "> These pre-release versions are deleted automatically when this PR closes."
+          } > /tmp/prerelease-comment.md
+
+          # Sticky comment: update the bot's existing marker comment instead of
+          # posting a new one on every synchronize. `head -n1` can close the pipe
+          # before gh finishes writing, so pipefail is disabled around it to
+          # avoid a spurious SIGPIPE failure.
+          set +o pipefail
+          CID=$(gh api \
+            "/repos/${{ github.repository }}/issues/${PR_NUM}/comments" \
+            --paginate \
+            --jq '.[] | select(.body | startswith("<!-- prerelease-bot -->")) | .id' \
+            | head -n1)
+          set -o pipefail
+
+          # `-F body=@file` reads the body from the file; `-f` would send the
+          # literal string "@/tmp/prerelease-comment.md".
+          if [[ -n "$CID" ]]; then
+            gh api -X PATCH \
+              "/repos/${{ github.repository }}/issues/comments/${CID}" \
+              -F body=@/tmp/prerelease-comment.md
+          else
+            gh api -X POST \
+              "/repos/${{ github.repository }}/issues/${PR_NUM}/comments" \
+              -F body=@/tmp/prerelease-comment.md
+          fi
+
+  cleanup:
+    name: Clean up pre-releases
+    runs-on: ubuntu-latest
+    # Only on close, and only for same-repo PRs (fork PRs are skipped above and
+    # have no published versions to remove). No checkout or Helm setup needed:
+    # this job only talks to the packages API.
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Delete PR pre-release versions
+        run: |
+          set -euo pipefail
+
+          OWNER="${{ github.repository_owner }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          DELETED_ANY="false"
+
+          # GHCR package names come from the push path plus the chart name:
+          # charts/ksvc (library) and charts/ksvc-app (application). Nested
+          # names must be URL-encoded (%2F = `/`).
+          #
+          # enchantednatures is a USER account, so the user-scoped package API is
+          # required; there is no repository-scoped endpoint for a user-owned
+          # package, and /orgs/... would 404.
+          for ENC in charts%2Fksvc charts%2Fksvc-app; do
+            echo "Looking for PR #${PR_NUM} versions of ${ENC}..."
+
+            # Match ONLY this PR's tags: "-pr.<N>.<sha>". PR_NUM is interpolated
+            # between literal dots, so `-pr.4.` can never match `-pr.45.`
+            # (regex: -pr\.4\.[0-9a-f]+$).
+            IDS=$(gh api --paginate \
+              "/users/${OWNER}/packages/container/${ENC}/versions?per_page=100" \
+              --jq '.[] | select(any(.metadata.container.tags[]?; test("-pr\\.'"${PR_NUM}"'\\.[0-9a-f]+$"))) | .id') || {
+                echo "No accessible versions for ${ENC} (package may not exist), skipping"
+                continue
+              }
+
+            if [[ -z "$IDS" ]]; then
+              echo "No pre-release versions to delete for PR #${PR_NUM} in ${ENC}"
+              continue
+            fi
+
+            # Any DELETE failure aborts the job so a botched cleanup is visible.
+            while IFS= read -r id; do
+              [[ -z "$id" ]] && continue
+              echo "Deleting ${ENC} version id ${id}"
+              gh api -X DELETE "/users/${OWNER}/packages/container/${ENC}/versions/${id}"
+              DELETED_ANY="true"
+            done <<< "$IDS"
+          done
+
+          if [[ "$DELETED_ANY" == "true" ]]; then
+            echo "Deleted pre-release versions for PR #${PR_NUM}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No pre-release versions to delete for PR #${PR_NUM}" >> "$GITHUB_STEP_SUMMARY"
+          fi
