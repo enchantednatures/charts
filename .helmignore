@@ -1,8 +1,0 @@
-.git
-.github
-.gitignore
-.helmignore
-*.md
-tests/
-examples/
-ct.yaml

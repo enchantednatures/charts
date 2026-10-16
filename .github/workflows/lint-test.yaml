@@ -16,21 +16,22 @@ on:
       - '.github/workflows/lint-test.yaml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Helm Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.0
-
-      - name: Lint library chart
-        run: helm lint charts/library/ksvc
 
       - name: Guard against committed packaged charts
         run: |
@@ -41,26 +42,16 @@ jobs:
             exit 1
           fi
 
-      - name: Lint app chart
-        run: |
-          rm -f charts/app/ksvc/charts/*.tgz
-          hack/lint-app.sh helm lint charts/app/ksvc
-
-      - name: Lint all examples
-        run: |
-          for example in examples/*/; do
-            echo "--- Linting $example ---"
-            helm dependency build "$example"
-            helm lint "$example"
-          done
+      - name: Lint all charts and examples
+        run: make lint
 
   schema-validation:
     name: Schema Validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
@@ -94,13 +85,13 @@ jobs:
     name: Template Rendering
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
@@ -134,30 +125,31 @@ jobs:
     name: Helm Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.0
 
-      - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
+      - name: Cache helm-unittest plugin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/share/helm/plugins
+          key: unittest-v0.8.2-${{ runner.os }}
 
-      - name: Build test-chart dependencies
-        run: |
-          rm -f charts/library/ksvc/test-chart/charts/*.tgz
-          helm dependency build charts/library/ksvc/test-chart
+      - name: Install helm-unittest plugin
+        run: helm plugin list | grep -q unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
 
       - name: Run unit tests
-        run: helm unittest charts/library/ksvc/test-chart
+        run: make test
 
   kubeconform:
     name: Kubernetes Schema Validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.0
 
@@ -187,13 +179,13 @@ jobs:
     env:
       KYVERNO_VERSION: v1.19.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.17.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
@@ -281,7 +273,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -290,3 +282,19 @@ jobs:
 
       - name: Check chart version bumps
         run: hack/check-version-bump.sh "origin/${{ github.base_ref }}"
+
+  docs-check:
+    name: Helm Docs Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Regenerate chart documentation
+        run: make docs
+
+      - name: Fail if generated docs are out of sync
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Generated documentation is out of date. Run 'make docs' locally and commit the result."
+            exit 1
+          fi
