@@ -17,6 +17,10 @@ permissions:
 env:
   REGISTRY: ghcr.io
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   detect:
     name: Detect Charts to Release
@@ -120,10 +124,18 @@ jobs:
         with:
           version: v3.17.0
 
-      - name: Update chart version
+      - name: Verify chart version matches release version
         run: |
-          sed -i "s/^version:.*/version: ${{ matrix.version }}/" \
-            ${{ matrix.path }}/Chart.yaml
+          CHART_PATH="${{ matrix.path }}"
+          EXPECTED="${{ matrix.version }}"
+          ACTUAL="$(grep '^version:' "$CHART_PATH/Chart.yaml" | head -1 | awk '{print $2}')"
+
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::$CHART_PATH/Chart.yaml version is '$ACTUAL' but the release expects '$EXPECTED'. Refusing to rewrite the version silently — fix the chart or the tag."
+            exit 1
+          fi
+
+          echo "OK: $CHART_PATH version $ACTUAL matches release version $EXPECTED"
 
       - name: Helm lint
         run: |
@@ -157,16 +169,31 @@ jobs:
               --username ${{ github.actor }} \
               --password-stdin
 
+      - name: Check whether version already exists in OCI registry
+        id: oci-check
+        run: |
+          if helm show chart \
+            "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ matrix.name }}" \
+            --version "${{ matrix.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${{ matrix.name }} v${{ matrix.version }} is already published; skipping push, tag and release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "${{ matrix.name }} v${{ matrix.version }} is not published yet; proceeding with the release."
+          fi
+
       - name: Package chart
         run: |
           helm package ${{ matrix.path }} --destination /tmp/charts
 
       - name: Push chart to OCI registry
+        if: steps.oci-check.outputs.exists != 'true'
         run: |
           helm push "/tmp/charts/${{ matrix.name }}-${{ matrix.version }}.tgz" \
             oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
 
       - name: Create tag
+        if: steps.oci-check.outputs.exists != 'true'
         run: |
           TAG="${{ matrix.tag }}"
           if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
@@ -177,6 +204,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
+        if: steps.oci-check.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ matrix.tag }}
@@ -189,7 +217,7 @@ jobs:
     name: Update Dependent Charts
     runs-on: ubuntu-latest
     needs: [detect, release]
-    if: needs.detect.outputs.has_library == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.has_library == 'true'
     steps:
       - uses: actions/checkout@v4
         with:

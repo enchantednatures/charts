@@ -275,3 +275,18 @@ jobs:
           check_denied test/kyverno/knative-invalid-scale.yaml "min-scale must be <= max-scale"
           check_denied test/kyverno/cnpg-invalid-instances.yaml "spec.instances must be between 1 and 16"
           check_denied test/kyverno/dragonfly-invalid-replicas.yaml "spec.replicas must be between 1 and 16"
+
+  version-check:
+    name: Chart version bump check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base ref
+        run: git fetch origin "${{ github.base_ref }}"
+
+      - name: Check chart version bumps
+        run: hack/check-version-bump.sh "origin/${{ github.base_ref }}"

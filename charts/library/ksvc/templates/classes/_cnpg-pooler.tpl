@@ -20,9 +20,8 @@ spec:
       {{- toYaml $pooler.parameters | nindent 6 }}
   template:
     spec:
-      resources:
-        {{- toYaml $pooler.resources | nindent 8 }}
-  monitoring:
-    enabled: {{ .Values.postgres.monitoring.enabled }}
-    podMonitorEnabled: {{ .Values.postgres.monitoring.enabled }}
+      containers:
+        - name: pgbouncer
+          resources:
+            {{- toYaml $pooler.resources | nindent 12 }}
 {{- end }}

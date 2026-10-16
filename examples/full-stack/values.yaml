@@ -77,7 +77,7 @@ postgres:
         accessKeyIdKey: ACCESS_KEY_ID
         secretAccessKeyKey: ACCESS_SECRET_KEY
       data:
-        compression: zstd
+        compression: gzip
         jobs: 4
       wal:
         compression: zstd

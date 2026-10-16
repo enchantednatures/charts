@@ -141,6 +141,9 @@ tests:
       - equal:
           path: spec.configuration.s3Credentials.secretAccessKey.key
           value: "ACCESS_SECRET_KEY"
+      - equal:
+          path: spec.configuration.data.compression
+          value: "gzip"
 
   # 4) legacy guard: backup enabled with no destinationPath/endpointURL still
   #    fails with the pre-existing message (regression guard, passes today).
