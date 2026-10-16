@@ -1,6 +1,18 @@
 suite: object bucket claim tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
 release:

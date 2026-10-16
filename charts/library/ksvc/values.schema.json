@@ -21,6 +21,20 @@
         "annotations": {
           "type": "object"
         },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "certManager": {
           "type": "object",
           "additionalProperties": false,
@@ -84,6 +98,20 @@
           "minimum": 1,
           "maximum": 16
         },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "imageCatalog": {
           "type": "object",
           "additionalProperties": false,
@@ -93,7 +121,9 @@
               "minLength": 1
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         },
         "parameters": {
           "type": "object"
@@ -157,6 +187,24 @@
             },
             "resources": {
               "$ref": "#/$defs/resources"
+            },
+            "securityContext": {
+              "type": "object"
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "extraIngress": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
             }
           }
         },
@@ -277,6 +325,12 @@
                   "minimum": 0
                 }
               }
+            },
+            "podMonitorLabels": {
+              "type": "object"
+            },
+            "prometheusRuleLabels": {
+              "type": "object"
             }
           }
         },
@@ -461,6 +515,21 @@
             }
           }
         },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "extraIngress": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
         "affinity": {
           "type": "object"
         },
@@ -594,7 +663,7 @@
       "properties": {
         "nameOverride": {
           "type": "string",
-          "description": "Override the name suffix for this service. When set, replaces the map key in the resource name: <release>-<nameOverride>. Set to empty string to produce just <release> with no suffix."
+          "description": "Override the name suffix for this service. When set, replaces the map key in the resource name: <release>-<nameOverride>. Set to empty string to produce just <release> with no suffix. Must be a DNS-1123 label (validated at render time)."
         },
         "image": {
           "type": "object",
@@ -607,6 +676,9 @@
               "type": "string"
             },
             "tag": {
+              "type": "string"
+            },
+            "digest": {
               "type": "string"
             },
             "pullPolicy": {
@@ -809,9 +881,6 @@
                 "latencyP99ThresholdMs": {
                   "type": "integer",
                   "minimum": 1
-                },
-                "prometheusAddress": {
-                  "type": "string"
                 }
               }
             },
@@ -845,8 +914,29 @@
                   "type": "string"
                 }
               }
+            },
+            "preWebhookTimeout": {
+              "type": "string"
+            },
+            "postWebhookTimeout": {
+              "type": "string"
             }
           }
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "serviceAccountName": {
+          "type": "string"
         }
       }
     },
@@ -922,6 +1012,20 @@
                 },
                 "tag": {
                   "type": "string"
+                }
+              }
+            },
+            "imagePullSecrets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
                 }
               }
             },

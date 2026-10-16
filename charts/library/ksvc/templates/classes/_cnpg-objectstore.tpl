@@ -3,21 +3,26 @@
 apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
-  name: {{ include "ksvc.postgresBackupStoreName" . }}
+  name: {{ include "ksvc.postgresBackupStoreName" . | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: backup
+    app.kubernetes.io/component: {{ "backup" | quote }}
+  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   configuration:
     destinationPath: {{ $store.destinationPath | quote }}
     endpointURL: {{ $store.endpointURL | quote }}
     s3Credentials:
       accessKeyId:
-        name: {{ $store.s3Credentials.secretName }}
+        name: {{ $store.s3Credentials.secretName | quote }}
         key: {{ $store.s3Credentials.accessKeyIdKey }}
       secretAccessKey:
-        name: {{ $store.s3Credentials.secretName }}
+        name: {{ $store.s3Credentials.secretName | quote }}
         key: {{ $store.s3Credentials.secretAccessKeyKey }}
     data:
       compression: {{ $store.data.compression }}

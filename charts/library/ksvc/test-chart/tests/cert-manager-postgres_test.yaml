@@ -1,6 +1,18 @@
 suite: cert-manager postgres tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   postgres.enabled: true
@@ -15,7 +27,11 @@ release:
   name: test-release
   namespace: test-ns
 tests:
-  - it: should add certificates section to CNPG Cluster when certManager enabled
+  # Document order: 0 Knative Service, 1 Cluster, 2 server TLS Secret,
+  # 3 server CA Secret, 4 server CA Certificate, 5 server CA Issuer,
+  # 6 server leaf Certificate, 7 client TLS Secret, 8 client CA Secret,
+  # 9 client CA Certificate, 10 client CA Issuer, 11 client leaf Certificate.
+  - it: should wire four distinct CNPG certificate secrets on the Cluster
     documentIndex: 1
     asserts:
       - isKind:
@@ -25,15 +41,22 @@ tests:
           value: test-release-postgres-server-tls
       - equal:
           path: spec.certificates.serverCASecret
-          value: test-release-postgres-server-tls
+          value: test-release-postgres-server-ca
       - equal:
           path: spec.certificates.clientCASecret
-          value: test-release-postgres-client-tls
+          value: test-release-postgres-client-ca
       - equal:
           path: spec.certificates.replicationTLSSecret
           value: test-release-postgres-client-tls
+      # Core regression: CA secrets must never piggyback on the leaf secrets.
+      - notEqual:
+          path: spec.certificates.serverCASecret
+          value: test-release-postgres-server-tls
+      - notEqual:
+          path: spec.certificates.clientCASecret
+          value: test-release-postgres-client-tls
 
-  - it: should render server TLS placeholder Secret
+  - it: should render the server TLS placeholder Secret (metadata-only, kept)
     documentIndex: 2
     asserts:
       - isKind:
@@ -43,21 +66,83 @@ tests:
           value: test-release-postgres-server-tls
       - isNotNull:
           path: metadata.labels["cnpg.io/reload"]
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+      - notExists:
+          path: data
 
-  - it: should render server Certificate resource
+  - it: should render the server CA placeholder Secret (metadata-only, kept)
     documentIndex: 3
     asserts:
       - isKind:
-          of: Certificate
+          of: Secret
       - equal:
-          path: apiVersion
-          value: cert-manager.io/v1
+          path: metadata.name
+          value: test-release-postgres-server-ca
+      - isNotNull:
+          path: metadata.labels["cnpg.io/reload"]
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+      - notExists:
+          path: data
+
+  - it: should render the server CA Certificate signed by the user issuer
+    documentIndex: 4
+    asserts:
+      - isKind:
+          of: Certificate
+      - isAPIVersion:
+          of: cert-manager.io/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-server-ca
+      - equal:
+          path: spec.secretName
+          value: test-release-postgres-server-ca
+      - equal:
+          path: spec.isCA
+          value: true
+      - contains:
+          path: spec.usages
+          content: cert sign
+      - equal:
+          path: spec.issuerRef.name
+          value: my-cluster-issuer
+      - equal:
+          path: spec.issuerRef.kind
+          value: ClusterIssuer
+
+  - it: should render the server CA Issuer backed by the server CA secret
+    documentIndex: 5
+    asserts:
+      - isKind:
+          of: Issuer
+      - isAPIVersion:
+          of: cert-manager.io/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-server-ca-issuer
+      - equal:
+          path: spec.ca.secretName
+          value: test-release-postgres-server-ca
+
+  - it: should render the server leaf Certificate signed by the chart-managed server CA Issuer
+    documentIndex: 6
+    asserts:
+      - isKind:
+          of: Certificate
+      - isAPIVersion:
+          of: cert-manager.io/v1
       - equal:
           path: metadata.name
           value: test-release-postgres-server-cert
       - equal:
           path: spec.secretName
           value: test-release-postgres-server-tls
+      - isNull:
+          path: spec.isCA
       - contains:
           path: spec.usages
           content: server auth
@@ -75,13 +160,16 @@ tests:
           content: test-release-postgres-ro
       - equal:
           path: spec.issuerRef.name
-          value: my-cluster-issuer
+          value: test-release-postgres-server-ca-issuer
       - equal:
           path: spec.issuerRef.kind
-          value: ClusterIssuer
+          value: Issuer
+      - equal:
+          path: spec.issuerRef.group
+          value: cert-manager.io
 
-  - it: should render client TLS placeholder Secret
-    documentIndex: 4
+  - it: should render the client TLS placeholder Secret (metadata-only, kept)
+    documentIndex: 7
     asserts:
       - isKind:
           of: Secret
@@ -90,21 +178,83 @@ tests:
           value: test-release-postgres-client-tls
       - isNotNull:
           path: metadata.labels["cnpg.io/reload"]
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+      - notExists:
+          path: data
 
-  - it: should render client Certificate resource
-    documentIndex: 5
+  - it: should render the client CA placeholder Secret (metadata-only, kept)
+    documentIndex: 8
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-client-ca
+      - isNotNull:
+          path: metadata.labels["cnpg.io/reload"]
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+      - notExists:
+          path: data
+
+  - it: should render the client CA Certificate signed by the user issuer
+    documentIndex: 9
     asserts:
       - isKind:
           of: Certificate
+      - isAPIVersion:
+          of: cert-manager.io/v1
       - equal:
-          path: apiVersion
-          value: cert-manager.io/v1
+          path: metadata.name
+          value: test-release-postgres-client-ca
+      - equal:
+          path: spec.secretName
+          value: test-release-postgres-client-ca
+      - equal:
+          path: spec.isCA
+          value: true
+      - contains:
+          path: spec.usages
+          content: cert sign
+      - equal:
+          path: spec.issuerRef.name
+          value: my-cluster-issuer
+      - equal:
+          path: spec.issuerRef.kind
+          value: ClusterIssuer
+
+  - it: should render the client CA Issuer backed by the client CA secret
+    documentIndex: 10
+    asserts:
+      - isKind:
+          of: Issuer
+      - isAPIVersion:
+          of: cert-manager.io/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-client-ca-issuer
+      - equal:
+          path: spec.ca.secretName
+          value: test-release-postgres-client-ca
+
+  - it: should render the replication/client leaf Certificate signed by the chart-managed client CA Issuer
+    documentIndex: 11
+    asserts:
+      - isKind:
+          of: Certificate
+      - isAPIVersion:
+          of: cert-manager.io/v1
       - equal:
           path: metadata.name
           value: test-release-postgres-client-cert
       - equal:
           path: spec.secretName
           value: test-release-postgres-client-tls
+      - isNull:
+          path: spec.isCA
       - contains:
           path: spec.usages
           content: client auth
@@ -113,14 +263,20 @@ tests:
           value: streaming_replica
       - equal:
           path: spec.issuerRef.name
-          value: my-cluster-issuer
+          value: test-release-postgres-client-ca-issuer
+      - equal:
+          path: spec.issuerRef.kind
+          value: Issuer
+      - equal:
+          path: spec.issuerRef.group
+          value: cert-manager.io
 
-  - it: should use per-resource issuerRef when set
+  - it: should use the per-resource issuerRef override for the generated CA certificates
     set:
       postgres.certManager.issuerRef.name: pg-issuer
       postgres.certManager.issuerRef.kind: Issuer
       postgres.certManager.issuerRef.group: cert-manager.io
-    documentIndex: 3
+    documentIndex: 4
     asserts:
       - equal:
           path: spec.issuerRef.name
@@ -128,6 +284,9 @@ tests:
       - equal:
           path: spec.issuerRef.kind
           value: Issuer
+      - equal:
+          path: spec.issuerRef.group
+          value: cert-manager.io
 
   - it: should not render certificates when certManager disabled
     set:

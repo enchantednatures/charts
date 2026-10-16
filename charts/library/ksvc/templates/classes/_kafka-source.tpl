@@ -14,13 +14,18 @@ The source.sink field must reference a valid key in .Values.services.
 apiVersion: sources.knative.dev/v1beta1
 kind: KafkaSource
 metadata:
-  name: {{ $sourceName }}
+  name: {{ $sourceName | quote }}
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.labels" .root | nindent 4 }}
-    app.kubernetes.io/component: event-source
+    app.kubernetes.io/component: {{ "event-source" | quote }}
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
-  consumerGroup: {{ default (include "ksvc.kafkaConsumerGroup" .) $source.consumerGroup }}
+  consumerGroup: {{ default (include "ksvc.kafkaConsumerGroup" .) $source.consumerGroup | quote }}
   consumers: {{ $source.consumers }}
   bootstrapServers:
     {{- toYaml $source.bootstrapServers | nindent 4 }}
@@ -30,7 +35,7 @@ spec:
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
-      name: {{ $sinkServiceName }}
+      name: {{ $sinkServiceName | quote }}
   delivery:
     retry: {{ $source.delivery.retry }}
     backoffPolicy: {{ $source.delivery.backoffPolicy }}
@@ -40,7 +45,7 @@ spec:
       ref:
         apiVersion: serving.knative.dev/v1
         kind: Service
-        name: {{ $dlqName }}
+        name: {{ $dlqName | quote }}
     {{- end }}
   initialOffset: {{ $source.initialOffset }}
 {{- end }}

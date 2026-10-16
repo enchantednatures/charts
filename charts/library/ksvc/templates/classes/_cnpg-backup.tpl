@@ -4,11 +4,16 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
-  name: {{ $pgName }}-daily-backup
+  name: "{{ $pgName }}-daily-backup"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: backup
+    app.kubernetes.io/component: {{ "backup" | quote }}
+  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   schedule: {{ $backup.schedule | quote }}
   method: plugin
@@ -17,6 +22,6 @@ spec:
     parameters:
       barmanObjectName: {{ include "ksvc.postgresBackupStoreName" . }}
   cluster:
-    name: {{ $pgName }}
+    name: {{ $pgName | quote }}
   target: {{ $backup.target }}
 {{- end }}

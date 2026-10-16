@@ -7,25 +7,35 @@
 {{- $issuerGroup := $cm.issuerRef.group | default $globalCM.issuerRef.group -}}
 {{- $dfName := include "ksvc.dragonflyName" . -}}
 {{- $secretName := include "ksvc.dragonflyServerTLSSecret" . -}}
+{{- $globalAnnotations := include "ksvc.annotations" . -}}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ $secretName }}
+  name: {{ $secretName | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cache
+    app.kubernetes.io/component: {{ "cache" | quote }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- if $globalAnnotations }}
+    {{- $globalAnnotations | nindent 4 }}
+    {{- end }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ $dfName }}-server-cert
+  name: "{{ $dfName }}-server-cert"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cache
+    app.kubernetes.io/component: {{ "cache" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
-  secretName: {{ $secretName }}
+  secretName: {{ $secretName | quote }}
   {{- if $cm.duration }}
   duration: {{ $cm.duration }}
   {{- end }}
@@ -40,7 +50,7 @@ spec:
     - {{ $dfName }}.{{ .Release.Namespace }}.svc
     - {{ $dfName }}.{{ .Release.Namespace }}.svc.cluster.local
   issuerRef:
-    name: {{ $issuerName }}
+    name: {{ $issuerName | quote }}
     kind: {{ $issuerKind }}
     group: {{ $issuerGroup }}
 {{- end }}

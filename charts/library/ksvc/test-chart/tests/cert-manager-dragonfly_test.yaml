@@ -1,6 +1,18 @@
 suite: cert-manager dragonfly tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   dragonfly.enabled: true
@@ -29,6 +41,9 @@ tests:
       - equal:
           path: metadata.name
           value: test-release-dragonfly-server-tls
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
 
   - it: should render Certificate resource
     documentIndex: 3

@@ -4,12 +4,24 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: {{ $pgName }}-alerts
+  name: "{{ $pgName }}-alerts"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app: {{ $pgName }}
-    prometheus: kube-prometheus
+    app: {{ $pgName | quote }}
+    {{- $mon := .Values.postgres.monitoring }}
+    {{- $ruleLabels := $mon.prometheusRuleLabels }}
+    {{- if not (hasKey $mon "prometheusRuleLabels") }}
+      {{- $ruleLabels = dict "prometheus" "kube-prometheus" }}
+    {{- end }}
+    {{- with $ruleLabels }}
+    {{- toYaml . | trim | nindent 4 }}
+    {{- end }}
+  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   groups:
     - name: postgres.rules

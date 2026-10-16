@@ -9,11 +9,16 @@ and "source" (the merged kafka source config dict containing dlq sub-config).
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: {{ $dlqName }}
+  name: {{ $dlqName | quote }}
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.labels" .root | nindent 4 }}
-    app.kubernetes.io/component: dlq-handler
+    app.kubernetes.io/component: {{ "dlq-handler" | quote }}
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   template:
     metadata:
@@ -21,6 +26,12 @@ spec:
         autoscaling.knative.dev/min-scale: {{ $dlq.scaling.minScale | quote }}
         autoscaling.knative.dev/max-scale: {{ $dlq.scaling.maxScale | quote }}
     spec:
+      {{- /* Effective secrets = the DLQ's own list then the global list; empty
+             (both empty) renders nothing. */}}
+      {{- with (concat (default (list) $dlq.imagePullSecrets) (default (list) .root.Values.global.imagePullSecrets)) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: dlq-handler
           image: {{ $dlq.image.repository }}:{{ $dlq.image.tag }}
@@ -37,4 +48,12 @@ spec:
                   fieldPath: metadata.namespace
           resources:
             {{- toYaml $dlq.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $dlq.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 {{- end }}

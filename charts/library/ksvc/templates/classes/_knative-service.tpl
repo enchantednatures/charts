@@ -6,10 +6,23 @@ and "svc" (the merged service config dict).
 {{- define "ksvc.class.knativeService" -}}
 {{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key "svc" .svc) -}}
 {{- $svc := .svc -}}
+{{- /* Image reference: a digest pins the exact image (immutable, reproducible);
+       otherwise fall back to the mutable tag. */ -}}
+{{- $imageRef := printf "%s:%s" $svc.image.repository $svc.image.tag -}}
+{{- if $svc.image.digest -}}
+{{- $imageRef = printf "%s@%s" $svc.image.repository $svc.image.digest -}}
+{{- end -}}
+{{- /* `latest` is mutable, so a node may otherwise serve a stale cached image
+       forever under IfNotPresent; force Always whenever the resolved reference
+       is a `latest` tag (a digest is immutable and needs no forcing). */ -}}
+{{- $pullPolicy := $svc.image.pullPolicy -}}
+{{- if and (not $svc.image.digest) (eq $svc.image.tag "latest") -}}
+{{- $pullPolicy = "Always" -}}
+{{- end -}}
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: {{ $serviceName }}
+  name: {{ $serviceName | quote }}
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.serviceLabels" (dict "root" .root "key" .key "svc" $svc) | nindent 4 }}
@@ -40,21 +53,42 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- with $svc.image.imagePullSecrets }}
+      {{- /* Effective secrets = the service's own list then the global list;
+             empty (both empty) renders nothing. */}}
+      {{- with (concat (default (list) $svc.image.imagePullSecrets) (default (list) .root.Values.global.imagePullSecrets)) }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containerConcurrency: {{ $svc.scaling.containerConcurrency }}
       timeoutSeconds: {{ $svc.scaling.timeoutSeconds }}
+      {{- with $svc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $svc.serviceAccountName }}
+      serviceAccountName: {{ $svc.serviceAccountName }}
+      {{- end }}
       containers:
         - name: service
           {{- if $svc.image.fluxImagePolicy }}
-          image: {{ $svc.image.repository }}:{{ $svc.image.tag }} # {{ printf "{\"$imagepolicy\": \"%s\"}" $svc.image.fluxImagePolicy }}
+          image: {{ $imageRef }} # {{ printf "{\"$imagepolicy\": \"%s\"}" $svc.image.fluxImagePolicy }}
           {{- else }}
-          image: {{ $svc.image.repository }}:{{ $svc.image.tag }}
+          image: {{ $imageRef }}
           {{- end }}
-          {{- if $svc.image.pullPolicy }}
-          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          {{- if $pullPolicy }}
+          imagePullPolicy: {{ $pullPolicy }}
           {{- end }}
           ports:
             - containerPort: {{ $svc.port }}

@@ -42,7 +42,62 @@ Consumer Chart
 
 Use `nameOverride: ""` on a service entry to produce just `<release>` with no suffix — useful for single-service deployments or kustomize compatibility.
 
-ObjectBucketClaim names are sanitized the same way as the others: truncated to 63 chars, trailing `-` trimmed, and `_` replaced with `-`. The provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
+The fullname is derived from the **release name only** (`global.fullnameOverride` when set, otherwise `Release.Name`) — it does not include the chart name. Two different charts installed under the same release name in the same namespace therefore render colliding resource names; set `global.fullnameOverride` (or use distinct release names) when that can happen.
+
+Every resource name is produced by one shared sanitizer: `_` becomes `-`, the string is capped at 63 characters, and a trailing `-` is trimmed. When the composed name would exceed 63 characters it is instead shortened to `<first 52 chars>-<first 10 hex chars of sha256(composed name)>` — deterministic and collision-resistant, so two long names that share the same 63-character prefix (for example two services under an over-long release name) still get distinct names. Inputs that already fit in 63 characters are never altered. ObjectBucketClaim names use the same scheme; the provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
+
+## Labels
+
+Every rendered resource carries the standard labels:
+
+| Label | Value |
+|-------|-------|
+| `app.kubernetes.io/name` | The **application**: the consumer chart name, or `global.nameOverride` when set. It identifies the app, never the release instance. On per-service resources it is the service map key (the component). |
+| `app.kubernetes.io/instance` | The **release instance** — the fullname (`global.fullnameOverride` when set, otherwise the release name). |
+| `app.kubernetes.io/component` | The component within the release (`database`, `cache`, `event-source`, …); on per-service resources it is the service map key. |
+| `app.kubernetes.io/version` | The consumer chart's `appVersion`. |
+| `app.kubernetes.io/managed-by` | The Helm release service (`Helm`). |
+| `helm.sh/chart` | The **consumer** chart name and version (for example `my-service-0.1.0`). It reflects the chart that pulls in `ksvc`, not `ksvc` itself — intentional library behavior. |
+
+All label values and resource `metadata.name`s are rendered as quoted strings, so a numeric-looking `global.fullnameOverride` (for example `"123"`) can never become a YAML integer that the API server would reject. Additional labels are merged in via `global.labels` and, per service, `services.<key>.labels`.
+
+## Annotations
+
+`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates and Issuers, NetworkPolicies, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
+
+When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server TLS, server CA, client CA and client (`streaming_replica`) TLS secrets, plus the Dragonfly TLS secret). Each carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
+
+For CloudNativePG the chart issues the certificates itself from your configured `issuerRef`: it creates a **server CA** and a **client CA** `Certificate` (`isCA: true`) signed by that issuer, two namespaced intermediate `Issuer`s backed by the corresponding CA Secrets, and finally the server and `streaming_replica` leaf `Certificate`s signed by those chart-managed issuers. Your issuer must therefore be CA-capable — able to issue a CA certificate and populate its Secret's `ca.crt`, which CloudNativePG reads from the CA Secrets (`serverCASecret` for server validation, `clientCASecret` for verifying general mTLS client certificates).
+
+## Hardening & Network Policies (Opt-In)
+
+The chart renders a hardened security profile by default and can additionally render ingress-only `NetworkPolicy` resources for the datastores. The NetworkPolicies are **opt-in and off by default**.
+
+**Default security contexts.**
+
+*   **PgBouncer pooler** — `postgres.pooler.securityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp, rendered on the `pgbouncer` container of the CNPG `Pooler` pod template. `readOnlyRootFilesystem` is deliberately not set. Note that CloudNativePG release-1.25 also builds the pooler pod from a hardened profile of its own and forces an equivalent container security context (including `readOnlyRootFilesystem: true`) at reconcile time, so conflicting per-field overrides are reconciled back by the operator at runtime; the chart default makes the rendered `Pooler` manifest declare the restricted profile explicitly.
+*   **Dragonfly** — `dragonfly.podSecurityContext` defaults to `seccompProfile: RuntimeDefault` plus `fsGroup: 999` (the Dragonfly operator's own default, preserved so snapshot PVC volume ownership keeps working), and `dragonfly.containerSecurityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp. The default image (`docker.dragonflydb.io/dragonflydb/dragonfly`) ships a non-root `dfly` user (uid 999), so `runAsNonRoot` is safe. Both keys are fully overridable; setting an explicit empty map (`{}`) opts out and renders no security context.
+
+**NetworkPolicies (opt-in).** Enable with `postgres.networkPolicy.enabled: true` and/or `dragonfly.networkPolicy.enabled: true`. Each enabled policy:
+
+*   selects the datastore pods by the operator's own labels — `cnpg.io/cluster: <cluster>` for CNPG (the PostgreSQL instance pods and the pooler pods both carry it, and both serve TCP 5432) and `app: <dragonfly-name>`, `app.kubernetes.io/name: dragonfly`, `app.kubernetes.io/part-of: dragonfly` for Dragonfly;
+*   allows ingress on TCP 5432 (PostgreSQL) / 6379 (Dragonfly) from any pod in the release namespace;
+*   appends any `extraIngress` entries verbatim after that rule, for example cross-namespace clients or Prometheus scraping:
+
+    ```yaml
+    postgres:
+      networkPolicy:
+        enabled: true
+        extraIngress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+    ```
+
+*   declares only `policyTypes: [Ingress]` — egress (S3 backup uploads, streaming replication, snapshot uploads, DNS) is never restricted.
+
+Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); without one the resources are inert. Enabling a policy also blocks cross-namespace metrics scrapes of the selected pods unless they are allowed through `extraIngress`.
 
 ## Quick Start
 
@@ -56,7 +111,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.2
+        version: 0.7.14
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -91,7 +146,23 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
+| **NetworkPolicies (opt-in)** | NetworkPolicy (CNPG cluster pods, Dragonfly pods) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
+
+### CRD availability and offline rendering
+
+Every **Custom Resource** the chart renders is gated behind `.Capabilities.APIVersions.Has`, so it is created only when the matching operator CRD is served by the cluster: Cluster/Pooler/ScheduledBackup (`postgresql.cnpg.io/v1`), ObjectStore (`barmancloud.cnpg.io/v1`), PodMonitor/PrometheusRule (`monitoring.coreos.com/v1`), KafkaSource (`sources.knative.dev/v1`), Dragonfly (`dragonflydb.io/v1alpha1`), ObjectBucketClaim (`objectbucket.io/v1alpha1`), Flagger Canary (`flagger.app/v1beta1`), cert-manager Certificate/Issuer (`cert-manager.io/v1`), and the Kyverno policies (the configured `kyverno.scaling.apiVersion`). The Knative Service (`serving.knative.dev/v1`) is the chart's core dependency and is never gated.
+
+`helm install`/`helm upgrade` against a real cluster discovers the served API versions automatically, so guarded resources appear exactly when their CRDs are installed. An **offline `helm template`** has no cluster to discover from: pass the groups you expect with `--api-versions` (repeatable, or comma-separated), or perform a real `helm install` against a cluster with the CRDs:
+
+```bash
+helm template my-release ./my-chart \
+  --api-versions postgresql.cnpg.io/v1 \
+  --api-versions barmancloud.cnpg.io/v1 \
+  --api-versions monitoring.coreos.com/v1
+```
+
+Without the flag those resources are silently skipped — which is also the intended behavior for a cluster that does not serve them. `helm lint` cannot take the flag, so lint always renders without the guarded resources.
 
 ## Values Reference
 
@@ -126,7 +197,9 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffPolicy` | `linear` or `exponential` | `exponential` |
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
-| `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+| `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display:v1.17.0` |
+| `kafka.sources.<key>.dlq.securityContext` | Container security context for the DLQ service (same restricted profile as main services) | non-root, read-only root fs, drops all capabilities, `RuntimeDefault` seccomp |
+| `kafka.sources.<key>.dlq.imagePullSecrets` | List of imagePullSecrets attached to the DLQ pod spec (private registries), applied in addition to `global.imagePullSecrets` | `[]` |
 
 ## Object Buckets (Ceph RGW)
 

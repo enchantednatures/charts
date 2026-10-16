@@ -1,14 +1,19 @@
 {{- define "ksvc.class.kyvernoScaling" -}}
 {{- $apiVersion := .Values.kyverno.scaling.apiVersion -}}
 {{- $actions := .Values.kyverno.scaling.validationActions -}}
+{{- $globalAnnotations := include "ksvc.annotations" . -}}
 apiVersion: {{ $apiVersion }}
 kind: NamespacedValidatingPolicy
 metadata:
-  name: {{ .Release.Name }}-scaling-knative
+  name: "{{ .Release.Name }}-scaling-knative"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: admission-policy
+    app.kubernetes.io/component: {{ "admission-policy" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   failurePolicy: Fail
   validationActions:
@@ -52,11 +57,15 @@ spec:
 apiVersion: {{ $apiVersion }}
 kind: NamespacedValidatingPolicy
 metadata:
-  name: {{ .Release.Name }}-scaling-cnpg
+  name: "{{ .Release.Name }}-scaling-cnpg"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: admission-policy
+    app.kubernetes.io/component: {{ "admission-policy" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   failurePolicy: Fail
   validationActions:
@@ -75,11 +84,15 @@ spec:
 apiVersion: {{ $apiVersion }}
 kind: NamespacedValidatingPolicy
 metadata:
-  name: {{ .Release.Name }}-scaling-dragonfly
+  name: "{{ .Release.Name }}-scaling-dragonfly"
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app.kubernetes.io/component: admission-policy
+    app.kubernetes.io/component: {{ "admission-policy" | quote }}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   failurePolicy: Fail
   validationActions:

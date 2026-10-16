@@ -1,6 +1,18 @@
 suite: cnpg cluster tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   postgres.enabled: true
@@ -110,9 +122,80 @@ tests:
       - isNull:
           path: spec.plugins
 
+  - it: "should default postInitApplicationSQL to pg_stat_statements only (regression: log_statement logged credentials/PII)"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.bootstrap.initdb.postInitApplicationSQL
+          value:
+            - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+
   - it: should not render Cluster when postgres disabled
     set:
       postgres.enabled: false
     asserts:
       - hasDocuments:
           count: 1
+
+  - it: should render spec.imagePullSecrets from postgres.imagePullSecrets
+    set:
+      postgres.imagePullSecrets:
+        - name: pg-pull
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imagePullSecrets
+          value:
+            - name: pg-pull
+
+  - it: should thread global.imagePullSecrets into the CNPG cluster
+    set:
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imagePullSecrets
+          value:
+            - name: global-pull
+
+  - it: should combine the cluster's own and global imagePullSecrets (own first)
+    set:
+      postgres.imagePullSecrets:
+        - name: pg-pull
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.imagePullSecrets
+          value:
+            - name: pg-pull
+            - name: global-pull
+
+  - it: should not render imagePullSecrets when both lists are empty
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.imagePullSecrets
+
+  - it: should omit spec.storage.storageClass when storageClassName is empty
+    set:
+      postgres.storage.storageClassName: ""
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.storage.storageClass
+
+  - it: should coerce numeric and boolean parameter values to strings
+    set:
+      postgres.parameters.max_connections: 300
+      postgres.parameters.wal_compression: true
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.postgresql.parameters.max_connections
+          value: "300"
+      - equal:
+          path: spec.postgresql.parameters.wal_compression
+          value: "true"

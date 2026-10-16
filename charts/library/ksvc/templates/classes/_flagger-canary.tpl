@@ -10,16 +10,21 @@ and "svc" (the merged service config dict containing flagger sub-config).
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
-  name: {{ $serviceName }}
+  name: {{ $serviceName | quote }}
   namespace: {{ .root.Release.Namespace }}
   labels:
     {{- include "ksvc.serviceLabels" (dict "root" .root "key" .key "svc" .svc) | nindent 4 }}
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
+  {{- if $globalAnnotations }}
+  annotations:
+    {{- $globalAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   provider: knative
   targetRef:
     apiVersion: serving.knative.dev/v1
     kind: Service
-    name: {{ $serviceName }}
+    name: {{ $serviceName | quote }}
   progressDeadlineSeconds: {{ $flagger.analysis.progressDeadlineSeconds }}
   analysis:
     interval: {{ $flagger.analysis.interval }}
@@ -40,7 +45,7 @@ spec:
       - name: smoke-test
         type: pre-rollout
         url: {{ $lt.webhookUrl }}
-        timeout: 1m
+        timeout: {{ $flagger.preWebhookTimeout }}
         metadata:
           type: cmd
           cmd: "k6 run --out json /dev/stdin"
@@ -73,7 +78,7 @@ spec:
       - name: load-test
         type: rollout
         url: {{ $lt.webhookUrl }}
-        timeout: 5m
+        timeout: {{ $flagger.postWebhookTimeout }}
         metadata:
           {{- if $lt.script }}
           script: |

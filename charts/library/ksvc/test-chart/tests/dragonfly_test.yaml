@@ -1,6 +1,18 @@
 suite: dragonfly tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   dragonfly.enabled: true
@@ -71,6 +83,61 @@ tests:
       - equal:
           path: spec.resources.limits.memory
           value: 4Gi
+
+  - it: "defaults the pod securityContext to RuntimeDefault seccomp plus the operator's fsGroup"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.podSecurityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.podSecurityContext.fsGroup
+          value: 999
+
+  - it: "defaults the container securityContext to the restricted profile (non-root, no privilege escalation, all caps dropped)"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.containerSecurityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.containerSecurityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.containerSecurityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.containerSecurityContext.capabilities.drop
+          value:
+            - ALL
+
+  - it: "lets consumers override the Dragonfly security contexts"
+    set:
+      dragonfly.podSecurityContext.fsGroup: 1000
+      dragonfly.containerSecurityContext.runAsNonRoot: false
+      dragonfly.containerSecurityContext.allowPrivilegeEscalation: true
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.podSecurityContext.fsGroup
+          value: 1000
+      - equal:
+          path: spec.containerSecurityContext.runAsNonRoot
+          value: false
+      - equal:
+          path: spec.containerSecurityContext.allowPrivilegeEscalation
+          value: true
+
+  - it: "lets consumers opt out of the Dragonfly security contexts with explicit empty maps"
+    set:
+      dragonfly.podSecurityContext: {}
+      dragonfly.containerSecurityContext: {}
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.podSecurityContext
+      - notExists:
+          path: spec.containerSecurityContext
 
   - it: should set authentication when secret name provided
     set:

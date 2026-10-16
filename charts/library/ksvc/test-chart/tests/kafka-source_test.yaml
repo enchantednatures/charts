@@ -1,6 +1,18 @@
 suite: kafka source tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   kafka.sources.events.topic: "events"
@@ -69,6 +81,74 @@ tests:
           path: metadata.name
           value: test-release-events-dlq
 
+  - it: should pin the DLQ image to a versioned tag
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:v1.17.0
+
+  - it: should allow overriding the DLQ image tag
+    set:
+      kafka.sources.events.dlq.image.tag: "v1.18.0"
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:v1.18.0
+
+  # The DLQ container must get the same restricted profile as main services.
+  - it: should apply the restricted security context to the DLQ container
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 10001
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value:
+            - ALL
+
+  - it: should add a writable tmp volume for the read-only root filesystem
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /tmp
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.volumes[0].emptyDir
+          value: {}
+
+  - it: should allow overriding the DLQ security context
+    set:
+      kafka.sources.events.dlq.securityContext.runAsUser: 20002
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 20002
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+
   - it: should set dead letter sink when DLQ enabled
     documentIndex: 1
     asserts:
@@ -91,3 +171,54 @@ tests:
     asserts:
       - hasDocuments:
           count: 1
+
+  - it: should render DLQ imagePullSecrets from dlq.imagePullSecrets
+    set:
+      kafka.sources.events.dlq.imagePullSecrets:
+        - name: dlq-pull
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: dlq-pull
+
+  - it: should thread global.imagePullSecrets into the DLQ pod spec
+    set:
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: global-pull
+
+  - it: should combine the DLQ's own and global imagePullSecrets (own first)
+    set:
+      kafka.sources.events.dlq.imagePullSecrets:
+        - name: dlq-pull
+      global.imagePullSecrets:
+        - name: global-pull
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: dlq-pull
+            - name: global-pull
+
+  - it: should not render DLQ imagePullSecrets when both lists are empty
+    documentIndex: 2
+    asserts:
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+
+  - it: should keep a numeric consumer group quoted as a string
+    set:
+      kafka.sources.events.consumerGroup: "12345"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.consumerGroup
+          value: "12345"

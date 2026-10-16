@@ -42,6 +42,18 @@ NAMESPACE             ?= test-ns
 FLUX_NAMESPACE        ?= flux-system
 
 # ---------------------------------------------------------------------------
+# CRD api versions for Capabilities.APIVersions
+#
+# The library chart gates every CR-based resource behind
+# `.Capabilities.APIVersions.Has`, so resources render on a real cluster only
+# when the operator CRDs are served. Offline `helm template` has no cluster to
+# discover them from — pass these groups with `--api-versions` (comma-separated
+# is accepted by both Helm 3 and Helm 4) so examples render in full. `helm
+# lint` cannot take the flag; guarded resources are skipped there.
+# ---------------------------------------------------------------------------
+API_VERSIONS ?= monitoring.coreos.com/v1,sources.knative.dev/v1,dragonflydb.io/v1alpha1,objectbucket.io/v1alpha1,flagger.app/v1beta1,cert-manager.io/v1,postgresql.cnpg.io/v1,barmancloud.cnpg.io/v1,policies.kyverno.io/v1beta1,policies.kyverno.io/v1
+
+# ---------------------------------------------------------------------------
 # CRD URLs
 # ---------------------------------------------------------------------------
 KNATIVE_SERVING_CRDS := https://github.com/knative/serving/releases/download/knative-$(KNATIVE_VERSION)/serving-crds.yaml
@@ -154,18 +166,22 @@ install-knative: ## Install Knative Serving CRDs
 .PHONY: install-cnpg
 install-cnpg: ## Install CloudNativePG CRDs
 	$(call apply-with-retry,$(CNPG_CRDS))
+	$(call wait-established,clusters.postgresql.cnpg.io poolers.postgresql.cnpg.io scheduledbackups.postgresql.cnpg.io objectstores.barmancloud.cnpg.io)
 
 .PHONY: install-monitoring
 install-monitoring: ## Install Prometheus Operator CRDs (PodMonitor, PrometheusRule)
 	$(call apply-with-retry,$(MONITORING_CRDS))
+	$(call wait-established,podmonitors.monitoring.coreos.com prometheusrules.monitoring.coreos.com)
 
 .PHONY: install-flagger
 install-flagger: ## Install Flagger CRDs
 	$(call apply-with-retry,$(FLAGGER_CRDS))
+	$(call wait-established,canaries.flagger.app)
 
 .PHONY: install-kafka
 install-kafka: ## Install Kafka (KafkaSource) CRDs
 	$(call apply-with-retry,$(KAFKA_SOURCE_CRDS))
+	$(call wait-established,kafkasources.sources.knative.dev)
 
 .PHONY: install-eventing
 install-eventing: ## Install Knative Eventing CRDs (Broker, Trigger)
@@ -175,10 +191,12 @@ install-eventing: ## Install Knative Eventing CRDs (Broker, Trigger)
 .PHONY: install-dragonfly
 install-dragonfly: ## Install DragonflyDB CRDs
 	$(call apply-with-retry,$(DRAGONFLY_CRDS))
+	$(call wait-established,dragonflies.dragonflydb.io)
 
 .PHONY: install-object-bucket
 install-object-bucket: ## Install ObjectBucketClaim + ObjectBucket CRDs (Rook/Ceph bucket provisioning)
 	$(call apply-with-retry,$(OBJECT_BUCKET_CRDS))
+	$(call wait-established,objectbucketclaims.objectbucket.io objectbuckets.objectbucket.io)
 
 .PHONY: install-kyverno
 install-kyverno: ## Install Kyverno (CRDs + admission/background/cleanup/reports controllers)
@@ -245,7 +263,8 @@ uninstall-local: ## Uninstall the local example release
 .PHONY: template
 template: ## Render templates for an example (EXAMPLE=minimal)
 	helm dependency update examples/$(EXAMPLE)
-	helm template test-$(EXAMPLE) examples/$(EXAMPLE) --namespace $(NAMESPACE)
+	helm template test-$(EXAMPLE) examples/$(EXAMPLE) --namespace $(NAMESPACE) \
+		--api-versions $(API_VERSIONS)
 
 # ---------------------------------------------------------------------------
 # Lint & Test

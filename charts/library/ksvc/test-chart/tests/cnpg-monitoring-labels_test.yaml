@@ -1,0 +1,118 @@
+suite: cnpg monitoring discovery labels tests
+templates:
+  - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
+set:
+  services.api.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: false
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # Defaults: the labels the Prometheus operator's selectors expect out of the box.
+  - it: "renders the default PodMonitor release label (kube-prometheus-stack podMonitorSelector)"
+    documentSelector:
+      path: kind
+      value: PodMonitor
+    asserts:
+      - isKind:
+          of: PodMonitor
+      - equal:
+          path: metadata.labels.release
+          value: prometheus
+
+  - it: "renders the default PrometheusRule prometheus label (kube-prometheus-stack ruleSelector)"
+    documentSelector:
+      path: kind
+      value: PrometheusRule
+    asserts:
+      - isKind:
+          of: PrometheusRule
+      - equal:
+          path: metadata.labels.prometheus
+          value: kube-prometheus
+
+  # app.kubernetes.io/name identifies the application (the consumer chart),
+  # not the release instance; instance carries the fullname.
+  - it: "sets app.kubernetes.io/name to the consumer chart name on global resources"
+    documentSelector:
+      path: kind
+      value: PodMonitor
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: ksvc-test
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: test-release
+      - equal:
+          path: metadata.labels["helm.sh/chart"]
+          value: ksvc-test-0.0.1
+
+  # Overrides land in addition to the standard chart + app labels.
+  - it: "applies a custom podMonitorLabels override alongside the standard labels"
+    set:
+      postgres.monitoring.podMonitorLabels.release: my-monitoring
+    documentSelector:
+      path: kind
+      value: PodMonitor
+    asserts:
+      - equal:
+          path: metadata.labels.release
+          value: my-monitoring
+      - equal:
+          path: metadata.labels.app
+          value: test-release-postgres
+
+  - it: "applies a custom prometheusRuleLabels override alongside the standard labels"
+    set:
+      postgres.monitoring.prometheusRuleLabels.prometheus: my-kps
+    documentSelector:
+      path: kind
+      value: PrometheusRule
+    asserts:
+      - equal:
+          path: metadata.labels.prometheus
+          value: my-kps
+      - equal:
+          path: metadata.labels.app
+          value: test-release-postgres
+
+  # Empty override: the guard must render nothing (and must not emit `{}`).
+  - it: "renders no release label when podMonitorLabels is cleared to an empty map (guard)"
+    set:
+      postgres.monitoring.podMonitorLabels: {}
+    documentSelector:
+      path: kind
+      value: PodMonitor
+    asserts:
+      - isKind:
+          of: PodMonitor
+      - notExists:
+          path: metadata.labels.release
+
+  - it: "renders no prometheus label when prometheusRuleLabels is cleared to an empty map (guard)"
+    set:
+      postgres.monitoring.prometheusRuleLabels: {}
+    documentSelector:
+      path: kind
+      value: PrometheusRule
+    asserts:
+      - isKind:
+          of: PrometheusRule
+      - notExists:
+          path: metadata.labels.prometheus

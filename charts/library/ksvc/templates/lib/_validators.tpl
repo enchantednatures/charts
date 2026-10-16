@@ -14,13 +14,31 @@ Call this from the loader to catch misconfigurations early.
     {{- fail "services must contain at least one service entry" -}}
   {{- end -}}
 
+  {{/* global name overrides become part of resource names, so they must be
+       valid DNS-1123 labels (<= 63 chars, lowercase alphanumerics and dashes) */}}
+  {{- if .Values.global.nameOverride -}}
+    {{- include "ksvc.validate.dns1123Label" (dict "value" .Values.global.nameOverride "path" "global.nameOverride") -}}
+  {{- end -}}
+  {{- if .Values.global.fullnameOverride -}}
+    {{- include "ksvc.validate.dns1123Label" (dict "value" .Values.global.fullnameOverride "path" "global.fullnameOverride") -}}
+  {{- end -}}
+
   {{/* each service must have image.repository */}}
   {{- range $key, $svc := .Values.services -}}
+    {{/* map keys and nameOverride become name suffixes: validate them first */}}
+    {{- include "ksvc.validate.dns1123Label" (dict "value" $key "path" (printf "services.%s" $key)) -}}
+    {{- if $svc.nameOverride -}}
+      {{- include "ksvc.validate.dns1123Label" (dict "value" $svc.nameOverride "path" (printf "services.%s.nameOverride" $key)) -}}
+    {{- end -}}
     {{- if not $svc.image -}}
       {{- fail (printf "services.%s.image is required" $key) -}}
     {{- end -}}
     {{- if not $svc.image.repository -}}
       {{- fail (printf "services.%s.image.repository is required" $key) -}}
+    {{- end -}}
+    {{/* an image reference must resolve to an explicit tag or an immutable digest */}}
+    {{- if and (not $svc.image.tag) (not $svc.image.digest) -}}
+      {{- fail (printf "services.%s.image.tag is required (or set services.%s.image.digest)" $key $key) -}}
     {{- end -}}
     {{/* scaling must be a map; a nil/non-map cannot render and must fail cleanly */}}
     {{- if not (kindIs "map" $svc.scaling) -}}
@@ -110,6 +128,8 @@ Call this from the loader to catch misconfigurations early.
   {{/* kafka source sink validation: each source's sink must reference a valid services key */}}
   {{- if and .Values.kafka .Values.kafka.sources -}}
     {{- range $key, $source := .Values.kafka.sources -}}
+      {{/* source keys become part of KafkaSource/DLQ/consumer-group names */}}
+      {{- include "ksvc.validate.dns1123Label" (dict "value" $key "path" (printf "kafka.sources.%s" $key)) -}}
       {{- if not $source.sink -}}
         {{- fail (printf "kafka.sources.%s.sink is required and must reference a key in the services map" $key) -}}
       {{- end -}}
@@ -175,6 +195,17 @@ Call this from the loader to catch misconfigurations early.
     {{- end -}}
   {{- end -}}
 
+  {{/* dragonfly snapshot dir is mutually exclusive with an existing PVC: `dir`
+       renders an S3 backup path while existingPersistentVolumeClaimName renders
+       a claim reference — setting both produces an ambiguous/broken spec. */}}
+  {{- if and .Values.dragonfly.enabled .Values.dragonfly.snapshot.enabled -}}
+    {{- $dfSnapDir := .Values.dragonfly.snapshot.dir | default "" | toString -}}
+    {{- $dfSnapPVC := .Values.dragonfly.snapshot.existingPersistentVolumeClaimName | default "" | toString -}}
+    {{- if and $dfSnapDir $dfSnapPVC -}}
+      {{- fail "dragonfly.snapshot: dir and existingPersistentVolumeClaimName are mutually exclusive" -}}
+    {{- end -}}
+  {{- end -}}
+
   {{/* dragonfly snapshot bucketRef validation (defensive read) */}}
   {{- $dfBucketRef := .Values.dragonfly.snapshot.bucketRef | default "" -}}
   {{- if $dfBucketRef -}}
@@ -191,6 +222,23 @@ Call this from the loader to catch misconfigurations early.
       {{- fail "dragonfly.snapshot.bucketRef requires an endpointURL on the referenced bucket" -}}
     {{- end -}}
   {{- end -}}
+{{- end }}
+
+{{/*
+ksvc.validate.dns1123Label — Reject values that must be usable as a Kubernetes
+resource name component (a DNS-1123 label: <= 63 chars, lowercase
+alphanumerics and dashes, starting and ending with an alphanumeric). Used for
+consumer-supplied name fragments — `global.nameOverride`,
+`global.fullnameOverride`, the `services` map keys, each
+`services.<key>.nameOverride`, and the `kafka.sources` map keys — which are
+concatenated into rendered resource names. Without this check an uppercase or
+dotted override silently produces an invalid resource name.
+*/}}
+{{- define "ksvc.validate.dns1123Label" -}}
+{{- $v := .value | toString -}}
+{{- if or (gt (len $v) 63) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $v)) -}}
+{{- fail (printf "%s must be a DNS-1123 label (<= 63 chars, lowercase alphanumerics and dashes)" .path) -}}
+{{- end -}}
 {{- end }}
 
 {{/*

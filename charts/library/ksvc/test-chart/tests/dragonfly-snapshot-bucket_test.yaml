@@ -1,6 +1,18 @@
 suite: dragonfly snapshot bucketRef tests
 templates:
   - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
 set:
   services.api.image.repository: test/image
   dragonfly.enabled: true
@@ -148,3 +160,11 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "dragonfly.snapshot.bucketRef references 'nope' which does not exist in objectBuckets"
+
+  - it: should fail when snapshot dir is combined with existingPersistentVolumeClaimName
+    set:
+      dragonfly.snapshot.dir: s3://my-bucket/dragonfly
+      dragonfly.snapshot.existingPersistentVolumeClaimName: my-pvc
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.snapshot: dir and existingPersistentVolumeClaimName are mutually exclusive"

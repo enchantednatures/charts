@@ -41,7 +41,62 @@ Consumer Chart
 
 Use `nameOverride: ""` on a service entry to produce just `<release>` with no suffix — useful for single-service deployments or kustomize compatibility.
 
-ObjectBucketClaim names are sanitized the same way as the others: truncated to 63 chars, trailing `-` trimmed, and `_` replaced with `-`. The provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
+The fullname is derived from the **release name only** (`global.fullnameOverride` when set, otherwise `Release.Name`) — it does not include the chart name. Two different charts installed under the same release name in the same namespace therefore render colliding resource names; set `global.fullnameOverride` (or use distinct release names) when that can happen.
+
+Every resource name is produced by one shared sanitizer: `_` becomes `-`, the string is capped at 63 characters, and a trailing `-` is trimmed. When the composed name would exceed 63 characters it is instead shortened to `<first 52 chars>-<first 10 hex chars of sha256(composed name)>` — deterministic and collision-resistant, so two long names that share the same 63-character prefix (for example two services under an over-long release name) still get distinct names. Inputs that already fit in 63 characters are never altered. ObjectBucketClaim names use the same scheme; the provisioner names the claim's Secret and ConfigMap after the claim, and the entry's default `bucketName` equals this claim name unless you set `objectBuckets.<key>.bucketName`.
+
+## Labels
+
+Every rendered resource carries the standard labels:
+
+| Label | Value |
+|-------|-------|
+| `app.kubernetes.io/name` | The **application**: the consumer chart name, or `global.nameOverride` when set. It identifies the app, never the release instance. On per-service resources it is the service map key (the component). |
+| `app.kubernetes.io/instance` | The **release instance** — the fullname (`global.fullnameOverride` when set, otherwise the release name). |
+| `app.kubernetes.io/component` | The component within the release (`database`, `cache`, `event-source`, …); on per-service resources it is the service map key. |
+| `app.kubernetes.io/version` | The consumer chart's `appVersion`. |
+| `app.kubernetes.io/managed-by` | The Helm release service (`Helm`). |
+| `helm.sh/chart` | The **consumer** chart name and version (for example `my-service-0.1.0`). It reflects the chart that pulls in `ksvc`, not `ksvc` itself — intentional library behavior. |
+
+All label values and resource `metadata.name`s are rendered as quoted strings, so a numeric-looking `global.fullnameOverride` (for example `"123"`) can never become a YAML integer that the API server would reject. Additional labels are merged in via `global.labels` and, per service, `services.<key>.labels`.
+
+## Annotations
+
+`global.annotations` is applied to the `metadata.annotations` of **every** resource the library renders — Knative Services (and their DLQ services), Flagger Canaries, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/PrometheusRule, Dragonfly, KafkaSources, ObjectBucketClaims, cert-manager Certificates and Issuers, NetworkPolicies, and Kyverno policies. Where a resource already carries its own annotations (for example the Knative Services' default Prometheus scrape annotations, or `services.<key>.annotations`), the global ones are merged in beside them rather than replacing them. When `global.annotations` is empty no resource renders an `annotations:` block. Pod-template annotations (`services.<key>.podAnnotations`) are a separate mechanism and are not affected.
+
+When cert-manager integration is enabled the chart additionally renders a minimal placeholder `Secret` for each certificate (the CNPG server TLS, server CA, client CA and client (`streaming_replica`) TLS secrets, plus the Dragonfly TLS secret). Each carries metadata only — never a `data:` field — and is annotated `helm.sh/resource-policy: keep`. cert-manager owns and populates its `tls.crt`/`ca.crt`; the `keep` policy stops Helm from deleting the Secret or reverting it to the empty template on upgrade, and cert-manager re-issues it if it is ever missing.
+
+For CloudNativePG the chart issues the certificates itself from your configured `issuerRef`: it creates a **server CA** and a **client CA** `Certificate` (`isCA: true`) signed by that issuer, two namespaced intermediate `Issuer`s backed by the corresponding CA Secrets, and finally the server and `streaming_replica` leaf `Certificate`s signed by those chart-managed issuers. Your issuer must therefore be CA-capable — able to issue a CA certificate and populate its Secret's `ca.crt`, which CloudNativePG reads from the CA Secrets (`serverCASecret` for server validation, `clientCASecret` for verifying general mTLS client certificates).
+
+## Hardening & Network Policies (Opt-In)
+
+The chart renders a hardened security profile by default and can additionally render ingress-only `NetworkPolicy` resources for the datastores. The NetworkPolicies are **opt-in and off by default**.
+
+**Default security contexts.**
+
+*   **PgBouncer pooler** — `postgres.pooler.securityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp, rendered on the `pgbouncer` container of the CNPG `Pooler` pod template. `readOnlyRootFilesystem` is deliberately not set. Note that CloudNativePG release-1.25 also builds the pooler pod from a hardened profile of its own and forces an equivalent container security context (including `readOnlyRootFilesystem: true`) at reconcile time, so conflicting per-field overrides are reconciled back by the operator at runtime; the chart default makes the rendered `Pooler` manifest declare the restricted profile explicitly.
+*   **Dragonfly** — `dragonfly.podSecurityContext` defaults to `seccompProfile: RuntimeDefault` plus `fsGroup: 999` (the Dragonfly operator's own default, preserved so snapshot PVC volume ownership keeps working), and `dragonfly.containerSecurityContext` defaults to `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `RuntimeDefault` seccomp. The default image (`docker.dragonflydb.io/dragonflydb/dragonfly`) ships a non-root `dfly` user (uid 999), so `runAsNonRoot` is safe. Both keys are fully overridable; setting an explicit empty map (`{}`) opts out and renders no security context.
+
+**NetworkPolicies (opt-in).** Enable with `postgres.networkPolicy.enabled: true` and/or `dragonfly.networkPolicy.enabled: true`. Each enabled policy:
+
+*   selects the datastore pods by the operator's own labels — `cnpg.io/cluster: <cluster>` for CNPG (the PostgreSQL instance pods and the pooler pods both carry it, and both serve TCP 5432) and `app: <dragonfly-name>`, `app.kubernetes.io/name: dragonfly`, `app.kubernetes.io/part-of: dragonfly` for Dragonfly;
+*   allows ingress on TCP 5432 (PostgreSQL) / 6379 (Dragonfly) from any pod in the release namespace;
+*   appends any `extraIngress` entries verbatim after that rule, for example cross-namespace clients or Prometheus scraping:
+
+    ```yaml
+    postgres:
+      networkPolicy:
+        enabled: true
+        extraIngress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+    ```
+
+*   declares only `policyTypes: [Ingress]` — egress (S3 backup uploads, streaming replication, snapshot uploads, DNS) is never restricted.
+
+Enforcement requires a CNI that implements NetworkPolicy (Calico, Cilium, …); without one the resources are inert. Enabling a policy also blocks cross-namespace metrics scrapes of the selected pods unless they are allowed through `extraIngress`.
 
 ## Quick Start
 
@@ -55,7 +110,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.2
+        version: 0.7.14
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -90,7 +145,23 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
+| **NetworkPolicies (opt-in)** | NetworkPolicy (CNPG cluster pods, Dragonfly pods) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
+
+### CRD availability and offline rendering
+
+Every **Custom Resource** the chart renders is gated behind `.Capabilities.APIVersions.Has`, so it is created only when the matching operator CRD is served by the cluster: Cluster/Pooler/ScheduledBackup (`postgresql.cnpg.io/v1`), ObjectStore (`barmancloud.cnpg.io/v1`), PodMonitor/PrometheusRule (`monitoring.coreos.com/v1`), KafkaSource (`sources.knative.dev/v1`), Dragonfly (`dragonflydb.io/v1alpha1`), ObjectBucketClaim (`objectbucket.io/v1alpha1`), Flagger Canary (`flagger.app/v1beta1`), cert-manager Certificate/Issuer (`cert-manager.io/v1`), and the Kyverno policies (the configured `kyverno.scaling.apiVersion`). The Knative Service (`serving.knative.dev/v1`) is the chart's core dependency and is never gated.
+
+`helm install`/`helm upgrade` against a real cluster discovers the served API versions automatically, so guarded resources appear exactly when their CRDs are installed. An **offline `helm template`** has no cluster to discover from: pass the groups you expect with `--api-versions` (repeatable, or comma-separated), or perform a real `helm install` against a cluster with the CRDs:
+
+```bash
+helm template my-release ./my-chart \
+  --api-versions postgresql.cnpg.io/v1 \
+  --api-versions barmancloud.cnpg.io/v1 \
+  --api-versions monitoring.coreos.com/v1
+```
+
+Without the flag those resources are silently skipped — which is also the intended behavior for a cluster that does not serve them. `helm lint` cannot take the flag, so lint always renders without the guarded resources.
 
 ## Values Reference
 
@@ -117,15 +188,17 @@ per-entry schemas are documented in the sections following the table.
 | dragonfly.authentication.clientCaCertSecret.name | string | `""` | Secret containing the mTLS client CA certificate. |
 | dragonfly.authentication.passwordFromSecret.key | string | `"password"` | Key within the password Secret. |
 | dragonfly.authentication.passwordFromSecret.name | string | `""` | Secret containing the Dragonfly password. |
-| dragonfly.containerSecurityContext | object | `{}` | Container-level security context. |
+| dragonfly.containerSecurityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}}` | Container-level security context. |
 | dragonfly.enabled | bool | `false` | Enable the DragonflyDB cache cluster. |
 | dragonfly.env | list | `[]` | Extra environment variables for the Dragonfly container. |
 | dragonfly.image | string | `"docker.dragonflydb.io/dragonflydb/dragonfly"` | DragonflyDB container image repository. |
 | dragonfly.imageTag | string | `"v1.21.2"` | DragonflyDB container image tag. |
+| dragonfly.networkPolicy.enabled | bool | `false` | Render the NetworkPolicy. |
+| dragonfly.networkPolicy.extraIngress | list | `[]` | Extra raw ingress rules appended verbatim to `spec.ingress` (for example cross-namespace access). Each entry is a standard Kubernetes `NetworkPolicyIngressRule`. |
 | dragonfly.nodeSelector | object | `{}` | Node selector for the Dragonfly pods. |
 | dragonfly.pdb.maxUnavailable | int | `0` | Maximum unavailable pods for the PodDisruptionBudget (mutually exclusive with `minAvailable`). |
 | dragonfly.pdb.minAvailable | int | `2` | Minimum available pods for the PodDisruptionBudget (mutually exclusive with `maxUnavailable`). |
-| dragonfly.podSecurityContext | object | `{}` | Pod-level security context. |
+| dragonfly.podSecurityContext | object | `{"fsGroup":999,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level security context. |
 | dragonfly.priorityClassName | string | `""` | PriorityClass for the Dragonfly pods. |
 | dragonfly.replicas | int | `3` | Total number of Dragonfly instances including the master (1–16). |
 | dragonfly.resources | object | `500m`/`512Mi` requests, `1`/`1Gi` limits (see `values.yaml`) | Dragonfly container CPU/memory requests and limits. |
@@ -143,7 +216,7 @@ per-entry schemas are documented in the sections following the table.
 | dragonfly.snapshot.storage.size | string | `"10Gi"` | PVC size when neither `dir` nor an existing PVC is set. |
 | dragonfly.snapshot.storage.storageClassName | string | `""` | StorageClass for the snapshot PVC. |
 | dragonfly.tls.certManager.duration | string | `"2160h"` | Requested certificate lifetime. |
-| dragonfly.tls.certManager.enabled | bool | `false` | Generate the Dragonfly TLS certificate via cert-manager. |
+| dragonfly.tls.certManager.enabled | bool | `false` | Generate the Dragonfly TLS certificate via cert-manager. The chart also renders a minimal placeholder Secret (metadata only, plus `helm.sh/resource-policy: keep` — no `data:` field). Helm therefore never deletes it or reverts it to an empty template on upgrade; cert-manager owns and populates `tls.crt`/`tls.key`, and re-issues if the Secret is missing. The Secret is kept across `helm uninstall`. |
 | dragonfly.tls.certManager.issuerRef.group | string | `""` | API group of the Dragonfly cert-manager issuer. |
 | dragonfly.tls.certManager.issuerRef.kind | string | `""` | Kind of the Dragonfly cert-manager issuer. |
 | dragonfly.tls.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for the Dragonfly certificate. |
@@ -151,13 +224,14 @@ per-entry schemas are documented in the sections following the table.
 | dragonfly.tls.secretName | string | `""` | Secret containing `tls.crt`/`tls.key`. Ignored when `tls.certManager.enabled` is true. |
 | dragonfly.tolerations | list | `[]` | Pod tolerations. |
 | dragonfly.topologySpreadConstraints | list | `[]` | Pod topology spread constraints. |
-| global.annotations | object | `{}` | Annotations added to every rendered resource. |
+| global.annotations | object | `{}` | Annotations added to every rendered resource (Knative Services and DLQ services, CNPG Cluster/Pooler/ObjectStore/ScheduledBackup/PodMonitor/ PrometheusRule, KafkaSource, Dragonfly, cert-manager Certificates and Issuers, NetworkPolicies, Kyverno policies). Merged with each resource's own annotations; when empty no resource renders an `annotations:` block. |
 | global.certManager.issuerRef.group | string | `"cert-manager.io"` | API group of the default cert-manager issuer. |
 | global.certManager.issuerRef.kind | string | `"ClusterIssuer"` | Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`). |
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
-| global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
+| global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). Must be a valid DNS-1123 label (<= 63 characters, lowercase alphanumerics and dashes). Resource names are derived from the release name alone, so two different charts installed under the same release name in one namespace would collide — set `fullnameOverride` (or use distinct release names) when that can happen. |
+| global.imagePullSecrets | list | `[]` | List of imagePullSecrets applied to every rendered workload's pod spec, in addition to that workload's own `imagePullSecrets`: the Knative Services (`services.<key>.image.imagePullSecrets`), the Kafka DLQ service (`kafka.sources.<key>.dlq.imagePullSecrets`), and the CNPG PostgreSQL cluster (`postgres.imagePullSecrets`). Same shape as the per-service field — a list of `{name: <secret>}` objects. |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
-| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
+| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). Also sets the `app.kubernetes.io/name` label on every rendered resource. Must be a valid DNS-1123 label (<= 63 characters, lowercase alphanumerics and dashes). |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
 | kyverno.enabled | bool | `false` | Render the Kyverno admission policies. |
 | kyverno.scaling.apiVersion | string | `"policies.kyverno.io/v1beta1"` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` for Kyverno >= 1.16, `policies.kyverno.io/v1` for Kyverno >= 1.17). |
@@ -177,29 +251,36 @@ per-entry schemas are documented in the sections following the table.
 | postgres.backup.retentionPolicy | string | `"30d"` | Backup retention period (e.g. `30d`). |
 | postgres.backup.schedule | string | `"0 2 * * *"` | Cron schedule for backups. |
 | postgres.backup.target | string | `"prefer-standby"` | Backup target (`prefer-standby` or `primary`). |
-| postgres.certManager.enabled | bool | `false` | Generate PostgreSQL TLS certificates via cert-manager. |
-| postgres.certManager.issuerRef.group | string | `""` | API group of the PostgreSQL cert-manager issuer. |
-| postgres.certManager.issuerRef.kind | string | `""` | Kind of the PostgreSQL cert-manager issuer. |
-| postgres.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef` for PostgreSQL certificates. |
+| postgres.certManager.enabled | bool | `false` | Generate PostgreSQL TLS certificates via cert-manager. The chart renders four distinct placeholder Secrets — server TLS, **server CA**, **client CA** and client (`streaming_replica`) TLS — plus the cert-manager resources that populate them: two CA `Certificate`s (`isCA: true`) signed by `issuerRef`, two namespaced intermediate `Issuer`s backed by those CA Secrets, and the two leaf `Certificate`s they sign. CloudNativePG therefore receives a dedicated server CA for server validation and a dedicated client-auth CA for verifying client certificates — never a leaf secret (whose `ca.crt` cannot vouch for general mTLS clients). `issuerRef` MUST name a CA-capable cert-manager issuer (a CA-backed `Issuer`/`ClusterIssuer` or a `SelfSigned` issuer) that can issue a CA certificate and populate its Secret's `ca.crt` — CloudNativePG reads `ca.crt` from the CA Secrets; the chart-managed intermediate issuers sign the leaves. Each placeholder Secret is metadata only (no `data:` field) and carries `helm.sh/resource-policy: keep`, so Helm never deletes it or reverts it to an empty template on upgrade; cert-manager owns and populates `tls.crt`/`ca.crt`, and re-issues if the Secret is missing. The Secrets are kept across `helm uninstall`. |
+| postgres.certManager.issuerRef.group | string | `""` | API group of the PostgreSQL cert-manager issuer that signs the generated CA certificates. |
+| postgres.certManager.issuerRef.kind | string | `""` | Kind of the PostgreSQL cert-manager issuer that signs the generated CA certificates. |
+| postgres.certManager.issuerRef.name | string | `""` | Override `global.certManager.issuerRef`. This issuer signs the two generated CA certificates (server CA + client CA); the chart-managed intermediate issuers sign the leaf certificates. Must be CA-capable. |
 | postgres.enabled | bool | `false` | Enable the CloudNativePG PostgreSQL cluster. |
 | postgres.imageCatalog.name | string | `"postgresql"` | Name of the ClusterImageCatalog to pull the PostgreSQL image from. |
+| postgres.imagePullSecrets | list | `[]` | List of imagePullSecrets for the CNPG PostgreSQL cluster pods (private registries), applied in addition to `global.imagePullSecrets`. Same shape as `services.<key>.image.imagePullSecrets` — a list of `{name: <secret>}` objects. |
 | postgres.instances | int | `3` | Number of PostgreSQL instances (1–16). |
 | postgres.monitoring.alerts | object | see `values.yaml` | Alert thresholds for the Prometheus rules. |
 | postgres.monitoring.enabled | bool | `true` | Enable the PodMonitor and Prometheus alert rules. |
+| postgres.monitoring.podMonitorLabels | object | `{"release":"prometheus"}` | Labels merged into the rendered PodMonitor's `metadata.labels`, in addition to the standard chart labels. These must match the Prometheus operator's `podMonitorSelector` or the monitor is silently ignored — for kube-prometheus-stack set `release` to the stack's Helm release name. |
+| postgres.monitoring.prometheusRuleLabels | object | `{"prometheus":"kube-prometheus"}` | Labels merged into the rendered PrometheusRule's `metadata.labels`, in addition to the standard chart labels. These must match the Prometheus operator's `ruleSelector` or the rules are silently ignored — for kube-prometheus-stack the default `prometheus: kube-prometheus` matches. |
+| postgres.networkPolicy.enabled | bool | `false` | Render the NetworkPolicy. |
+| postgres.networkPolicy.extraIngress | list | `[]` | Extra raw ingress rules appended verbatim to `spec.ingress` (for example cross-namespace access). Each entry is a standard Kubernetes `NetworkPolicyIngressRule`. |
 | postgres.parameters | object | see `values.yaml` | PostgreSQL server configuration parameters (TLS 1.3, buffers, synchronous replication, ...). |
 | postgres.pooler.enabled | bool | `true` | Enable the PgBouncer pooler. |
 | postgres.pooler.instances | int | `3` | Number of pooler replicas (>= 1). |
 | postgres.pooler.parameters | object | see `values.yaml` | PgBouncer configuration parameters. |
 | postgres.pooler.poolMode | string | `"transaction"` | Pooler mode (`session` or `transaction`). |
 | postgres.pooler.resources | object | see `values.yaml` | Pooler CPU/memory requests and limits. |
+| postgres.pooler.securityContext | object | see `values.yaml` | Container security context for the pgbouncer pooler container. Defaults to a restricted Pod Security Standard profile: non-root, no privilege escalation, all capabilities dropped and `RuntimeDefault` seccomp. Override (or set to an explicit empty map to opt out) when your environment needs a different profile. |
 | postgres.pooler.type | string | `"rw"` | Pooler type (`rw` or `ro`). |
-| postgres.postInitSQL | list | `["CREATE EXTENSION IF NOT EXISTS pg_stat_statements;","ALTER SYSTEM SET log_statement = 'all';","ALTER SYSTEM SET log_min_duration_statement = '1000';"]` | SQL statements run after cluster initialization. |
+| postgres.postInitSQL | list | `["CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"]` | SQL statements run after cluster initialization. The default enables only `pg_stat_statements`. Statement logging is intentionally off because `log_statement = 'all'` writes every statement — including credentials and PII — to the Postgres logs, and `log_min_duration_statement` duplicates slow-query logging. It is opt-in: append the `ALTER SYSTEM` statements shown in the comment below to enable it. |
 | postgres.resources | object | `1`/`2Gi` requests, `2`/`4Gi` limits (see `values.yaml`) | Cluster CPU/memory requests and limits. |
 | postgres.sharedPreloadLibraries | list | `["pg_stat_statements"]` | Shared libraries preloaded by PostgreSQL. |
 | postgres.storage.size | string | `"200Gi"` | Persistent volume size per instance. |
 | postgres.storage.storageClassName | string | `"standard"` | StorageClass for the instance volumes. |
 | postgres.version | string | `"16"` | PostgreSQL major version. |
-| services.api.annotations | object | see `values.yaml` | Annotations added to the Knative Service (Prometheus scraping enabled by default). |
+| services.api.affinity | object | `{}` | Pod affinity rules for the Knative Service pod template. |
+| services.api.annotations | object | see `values.yaml` | Annotations added to the Knative Service (Prometheus scraping enabled by default; `prometheus.io/port` follows `services.<key>.port` unless set here explicitly). |
 | services.api.env | list | `[]` | Environment variables for the container. |
 | services.api.envFrom | list | `[]` | envFrom sources (Secrets/ConfigMaps) for the container. |
 | services.api.flagger.analysis.interval | string | `"1m"` | Interval between canary analysis checks (Go duration, e.g. `1m`). |
@@ -216,15 +297,18 @@ per-entry schemas are documented in the sections following the table.
 | services.api.flagger.loadTest.vus | int | `10` | Number of virtual users for the k6 load test. |
 | services.api.flagger.loadTest.webhookUrl | string | `"http://k6-loadtester.flagger-system/launch-test"` | URL of the k6 webhook service that starts load tests. |
 | services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
-| services.api.flagger.metrics.prometheusAddress | string | `"http://prometheus.observability.svc.cluster.local:9090"` | Prometheus server address used for metric checks. |
 | services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
+| services.api.flagger.postWebhookTimeout | string | `"5m"` | Timeout for the rollout load-test webhook (Go duration, e.g. `5m`). |
+| services.api.flagger.preWebhookTimeout | string | `"1m"` | Timeout for the pre-rollout smoke-test webhook (Go duration, e.g. `1m`). |
+| services.api.image.digest | string | `""` | Immutable container image digest (e.g. `sha256:...`). When set the image renders as `repository@digest` and `tag` is ignored — the cache-safe, reproducible alternative to a mutable tag. |
 | services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |
 | services.api.image.imagePullSecrets | list | `[]` | List of imagePullSecrets attached to the pod spec (private registries). |
-| services.api.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
+| services.api.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. Forced to `Always` when the resolved image is the mutable `latest` tag (and no `digest` is set), so nodes never serve a stale cached image; otherwise this value is used as-is. |
 | services.api.image.repository | string | `""` | Container image repository. |
-| services.api.image.tag | string | `"latest"` | Container image tag. |
+| services.api.image.tag | string | `"latest"` | Container image tag. `latest` is mutable, so deploys are non-reproducible and can silently change; it also forces the image pull policy to `Always` (see `image.pullPolicy`). Pin an immutable tag, or set `image.digest` for full reproducibility. |
 | services.api.labels | object | `{}` | Additional labels for the Knative Service. |
-| services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default). |
+| services.api.nodeSelector | object | `{}` | Node selector for the Knative Service pod template. |
+| services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default; `prometheus.io/port` follows `services.<key>.port` unless set here explicitly). |
 | services.api.port | int | `8080` | Container port exposed by the Knative Service. |
 | services.api.probes.liveness | object | see `values.yaml` | Liveness probe configuration (`httpGet`). |
 | services.api.probes.readiness | object | see `values.yaml` | Readiness probe configuration (`httpGet`). |
@@ -237,6 +321,9 @@ per-entry schemas are documented in the sections following the table.
 | services.api.scaling.target | int | `100` | Autoscaling target (requests in flight per pod for the KPA). |
 | services.api.scaling.timeoutSeconds | int | `300` | Request timeout in seconds. |
 | services.api.securityContext | object | see `values.yaml` | Container security context (non-root, read-only root fs, drops all capabilities). |
+| services.api.serviceAccountName | string | `""` | ServiceAccount used by the Knative Service pod template. |
+| services.api.tolerations | list | `[]` | Pod tolerations for the Knative Service pod template. |
+| services.api.topologySpreadConstraints | list | `[]` | Pod topology spread constraints for the Knative Service pod template. |
 | services.api.volumeMounts | list | `[]` | Additional volume mounts for the container. |
 | services.api.volumes | list | `[]` | Additional pod volumes. |
 
@@ -256,7 +343,9 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffPolicy` | `linear` or `exponential` | `exponential` |
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
-| `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+| `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display:v1.17.0` |
+| `kafka.sources.<key>.dlq.securityContext` | Container security context for the DLQ service (same restricted profile as main services) | non-root, read-only root fs, drops all capabilities, `RuntimeDefault` seccomp |
+| `kafka.sources.<key>.dlq.imagePullSecrets` | List of imagePullSecrets attached to the DLQ pod spec (private registries), applied in addition to `global.imagePullSecrets` | `[]` |
 
 ## Object Buckets (Ceph RGW)
 

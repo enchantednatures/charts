@@ -1,0 +1,251 @@
+suite: global annotations propagation tests
+templates:
+  - templates/common.yaml
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+    - sources.knative.dev/v1
+    - dragonflydb.io/v1alpha1
+    - objectbucket.io/v1alpha1
+    - flagger.app/v1beta1
+    - cert-manager.io/v1
+    - postgresql.cnpg.io/v1
+    - barmancloud.cnpg.io/v1
+    - policies.kyverno.io/v1beta1
+    - policies.kyverno.io/v1
+# Every renderable class is switched on so that one document exists per resource
+# kind the library can emit. Document indices below line up with the loader's
+# render order (services -> object buckets -> postgres -> cert-manager postgres
+# (4 Secrets / 2 CA Certificates / 2 CA Issuers / 2 leaf Certificates) ->
+# kafka -> dragonfly -> kyverno); the first suite test pins the count so a drift
+# here fails loudly.
+set:
+  services.api.image.repository: test/image
+  services.api.image.tag: "v1.0.0"
+  services.api.flagger.enabled: true
+  objectBuckets.backups.storageClassName: ceph-bucket
+  postgres.enabled: true
+  postgres.backup.objectStore.destinationPath: "s3://backups/"
+  postgres.backup.objectStore.endpointURL: "http://rgw.example:80"
+  postgres.certManager.enabled: true
+  dragonfly.enabled: true
+  dragonfly.tls.certManager.enabled: true
+  kafka.sources.events.sink: api
+  kyverno.enabled: true
+  kyverno.scaling.enabled: true
+  global.certManager.issuerRef.name: my-issuer
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: renders one document per resource kind used by these assertions
+    asserts:
+      - hasDocuments:
+          count: 27
+
+  # global.annotations must land on EVERY rendered resource, including the ones
+  # that already carry resource-local annotations (the Knative Services).
+  - it: applies global.annotations to every rendered resource
+    set:
+      global.annotations.team: platform
+    asserts:
+      - equal: # 0 main Knative Service
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 0
+      - equal: # 1 Flagger Canary
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 1
+      - equal: # 2 ObjectBucketClaim
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 2
+      - equal: # 3 CNPG Cluster
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 3
+      - equal: # 4 CNPG Pooler
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 4
+      - equal: # 5 CNPG ObjectStore
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 5
+      - equal: # 6 CNPG ScheduledBackup
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 6
+      - equal: # 7 PodMonitor
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 7
+      - equal: # 8 PrometheusRule
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 8
+      - equal: # 9 cert-manager postgres server TLS placeholder Secret
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 9
+      - equal: # 10 cert-manager postgres server CA placeholder Secret
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 10
+      - equal: # 11 cert-manager postgres server CA Certificate
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 11
+      - equal: # 12 cert-manager postgres server CA Issuer
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 12
+      - equal: # 13 cert-manager postgres server leaf Certificate
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 13
+      - equal: # 14 cert-manager postgres client TLS placeholder Secret
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 14
+      - equal: # 15 cert-manager postgres client CA placeholder Secret
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 15
+      - equal: # 16 cert-manager postgres client CA Certificate
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 16
+      - equal: # 17 cert-manager postgres client CA Issuer
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 17
+      - equal: # 18 cert-manager postgres client leaf Certificate
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 18
+      - equal: # 19 KafkaSource
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 19
+      - equal: # 20 Kafka DLQ Knative Service
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 20
+      - equal: # 21 Dragonfly
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 21
+      - equal: # 22 cert-manager dragonfly Secret
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 22
+      - equal: # 23 cert-manager dragonfly Certificate
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 23
+      - equal: # 24 Kyverno knative scaling policy
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 24
+      - equal: # 25 Kyverno cnpg scaling policy
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 25
+      - equal: # 26 Kyverno dragonfly scaling policy
+          path: metadata.annotations["team"]
+          value: platform
+        documentIndex: 26
+
+  # The Knative Service already renders its own annotations (Prometheus scrape);
+  # the global ones must be merged in beside them, never replacing them.
+  - it: merges global.annotations with the Knative Service's existing annotations
+    set:
+      global.annotations.team: platform
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations["team"]
+          value: platform
+      - equal:
+          path: metadata.annotations["prometheus.io/scrape"]
+          value: "true"
+      - equal:
+          path: metadata.annotations["prometheus.io/port"]
+          value: "8080"
+
+  # With no global annotations, resources that have no local annotations must not
+  # emit an empty `annotations:` key (which Helm renders as `annotations: {}`).
+  - it: renders no empty annotations block when global.annotations is unset
+    asserts:
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 1 # Canary
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 2 # ObjectBucketClaim
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 3 # CNPG Cluster
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 4 # CNPG Pooler
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 5 # CNPG ObjectStore
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 6 # CNPG ScheduledBackup
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 7 # PodMonitor
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 8 # PrometheusRule
+      - equal: # 9 cert-manager postgres server TLS Secret — always carries the keep annotation
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        documentIndex: 9
+      - equal: # 10 cert-manager postgres server CA Secret — always carries the keep annotation
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        documentIndex: 10
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 11 # cert-manager postgres server CA Certificate
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 12 # cert-manager postgres server CA Issuer
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 13 # cert-manager postgres server leaf Certificate
+      - equal: # 14 cert-manager postgres client TLS Secret — always carries the keep annotation
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        documentIndex: 14
+      - equal: # 15 cert-manager postgres client CA Secret — always carries the keep annotation
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        documentIndex: 15
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 16 # cert-manager postgres client CA Certificate
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 17 # cert-manager postgres client CA Issuer
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 18 # cert-manager postgres client leaf Certificate
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 19 # KafkaSource
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 21 # Dragonfly
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 23 # cert-manager dragonfly Certificate
+      - notExists:
+          path: metadata.annotations
+        documentIndex: 24 # Kyverno policy
