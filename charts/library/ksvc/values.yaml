@@ -88,6 +88,31 @@ services:
       # -- Flux image policy annotation.
       fluxImagePolicy: ""
 
+    # Workload for this service. `Knative` (the default) renders a Knative
+    # Service; `Deployment` renders a standard apps/v1 Deployment plus a core/v1
+    # Service (and an optional PodDisruptionBudget) for long-running services
+    # such as websocket servers. The Knative `scaling` block below is ignored in
+    # Deployment mode; use `workload.replicas` instead.
+    workload:
+      # -- Workload kind: `Knative` or `Deployment`.
+      type: Knative
+      # -- Replica count (Deployment mode only).
+      replicas: 1
+      strategy:
+        # -- Maximum unavailable pods during a rolling update (integer or
+        # percent string).
+        maxUnavailable: 0
+        # -- Maximum surge pods during a rolling update (integer or percent
+        # string).
+        maxSurge: 1
+      # -- Seconds the kubelet allows the pod to terminate (Deployment mode
+      # only).
+      terminationGracePeriodSeconds: 300
+      # -- Extra sleep before SIGTERM, via a preStop hook, so endpoint removal
+      # can propagate (Deployment mode only). Requires `/bin/sh` and `sleep` in
+      # the image; must be lower than `terminationGracePeriodSeconds`.
+      preStopSleepSeconds: 0
+
     # Knative autoscaling
     scaling:
       # -- Minimum number of replicas.
@@ -117,7 +142,8 @@ services:
         cpu: "500m"
         memory: "256Mi"
 
-    # -- Container port exposed by the Knative Service.
+    # -- Container port for the service. In Deployment mode it is also the
+    # Deployment container port and the core Service `targetPort`.
     port: 8080
 
     # Health probes
@@ -185,6 +211,43 @@ services:
 
     # -- Additional labels for the Knative Service.
     labels: {}
+
+    # core/v1 Service for Deployment-mode services (ignored when the workload
+    # is Knative, which is addressed through the Knative Service itself). Cloud
+    # load-balancer idle-timeout annotations belong under `service.annotations`.
+    service:
+      # -- Service type: `ClusterIP`, `NodePort`, or `LoadBalancer`.
+      type: ClusterIP
+      # -- Service port. The container `targetPort` always follows the service
+      # entry's `port` value above.
+      port: 80
+      # -- Session affinity: `None` or `ClientIP`.
+      sessionAffinity: None
+      sessionAffinityConfig:
+        clientIP:
+          # -- ClientIP affinity timeout in seconds (rendered only when
+          # `sessionAffinity` is `ClientIP`).
+          timeoutSeconds: 10800
+      # -- External traffic policy: empty, `Cluster`, or `Local`. Only
+      # meaningful for `NodePort`/`LoadBalancer`; an empty value renders no
+      # field, and a non-empty value is rejected when `service.type` is
+      # `ClusterIP`.
+      externalTrafficPolicy: ""
+      # -- Annotations for the core Service, merged over `global.annotations`.
+      annotations: {}
+      # -- Extra labels for the core Service.
+      labels: {}
+
+    # PodDisruptionBudget for Deployment-mode services (requires
+    # `workload.type: Deployment`). Exactly one of `minAvailable` /
+    # `maxUnavailable` must be non-zero (integer or percent string).
+    podDisruptionBudget:
+      # -- Render a PodDisruptionBudget for this service.
+      enabled: false
+      # -- Minimum available pods (integer or percent string).
+      minAvailable: 0
+      # -- Maximum unavailable pods (integer or percent string).
+      maxUnavailable: 0
 
     # Flagger Canary Release (per-service opt-in)
     flagger:

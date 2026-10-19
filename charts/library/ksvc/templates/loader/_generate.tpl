@@ -20,6 +20,20 @@ merged. We must apply defaults explicitly before rendering.
   {{/* ============================================================ */}}
   {{- $isFirst := true -}}
   {{- range $key, $svc := .Values.services }}
+    {{- if eq $svc.workload.type "Deployment" }}
+      {{- if $isFirst -}}
+        {{- $isFirst = false -}}
+      {{- else }}
+---
+      {{- end }}
+  {{- include "ksvc.class.deployment" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
+---
+  {{- include "ksvc.class.deploymentService" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
+      {{- if $svc.podDisruptionBudget.enabled }}
+---
+  {{- include "ksvc.class.deploymentPdb" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
+      {{- end }}
+    {{- else }}
     {{- if $isFirst -}}
       {{- $isFirst = false -}}
     {{- else }}
@@ -30,6 +44,7 @@ merged. We must apply defaults explicitly before rendering.
     {{- if and $svc.flagger $svc.flagger.enabled }}
 ---
   {{- include "ksvc.class.flaggerCanary" (dict "root" $ "key" $key "svc" $svc) | nindent 0 }}
+    {{- end }}
     {{- end }}
   {{- end }}
 
@@ -139,6 +154,23 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "podAnnotations" (dict "prometheus.io/scrape" "true" "prometheus.io/port" "8080" "prometheus.io/path" "/metrics")
     "annotations" (dict "prometheus.io/scrape" "true" "prometheus.io/port" "8080" "prometheus.io/path" "/metrics")
     "labels" (dict)
+    "workload" (dict
+      "type" "Knative"
+      "replicas" 1
+      "strategy" (dict "maxUnavailable" 0 "maxSurge" 1)
+      "terminationGracePeriodSeconds" 300
+      "preStopSleepSeconds" 0
+    )
+    "service" (dict
+      "type" "ClusterIP"
+      "port" 80
+      "sessionAffinity" "None"
+      "sessionAffinityConfig" (dict "clientIP" (dict "timeoutSeconds" 10800))
+      "externalTrafficPolicy" ""
+      "annotations" (dict)
+      "labels" (dict)
+    )
+    "podDisruptionBudget" (dict "enabled" false "minAvailable" 0 "maxUnavailable" 0)
   -}}
 
   {{- $flaggerDefaults := dict

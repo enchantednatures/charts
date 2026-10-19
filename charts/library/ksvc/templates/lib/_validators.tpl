@@ -54,6 +54,71 @@ Call this from the loader to catch misconfigurations early.
     {{- if lt $timeoutSeconds 1 -}}
       {{- fail (printf "services.%s.scaling.timeoutSeconds must be >= 1 (got %d)" $key $timeoutSeconds) -}}
     {{- end -}}
+    {{/* workload validation (Knative default, or standard Deployment work-alike) */}}
+    {{- if not (has $svc.workload.type (list "Knative" "Deployment")) -}}
+      {{- fail (printf "services.%s.workload.type must be one of Knative|Deployment (got %v)" $key $svc.workload.type) -}}
+    {{- end -}}
+    {{- include "ksvc.validate.requireInteger" (dict "value" $svc.workload.replicas "path" (printf "services.%s.workload.replicas" $key)) -}}
+    {{- $replicas := int $svc.workload.replicas -}}
+    {{- if lt $replicas 1 -}}
+      {{- fail (printf "services.%s.workload.replicas must be >= 1 (got %d)" $key $replicas) -}}
+    {{- end -}}
+    {{- include "ksvc.validate.requireInteger" (dict "value" $svc.workload.terminationGracePeriodSeconds "path" (printf "services.%s.workload.terminationGracePeriodSeconds" $key)) -}}
+    {{- $terminationGracePeriodSeconds := int $svc.workload.terminationGracePeriodSeconds -}}
+    {{- if lt $terminationGracePeriodSeconds 0 -}}
+      {{- fail (printf "services.%s.workload.terminationGracePeriodSeconds must be >= 0 (got %d)" $key $terminationGracePeriodSeconds) -}}
+    {{- end -}}
+    {{- include "ksvc.validate.requireInteger" (dict "value" $svc.workload.preStopSleepSeconds "path" (printf "services.%s.workload.preStopSleepSeconds" $key)) -}}
+    {{- $preStopSleepSeconds := int $svc.workload.preStopSleepSeconds -}}
+    {{- if lt $preStopSleepSeconds 0 -}}
+      {{- fail (printf "services.%s.workload.preStopSleepSeconds must be >= 0 (got %d)" $key $preStopSleepSeconds) -}}
+    {{- end -}}
+    {{- if and (gt $preStopSleepSeconds 0) (gt $terminationGracePeriodSeconds 0) (ge $preStopSleepSeconds $terminationGracePeriodSeconds) -}}
+      {{- fail (printf "services.%s.workload.preStopSleepSeconds (%d) must be < terminationGracePeriodSeconds (%d)" $key $preStopSleepSeconds $terminationGracePeriodSeconds) -}}
+    {{- end -}}
+    {{- if and $svc.podDisruptionBudget.enabled (ne $svc.workload.type "Deployment") -}}
+      {{- fail (printf "services.%s.podDisruptionBudget.enabled requires workload.type: Deployment" $key) -}}
+    {{- end -}}
+    {{- if eq $svc.workload.type "Deployment" -}}
+      {{- if and $svc.flagger $svc.flagger.enabled -}}
+        {{- fail (printf "services.%s: flagger.enabled is not supported with workload.type: Deployment (the flagger Canary class targets Knative Services)" $key) -}}
+      {{- end -}}
+      {{- if not (has $svc.service.type (list "ClusterIP" "NodePort" "LoadBalancer")) -}}
+        {{- fail (printf "services.%s.service.type must be one of ClusterIP|NodePort|LoadBalancer (got %v)" $key $svc.service.type) -}}
+      {{- end -}}
+      {{- include "ksvc.validate.requireInteger" (dict "value" $svc.service.port "path" (printf "services.%s.service.port" $key)) -}}
+      {{- $servicePort := int $svc.service.port -}}
+      {{- if or (lt $servicePort 1) (gt $servicePort 65535) -}}
+        {{- fail (printf "services.%s.service.port must be between 1 and 65535 (got %d)" $key $servicePort) -}}
+      {{- end -}}
+      {{- if not (has $svc.service.sessionAffinity (list "None" "ClientIP")) -}}
+        {{- fail (printf "services.%s.service.sessionAffinity must be one of None|ClientIP (got %v)" $key $svc.service.sessionAffinity) -}}
+      {{- end -}}
+      {{- include "ksvc.validate.requireInteger" (dict "value" $svc.service.sessionAffinityConfig.clientIP.timeoutSeconds "path" (printf "services.%s.service.sessionAffinityConfig.clientIP.timeoutSeconds" $key)) -}}
+      {{- $sessionAffinityTimeout := int $svc.service.sessionAffinityConfig.clientIP.timeoutSeconds -}}
+      {{- if or (lt $sessionAffinityTimeout 1) (gt $sessionAffinityTimeout 86400) -}}
+        {{- fail (printf "services.%s.service.sessionAffinityConfig.clientIP.timeoutSeconds must be between 1 and 86400 (got %d)" $key $sessionAffinityTimeout) -}}
+      {{- end -}}
+      {{- if not (has $svc.service.externalTrafficPolicy (list "" "Cluster" "Local")) -}}
+        {{- fail (printf "services.%s.service.externalTrafficPolicy must be one of \"\", Cluster, Local (got %v)" $key $svc.service.externalTrafficPolicy) -}}
+      {{- end -}}
+      {{- if and $svc.service.externalTrafficPolicy (eq $svc.service.type "ClusterIP") -}}
+        {{- fail (printf "services.%s.service.externalTrafficPolicy (%v) requires service.type NodePort or LoadBalancer (got ClusterIP)" $key $svc.service.externalTrafficPolicy) -}}
+      {{- end -}}
+      {{- if $svc.podDisruptionBudget.enabled -}}
+        {{- $pdbMin := $svc.podDisruptionBudget.minAvailable -}}
+        {{- $pdbMax := $svc.podDisruptionBudget.maxUnavailable -}}
+        {{- if and $pdbMin $pdbMax -}}
+          {{- fail (printf "services.%s.podDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive — set one of them to 0" $key) -}}
+        {{- end -}}
+        {{- if and (not $pdbMin) (not $pdbMax) -}}
+          {{- fail (printf "services.%s.podDisruptionBudget: exactly one of minAvailable or maxUnavailable must be set when enabled" $key) -}}
+        {{- end -}}
+        {{- if and $pdbMin (not (kindIs "string" $pdbMin)) (gt (int $pdbMin) $replicas) -}}
+          {{- fail (printf "services.%s.podDisruptionBudget.minAvailable (%d) must be <= workload.replicas (%d)" $key (int $pdbMin) $replicas) -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
   {{- end -}}
 
   {{/* objectBuckets entry validation (runs after applyDefaults).
@@ -115,6 +180,10 @@ Call this from the loader to catch misconfigurations early.
       {{- end -}}
       {{- if not (hasKey $.Values.services $source.sink) -}}
         {{- fail (printf "kafka.sources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
+      {{- end -}}
+      {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a Kafka sink */}}
+      {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
+        {{- fail (printf "kafka.sources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
       {{- end -}}
       {{/* DLQ scaling validation (only when the DLQ is enabled) */}}
       {{- if and $source.dlq $source.dlq.enabled -}}
