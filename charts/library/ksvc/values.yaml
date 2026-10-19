@@ -263,11 +263,18 @@ postgres:
   sharedPreloadLibraries:
     - pg_stat_statements
 
-  # -- SQL statements run after cluster initialization.
+  # -- SQL statements run after cluster initialization. The default enables
+  # only `pg_stat_statements`. Statement logging is intentionally off because
+  # `log_statement = 'all'` writes every statement — including credentials and
+  # PII — to the Postgres logs, and `log_min_duration_statement` duplicates
+  # slow-query logging. It is opt-in: append the `ALTER SYSTEM` statements shown
+  # in the comment below to enable it.
   postInitSQL:
     - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
-    - "ALTER SYSTEM SET log_statement = 'all';"
-    - "ALTER SYSTEM SET log_min_duration_statement = '1000';"
+  #
+  # Statement logging is opt-in. To enable it, append entries like these:
+  #   - "ALTER SYSTEM SET log_statement = 'ddl';"
+  #   - "ALTER SYSTEM SET log_min_duration_statement = '1000';"
 
   # -- Cluster CPU/memory requests and limits.
   # @default -- `1`/`2Gi` requests, `2`/`4Gi` limits (see `values.yaml`)

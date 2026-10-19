@@ -217,7 +217,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "imageCatalog" (dict "name" "postgresql")
     "parameters" (dict "ssl" "on" "ssl_min_protocol_version" "TLSv1.3" "ssl_max_protocol_version" "TLSv1.3" "shared_buffers" "2Gi" "max_connections" "300" "synchronous_commit" "remote_apply" "synchronous_standby_names" "ANY 1 (*)" "archive_timeout" "5min" "wal_compression" "on")
     "sharedPreloadLibraries" (list "pg_stat_statements")
-    "postInitSQL" (list "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;" "ALTER SYSTEM SET log_statement = 'all';" "ALTER SYSTEM SET log_min_duration_statement = '1000';")
+    "postInitSQL" (list "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;")
     "resources" (dict "requests" (dict "cpu" "1" "memory" "2Gi") "limits" (dict "cpu" "2" "memory" "4Gi"))
     "storage" (dict "size" "200Gi" "storageClassName" "standard")
     "pooler" (dict "enabled" true "instances" 3 "type" "rw" "poolMode" "transaction"
