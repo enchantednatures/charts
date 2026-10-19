@@ -56,6 +56,14 @@ tests:
           path: spec.topics
           content: "my-events"
 
+  - it: should default bootstrapServers to the in-cluster Kafka service
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.bootstrapServers
+          value:
+            - kafka.kafka.svc.cluster.local:9092
+
   - it: should set default consumer group
     documentIndex: 1
     asserts:

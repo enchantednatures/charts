@@ -19,6 +19,7 @@
 #   make template EXAMPLE=x        Render templates for an example
 #   make lint                      Lint all charts and examples
 #   make test                      Run helm-unittest
+#   make check-defaults-parity     Verify loader defaults == values.yaml (+ probes)
 #   make docs                      Regenerate the chart README with helm-docs
 # =============================================================================
 
@@ -287,6 +288,15 @@ lint: ## Lint all charts and examples
 test: ## Run helm unit tests
 	helm dependency build charts/library/ksvc/test-chart
 	helm unittest charts/library/ksvc/test-chart
+
+.PHONY: check-defaults-parity
+check-defaults-parity: ## Verify loader defaults match values.yaml (dump + no-mutation probe)
+	@# Renders the test-chart with __ksvcDumpDefaults and __ksvcProbe: the dump
+	@# is compared against values.yaml leaf-by-leaf (tiny allowlist in
+	@# charts/library/ksvc/defaults-parity.allow) and the probe proves
+	@# ksvc.loader.generate leaves consumer .Values untouched across a
+	@# double include. Requires python3 + PyYAML.
+	python3 hack/check-defaults-parity.py
 
 .PHONY: docs
 docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-docs
