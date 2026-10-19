@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [minimal, full-stack, postgres-only, kafka-consumer, dragonfly-cache]
+        example: [minimal, full-stack, postgres-only, kafka-consumer, dragonfly-cache, longrunning-websocket]
         include:
           - example: minimal
             install_cnpg_crds: false
@@ -68,6 +68,13 @@ jobs:
             install_dragonfly_crds: true
             install_monitoring_crds: false
             install_object_bucket_crds: true
+          - example: longrunning-websocket
+            install_cnpg_crds: false
+            install_kafka_crds: false
+            install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+            install_object_bucket_crds: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

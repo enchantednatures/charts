@@ -1,0 +1,41 @@
+# Long-running websocket gateway deployed as a standard Kubernetes
+# Deployment + Service (workload.type: Deployment) instead of Knative.
+services:
+  gateway:
+    image:
+      repository: ghcr.io/example-org/websocket-gateway
+      tag: "v1.0.0"
+
+    port: 8080
+
+    # Standard Deployment workload for long-lived (websocket) connections.
+    workload:
+      type: Deployment
+      replicas: 2
+      strategy:
+        maxUnavailable: 0
+        maxSurge: 1
+      # Give established websocket sessions time to drain on pod termination.
+      terminationGracePeriodSeconds: 3600
+      # Delay SIGTERM so endpoint removal propagates before the app drains.
+      preStopSleepSeconds: 10
+
+    # The core/v1 Service that fronts the Deployment.
+    service:
+      type: ClusterIP
+      port: 80
+      sessionAffinity: ClientIP
+      sessionAffinityConfig:
+        clientIP:
+          timeoutSeconds: 10800
+      annotations:
+        # Example cloud LB idle timeout (adjust per provider; harmless on Kind).
+        service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    env:
+      - name: APP__WEBSOCKET__PATH
+        value: "/ws"

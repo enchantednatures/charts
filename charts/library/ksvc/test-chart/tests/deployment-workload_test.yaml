@@ -1,0 +1,295 @@
+suite: deployment workload tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  services.api.image.tag: "v1.0.0"
+  services.api.workload.type: Deployment
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # helm-unittest preserves the template RENDER order (not helm's install sort):
+  # doc 0 = Deployment, doc 1 = core Service, doc 2 = PodDisruptionBudget (when enabled).
+  - it: should render an apps/v1 Deployment
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: apiVersion
+          value: apps/v1
+
+  - it: should set the Deployment name
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-api
+
+  - it: should set the Deployment namespace
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+
+  - it: should set the component label
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: api
+
+  - it: should set the instance label
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: test-release
+
+  - it: should default replicas to 1
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: should render custom replicas
+    set:
+      services.api.workload.replicas: 2
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: should use RollingUpdate strategy with default surge/unavailable
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: RollingUpdate
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 1
+
+  - it: should render custom maxSurge
+    set:
+      services.api.workload.strategy.maxSurge: 2
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 2
+
+  - it: should default terminationGracePeriodSeconds to 300
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 300
+
+  - it: should render custom terminationGracePeriodSeconds
+    set:
+      services.api.workload.terminationGracePeriodSeconds: 3600
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 3600
+
+  - it: should not set a lifecycle by default
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].lifecycle
+
+  - it: should render a preStop sleep lifecycle when preStopSleepSeconds is set
+    set:
+      services.api.workload.preStopSleepSeconds: 10
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value:
+            - /bin/sh
+            - -c
+            - sleep 10
+
+  - it: should set selector matchLabels to name and instance
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: test-release-api
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/instance"]
+          value: test-release
+
+  - it: should set the pod template component label
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: api
+
+  - it: should set the pod template prometheus scrape annotation
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["prometheus.io/scrape"]
+          value: "true"
+
+  - it: should name the container service
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: service
+
+  - it: should set the container image
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: test/image:v1.0.0
+
+  - it: should use default container port 8080
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+
+  - it: should render a custom container port
+    set:
+      services.api.port: 9090
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9090
+
+  - it: should enforce runAsNonRoot
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+
+  - it: should mount and define the tmp volume
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: {}
+
+  - it: should not set containerConcurrency in Deployment mode
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.template.spec.containerConcurrency
+
+  - it: should not set the knative min-scale annotation in Deployment mode
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/min-scale"]
+
+  - it: should render env vars when provided
+    set:
+      services.api.env:
+        - name: MY_VAR
+          value: "hello"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: MY_VAR
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: "hello"
+
+  - it: should render only two documents (Deployment + Service) without a PDB
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: Deployment
+        documentIndex: 0
+      - isKind:
+          of: Service
+        documentIndex: 1
+
+  - it: should render three documents when a PDB is enabled
+    set:
+      services.api.podDisruptionBudget.enabled: true
+      services.api.podDisruptionBudget.minAvailable: 1
+    asserts:
+      - hasDocuments:
+          count: 3
+      - isKind:
+          of: Deployment
+        documentIndex: 0
+      - isKind:
+          of: Service
+        documentIndex: 1
+      - isKind:
+          of: PodDisruptionBudget
+        documentIndex: 2
+
+  # Mixed mode: api stays Knative, worker runs as a Deployment.
+  # Render order: doc 0 = Knative Service (api), doc 1 = Deployment (worker), doc 2 = core Service (worker).
+  - it: should render a Knative service and a Deployment side by side
+    set:
+      services.api.workload.type: Knative
+      services.worker.image.repository: test/worker
+      services.worker.image.tag: "v1.0.0"
+      services.worker.workload.type: Deployment
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: apiVersion
+          value: serving.knative.dev/v1
+        documentIndex: 0
+      - isKind:
+          of: Deployment
+        documentIndex: 1
+      - isKind:
+          of: Service
+        documentIndex: 2
+
+  # All-Deployment multi-entry render: map keys iterate sorted (api then worker),
+  # so each entry contributes Deployment then Service in render order.
+  - it: should render Deployments and Services for multiple Deployment services
+    set:
+      services.worker.image.repository: test/worker
+      services.worker.image.tag: "v1.0.0"
+      services.worker.workload.type: Deployment
+    asserts:
+      - hasDocuments:
+          count: 4
+      - isKind:
+          of: Deployment
+        documentIndex: 0
+      - isKind:
+          of: Service
+        documentIndex: 1
+      - isKind:
+          of: Deployment
+        documentIndex: 2
+      - isKind:
+          of: Service
+        documentIndex: 3

@@ -1,10 +1,10 @@
 # ksvc
 
-Helm library chart for deploying **multiple Knative services** with integrated CloudNativePG, Kafka event sources, DragonflyDB, and Flagger canary releases.
+Helm library chart for deploying **multiple Knative services** (or standard Deployments for long-running workloads such as websockets) with integrated CloudNativePG, Kafka event sources, DragonflyDB, and Flagger canary releases.
 
 ## Overview
 
-This library chart provides a standardized way to deploy serverless applications on Kubernetes using Knative Serving. Consumers define one or more services via a `services:` map, and the library renders all required Kubernetes and Custom Resource manifests.
+This library chart provides a standardized way to deploy serverless applications on Kubernetes using Knative Serving. Consumers define one or more services via a `services:` map, and the library renders all required Kubernetes and Custom Resource manifests. A service can opt into a standard Kubernetes Deployment instead of Knative (see [Long-Running Services](#long-running-services-deployment-workload)).
 
 Infrastructure resources (PostgreSQL, DragonflyDB) are shared globally across all services in the release, while Kafka event sources and Flagger canary configs are scoped per-source and per-service respectively.
 
@@ -16,8 +16,12 @@ Consumer Chart
         └── {{ include "ksvc.loader.generate" . }}
               ├── Validators (sink refs, required fields)
               ├── Per-service loop (services map)
-              │     ├── Knative Service
-              │     └── Flagger Canary (opt-in)
+              │     ├── Knative Service (default)
+              │     │     └── Flagger Canary (opt-in)
+              │     └── Deployment workload (workload.type: Deployment, opt-in)
+              │           ├── apps/v1 Deployment
+              │           ├── core/v1 Service
+              │           └── PodDisruptionBudget (opt-in)
               ├── Per-source loop (kafka.sources map)
               │     ├── KafkaSource
               │     └── DLQ Knative Service (opt-in)
@@ -33,11 +37,16 @@ Consumer Chart
 |----------|-------------|
 | Knative Service | `<release>-<service-key>` (or `<release>-<nameOverride>` when set) |
 | Flagger Canary | `<release>-<service-key>` (or `<release>-<nameOverride>` when set) |
+| Deployment (Deployment mode) | `<release>-<service-key>` (or `<release>-<nameOverride>` when set) |
+| core/v1 Service (Deployment mode) | `<release>-<service-key>` (shares the Deployment's name) |
+| PodDisruptionBudget (Deployment mode, opt-in) | `<release>-<service-key>` |
 | KafkaSource | `<release>-<source-key>-kafka-source` |
 | DLQ Service | `<release>-<source-key>-dlq` |
 | CNPG Cluster | `<release>` (global) |
 | Dragonfly | `<release>` (global) |
 | ObjectBucketClaim | `<release>-<key>` (per `objectBuckets` entry) |
+
+In Deployment mode the Deployment, the core/v1 Service, and any PodDisruptionBudget all share the `<release>-<service-key>` name. Sharing a name across kinds is legal in Kubernetes; the resources are linked by selectors, not by name.
 
 Use `nameOverride: ""` on a service entry to produce just `<release>` with no suffix — useful for single-service deployments or kustomize compatibility.
 
@@ -84,6 +93,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | Feature | Resources Rendered | Scope |
 |---------|-------------------|-------|
 | **Services** | Knative Service (per entry in `services`) | Per-service |
+| **Long-running services (opt-in)** | apps/v1 Deployment + core/v1 Service + optional policy/v1 PodDisruptionBudget (per service with `workload.type: Deployment`) | Per-service |
 | **Flagger** | Canary (per service with `flagger.enabled: true`) | Per-service |
 | **Kafka** | KafkaSource (per entry in `kafka.sources`) | Per-source |
 | **Kafka DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
@@ -225,7 +235,10 @@ per-entry schemas are documented in the sections following the table.
 | services.api.image.tag | string | `"latest"` | Container image tag. |
 | services.api.labels | object | `{}` | Additional labels for the Knative Service. |
 | services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default). |
-| services.api.port | int | `8080` | Container port exposed by the Knative Service. |
+| services.api.podDisruptionBudget.enabled | bool | `false` | Render a PodDisruptionBudget for this service. |
+| services.api.podDisruptionBudget.maxUnavailable | int | `0` | Maximum unavailable pods (integer or percent string). |
+| services.api.podDisruptionBudget.minAvailable | int | `0` | Minimum available pods (integer or percent string). |
+| services.api.port | int | `8080` | Container port for the service. In Deployment mode it is also the Deployment container port and the core Service `targetPort`. |
 | services.api.probes.liveness | object | see `values.yaml` | Liveness probe configuration (`httpGet`). |
 | services.api.probes.readiness | object | see `values.yaml` | Readiness probe configuration (`httpGet`). |
 | services.api.resources | object | `100m`/`64Mi` requests, `500m`/`256Mi` limits (see `values.yaml`) | Container CPU/memory requests and limits. |
@@ -237,8 +250,90 @@ per-entry schemas are documented in the sections following the table.
 | services.api.scaling.target | int | `100` | Autoscaling target (requests in flight per pod for the KPA). |
 | services.api.scaling.timeoutSeconds | int | `300` | Request timeout in seconds. |
 | services.api.securityContext | object | see `values.yaml` | Container security context (non-root, read-only root fs, drops all capabilities). |
+| services.api.service.annotations | object | `{}` | Annotations for the core Service, merged over `global.annotations`. |
+| services.api.service.externalTrafficPolicy | string | `""` | External traffic policy: empty, `Cluster`, or `Local`. Only meaningful for `NodePort`/`LoadBalancer`; an empty value renders no field, and a non-empty value is rejected when `service.type` is `ClusterIP`. |
+| services.api.service.labels | object | `{}` | Extra labels for the core Service. |
+| services.api.service.port | int | `80` | Service port. The container `targetPort` always follows the service entry's `port` value above. |
+| services.api.service.sessionAffinity | string | `"None"` | Session affinity: `None` or `ClientIP`. |
+| services.api.service.sessionAffinityConfig.clientIP.timeoutSeconds | int | `10800` | ClientIP affinity timeout in seconds (rendered only when `sessionAffinity` is `ClientIP`). |
+| services.api.service.type | string | `"ClusterIP"` | Service type: `ClusterIP`, `NodePort`, or `LoadBalancer`. |
 | services.api.volumeMounts | list | `[]` | Additional volume mounts for the container. |
 | services.api.volumes | list | `[]` | Additional pod volumes. |
+| services.api.workload.preStopSleepSeconds | int | `0` | Extra sleep before SIGTERM, via a preStop hook, so endpoint removal can propagate (Deployment mode only). Requires `/bin/sh` and `sleep` in the image; must be lower than `terminationGracePeriodSeconds`. |
+| services.api.workload.replicas | int | `1` | Replica count (Deployment mode only). |
+| services.api.workload.strategy.maxSurge | int | `1` | Maximum surge pods during a rolling update (integer or percent string). |
+| services.api.workload.strategy.maxUnavailable | int | `0` | Maximum unavailable pods during a rolling update (integer or percent string). |
+| services.api.workload.terminationGracePeriodSeconds | int | `300` | Seconds the kubelet allows the pod to terminate (Deployment mode only). |
+| services.api.workload.type | string | `"Knative"` | Workload kind: `Knative` or `Deployment`. |
+
+## Long-Running Services (Deployment Workload)
+
+Knative is the default workload, and it fits request/response services well. For connections that outlive a request, such as websocket servers or streaming gateways, Knative's request timeout (`services.<key>.scaling.timeoutSeconds`, default `300`) and scale-to-zero behavior are the wrong tool. Set `services.<key>.workload.type: Deployment` to render a standard `apps/v1` Deployment behind a core `v1` Service instead:
+
+```yaml
+services:
+  gateway:
+    image:
+      repository: ghcr.io/my-org/websocket-gateway
+      tag: v1.0.0
+    workload:
+      type: Deployment
+      replicas: 2
+    service:
+      type: LoadBalancer
+      port: 80
+```
+
+Every service entry with `workload.type: Deployment` renders a Deployment and a core Service, plus a `policy/v1` PodDisruptionBudget when `services.<key>.podDisruptionBudget.enabled` is `true`. All keys are listed in the generated values table above. Knative remains the default; existing entries render exactly as before.
+
+### Metadata mapping
+
+*   `services.<key>.annotations` and `services.<key>.labels` apply to the Deployment's metadata (mirroring the Knative Service mapping). Since the Deployment and the core Service both carry the shared service label set, `services.<key>.labels` also lands on the Service.
+*   `services.<key>.podAnnotations` apply to the Pod template.
+*   `services.<key>.service.annotations` and `services.<key>.service.labels` apply to the core Service only (not the Deployment or its pods). Cloud load-balancer idle-timeout annotations belong here.
+
+### Graceful shutdown
+
+On pod termination the order is: endpoint removal from the Service, then the `preStop` hook (if any), then `SIGTERM`, then `SIGKILL` when `terminationGracePeriodSeconds` runs out. Your app must handle `SIGTERM` to drain; otherwise the connection is cut.
+
+Keep `terminationGracePeriodSeconds` comfortably larger than `preStopSleepSeconds` plus your drain window. The validators require `preStopSleepSeconds < terminationGracePeriodSeconds` when both are greater than zero.
+
+`preStopSleepSeconds > 0` renders `exec: ["/bin/sh", "-c", "sleep N"]`, so it needs a shell and a `sleep` binary in the image. Keep it `0` for distroless images and drain in-app instead.
+
+### Session affinity
+
+`sessionAffinity` defaults to `None`. A websocket TCP connection is already pinned to a pod for its lifetime, so affinity mainly affects reconnects. `ClientIP` can stick clients to a pod that is draining during a rollout, so enable it only when your app needs sticky reconnects.
+
+### External traffic policy
+
+`externalTrafficPolicy` is only meaningful for `NodePort` and `LoadBalancer` services. `Local` preserves the client source IP and avoids an extra hop, but it can drop connections when a node has no ready endpoints. Use it only with enough replicas to keep every node's endpoints populated.
+
+### Load-balancer idle timeouts
+
+Idle timeouts are set with cloud-specific annotations on the core Service:
+
+```yaml
+services:
+  gateway:
+    service:
+      annotations:
+        # AWS NLB
+        service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+        # GCP (the timeout itself lives in the referenced BackendConfig)
+        cloud.google.com/backend-config: '{"default": "gateway-idle"}'
+```
+
+### PodDisruptionBudget semantics
+
+A PodDisruptionBudget governs **voluntary** evictions only, which means node drains and cluster upgrades. It does not govern rolling updates (those follow `workload.strategy`), and it does not stop a node failure or a crash from taking pods down.
+
+### Limitations
+
+*   `scaling.*` is Knative-only. It is ignored when `workload.type: Deployment`; use `workload.replicas` for the replica count.
+*   `flagger.enabled` is not supported with `workload.type: Deployment` and fails rendering (the Canary class targets Knative Services).
+*   A Kafka source `sink` cannot reference a Deployment-backed service, because a plain Kubernetes Service is not Knative-addressable. Point `kafka.sources.<key>.sink` at a Knative service.
+*   The Kyverno scaling guardrails cover Knative Services only; they do not police Deployment-backed services.
+*   Changing `nameOverride`, the map key, or switching `workload.type` on an existing release recreates or replaces resources. The Deployment's `selector` is immutable, so a rename cannot be applied in place.
 
 ## Kafka Event Sources (Map)
 
@@ -511,6 +606,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **postgres-only** — API service with CloudNativePG integration.
 *   **kafka-consumer** — Consumer service with KafkaSource and DLQ.
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
+*   **longrunning-websocket** — Websocket gateway as a standard Deployment workload with a ClientIP core Service, a PodDisruptionBudget, and a preStop drain delay.
 
 ## CI/CD
 

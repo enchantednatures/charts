@@ -1,0 +1,170 @@
+suite: deployment validation tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  services.api.image.tag: "v1.0.0"
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # ---------- workload / feature cross-checks ----------
+  - it: should fail when flagger is enabled with a Deployment workload
+    set:
+      services.api.workload.type: Deployment
+      services.api.flagger.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api: flagger.enabled is not supported with workload.type: Deployment (the flagger Canary class targets Knative Services)"
+
+  - it: should fail when a Kafka sink points at a Deployment service
+    set:
+      services.api.workload.type: Deployment
+      kafka.sources.events.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.sink references 'api' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service"
+
+  - it: should fail when a PDB is enabled without a Deployment workload
+    set:
+      services.api.podDisruptionBudget.enabled: true
+      services.api.podDisruptionBudget.minAvailable: 1
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.podDisruptionBudget.enabled requires workload.type: Deployment"
+
+  - it: should fail when externalTrafficPolicy is set on a ClusterIP service
+    set:
+      services.api.workload.type: Deployment
+      services.api.service.externalTrafficPolicy: Local
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.service.externalTrafficPolicy (Local) requires service.type NodePort or LoadBalancer (got ClusterIP)"
+
+  - it: should fail when preStopSleepSeconds is not below terminationGracePeriodSeconds
+    set:
+      services.api.workload.preStopSleepSeconds: 300
+      services.api.workload.terminationGracePeriodSeconds: 300
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.workload.preStopSleepSeconds (300) must be < terminationGracePeriodSeconds (300)"
+
+  # ---------- workload type / replicas ----------
+  - it: should fail on an invalid workload type
+    set:
+      services.api.workload.type: DaemonSet
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.workload.type must be one of Knative|Deployment (got DaemonSet)"
+
+  - it: should fail when replicas is below 1
+    set:
+      services.api.workload.replicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.workload.replicas must be >= 1 (got 0)"
+
+  # ---------- PDB constraints ----------
+  - it: should fail when the PDB sets both minAvailable and maxUnavailable
+    set:
+      services.api.workload.type: Deployment
+      services.api.podDisruptionBudget.enabled: true
+      services.api.podDisruptionBudget.minAvailable: 1
+      services.api.podDisruptionBudget.maxUnavailable: 1
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.podDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive — set one of them to 0"
+
+  - it: should fail when the PDB sets neither minAvailable nor maxUnavailable
+    set:
+      services.api.workload.type: Deployment
+      services.api.podDisruptionBudget.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.podDisruptionBudget: exactly one of minAvailable or maxUnavailable must be set when enabled"
+
+  - it: should fail when the PDB minAvailable exceeds replicas
+    set:
+      services.api.workload.type: Deployment
+      services.api.workload.replicas: 1
+      services.api.podDisruptionBudget.enabled: true
+      services.api.podDisruptionBudget.minAvailable: 2
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.podDisruptionBudget.minAvailable (2) must be <= workload.replicas (1)"
+
+  - it: should fail when service.port is below 1
+    set:
+      services.api.workload.type: Deployment
+      services.api.service.port: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.service.port must be between 1 and 65535 (got 0)"
+
+  - it: should fail when service.port is above 65535
+    set:
+      services.api.workload.type: Deployment
+      services.api.service.port: 65536
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.service.port must be between 1 and 65535 (got 65536)"
+
+  - it: should fail on an invalid sessionAffinity
+    set:
+      services.api.workload.type: Deployment
+      services.api.service.sessionAffinity: Sticky
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.service.sessionAffinity must be one of None|ClientIP (got Sticky)"
+
+  - it: should fail on an invalid externalTrafficPolicy
+    set:
+      services.api.workload.type: Deployment
+      services.api.service.externalTrafficPolicy: Bogus
+    asserts:
+      - failedTemplate:
+          errorMessage: 'services.api.service.externalTrafficPolicy must be one of "", Cluster, Local (got Bogus)'
+
+  - it: should fail on a negative terminationGracePeriodSeconds
+    set:
+      services.api.workload.type: Deployment
+      services.api.workload.terminationGracePeriodSeconds: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.workload.terminationGracePeriodSeconds must be >= 0 (got -1)"
+
+  - it: should fail on a negative preStopSleepSeconds
+    set:
+      services.api.workload.type: Deployment
+      services.api.workload.preStopSleepSeconds: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.workload.preStopSleepSeconds must be >= 0 (got -1)"
+
+  - it: should fail when replicas is not an integer
+    set:
+      services.api.workload.type: Deployment
+      services.api.workload.replicas: 1.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.workload.replicas must be an integer (got 1.5)"
+
+  # ---------- happy path ----------
+  - it: should render a valid Deployment with a PDB successfully
+    set:
+      services.api.workload.type: Deployment
+      services.api.workload.replicas: 3
+      services.api.podDisruptionBudget.enabled: true
+      services.api.podDisruptionBudget.minAvailable: 2
+    asserts:
+      - hasDocuments:
+          count: 3
+      - isKind:
+          of: Deployment
+        documentIndex: 0
+      - isKind:
+          of: Service
+        documentIndex: 1
+      - isKind:
+          of: PodDisruptionBudget
+        documentIndex: 2

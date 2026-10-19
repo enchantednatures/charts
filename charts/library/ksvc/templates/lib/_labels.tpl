@@ -40,3 +40,16 @@ app.kubernetes.io/component: {{ .key }}
 {{ toYaml . }}
 {{- end }}
 {{- end }}
+
+{{/*
+ksvc.serviceSelectorLabels — Immutable selector labels for a specific service entry.
+Expects context: dict with "root" (top-level context), "key" (service map key),
+and "svc" (the service config dict).
+Only name/instance are emitted: version and chart labels mutate on upgrade and
+must never appear in a Deployment/Service matchLabels selector.
+*/}}
+{{- define "ksvc.serviceSelectorLabels" -}}
+{{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key "svc" .svc) -}}
+app.kubernetes.io/name: {{ $serviceName }}
+app.kubernetes.io/instance: {{ .root.Release.Name }}
+{{- end }}

@@ -16,7 +16,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. |
-| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `dragonfly-cache`. |
+| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
 | `hack/` | Repo automation scripts: `check-version-bump.sh` (PR version gate) and `lint-app.sh` (resolve the app chart against the local library). |
@@ -24,10 +24,11 @@ all supporting infrastructure. A ready-to-use application wrapper
 
 ## The charts
 
-*   **[ksvc library chart](charts/library/ksvc/README.md)** — Knative Services,
-    CloudNativePG, Kafka sources + DLQ, DragonflyDB, Flagger canaries, Ceph RGW
-    object buckets, Kyverno admission policies. Its README is generated from
-    `values.yaml` by [helm-docs](https://github.com/norwoodj/helm-docs) (`make docs`).
+*   **[ksvc library chart](charts/library/ksvc/README.md)** — Knative Services
+    (plus opt-in standard Deployments for long-running services), CloudNativePG,
+    Kafka sources + DLQ, DragonflyDB, Flagger canaries, Ceph RGW object buckets,
+    Kyverno admission policies. Its README is generated from `values.yaml` by
+    [helm-docs](https://github.com/norwoodj/helm-docs) (`make docs`).
 *   **ksvc-app application chart** (`charts/app/ksvc/`) — wraps `ksvc` so that
     consumers can `helm install` a normal chart. Pins a `ksvc` version via an
     `oci://ghcr.io/enchantednatures/charts` dependency.
@@ -74,7 +75,7 @@ Requires `helm`, `kubectl`, `kind`, and `docker` (for `make docs`).
 make help                 # list every target
 
 make lint                 # helm lint library + app + all examples
-make test                 # helm-unittest (145+ tests)
+make test                 # helm-unittest (210+ tests)
 make docs                 # regenerate charts/library/ksvc/README.md (helm-docs, docker)
 make update-locks         # refresh committed Chart.lock files
 make template EXAMPLE=minimal
