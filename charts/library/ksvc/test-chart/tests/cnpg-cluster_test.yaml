@@ -110,6 +110,14 @@ tests:
       - isNull:
           path: spec.plugins
 
+  - it: "should default postInitApplicationSQL to pg_stat_statements only (regression: log_statement logged credentials/PII)"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.bootstrap.initdb.postInitApplicationSQL
+          value:
+            - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+
   - it: should not render Cluster when postgres disabled
     set:
       postgres.enabled: false
