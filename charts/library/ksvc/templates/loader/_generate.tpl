@@ -101,6 +101,16 @@ merged. We must apply defaults explicitly before rendering.
   {{- end }}
 
   {{/* ============================================================ */}}
+  {{/* Ping Event Sources (iterate the pingsources map)             */}}
+  {{/* ============================================================ */}}
+  {{- if .Values.pingsources }}
+    {{- range $key, $source := .Values.pingsources }}
+---
+  {{- include "ksvc.class.pingSource" (dict "root" $ "key" $key "source" $source) | nindent 0 }}
+    {{- end }}
+  {{- end }}
+
+  {{/* ============================================================ */}}
   {{/* DragonflyDB Cache Cluster                                   */}}
   {{/* ============================================================ */}}
   {{- if and .Values.dragonfly .Values.dragonfly.enabled }}
@@ -215,6 +225,23 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     {{- $_ := set $kafka.sources $key $merged -}}
   {{- end }}
   {{- $_ := set .Values "kafka" $kafka -}}
+
+  {{/* --- pingsource defaults (applied to each entry in the pingsources map) --- */}}
+  {{- $pingSourceDefaults := dict
+    "schedule" "0 * * * *"
+    "timezone" "UTC"
+    "data" ""
+    "contentType" "application/json"
+    "sink" ""
+    "ceOverrides" (dict "extensions" (dict))
+  -}}
+
+  {{- $pingSources := .Values.pingsources | default dict -}}
+  {{- range $key, $source := $pingSources }}
+    {{- $merged := mustMergeOverwrite (deepCopy $pingSourceDefaults) $source -}}
+    {{- $_ := set $pingSources $key $merged -}}
+  {{- end }}
+  {{- $_ := set .Values "pingsources" $pingSources -}}
 
   {{/* --- object bucket defaults (applied to each entry in the objectBuckets map) --- */}}
   {{- $bucketDefaults := dict "bucketName" "" "endpointURL" "" "region" "" -}}

@@ -85,6 +85,10 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- printf "%s-%s-kafka-source" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{- define "ksvc.pingSourceName" -}}
+{{- printf "%s-%s-ping-source" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}
+
 {{- define "ksvc.kafkaDlqName" -}}
 {{- printf "%s-%s-dlq" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" }}
 {{- end }}

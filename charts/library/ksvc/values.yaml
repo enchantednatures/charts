@@ -470,6 +470,40 @@ kafka:
   sources: {}
 
 # =============================================================================
+# Ping Event Sources — Map of PingSource entries
+#
+# Each key becomes a name suffix: <release-name>-<key>-ping-source
+# A PingSource emits a fixed CloudEvent (type dev.knative.sources.ping) on a
+# cron schedule. The "sink" field must reference a key in the services map.
+#
+# Per entry:
+#   schedule: cron expression, default "0 * * * *" (hourly).
+#   timezone: IANA time zone, default "UTC".
+#   data: event payload string, default "".
+#   contentType: payload content type, default "application/json".
+#   sink: REQUIRED — key from the services map.
+#   ceOverrides.extensions: optional map of custom CloudEvent extension
+#     attributes. Do not set "type"; the event type is fixed.
+# Example:
+#   pingsources:
+#     scheduled:
+#       schedule: "0 * * * *"
+#       timezone: "UTC"
+#       data: '{"hello":"world"}'
+#       contentType: application/json
+#       sink: api
+#       ceOverrides:
+#         extensions:
+#           my-extension: value
+# =============================================================================
+# -- Map of PingSource entries, keyed by source name. Each key renders a
+# PingSource named `<release>-<key>-ping-source`; every entry's `sink` must
+# reference a key in `services` (validated at render time). Per-entry fields:
+# `schedule`, `timezone`, `data`, `contentType`, `ceOverrides.extensions`
+# (custom extensions only, never `type`), and the required `sink`.
+pingsources: {}
+
+# =============================================================================
 # DragonflyDB Cache Cluster
 # =============================================================================
 dragonfly:

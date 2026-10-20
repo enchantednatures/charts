@@ -168,3 +168,65 @@ tests:
       - isKind:
           of: PodDisruptionBudget
         documentIndex: 2
+
+  # ---------- pingsource validation ----------
+  - it: should fail when a ping source has no sink
+    set:
+      pingsources.scheduled.data: "hello"
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.sink is required and must reference a key in the services map"
+
+  - it: should fail when a ping source sink does not exist
+    set:
+      pingsources.scheduled.sink: nope
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.sink references 'nope' which does not exist in the services map"
+
+  - it: should fail when a ping source sink points at a Deployment service
+    set:
+      services.api.workload.type: Deployment
+      pingsources.scheduled.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.sink references 'api' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service"
+
+  - it: should fail when a ping source schedule is empty
+    set:
+      pingsources.scheduled.sink: api
+      pingsources.scheduled.schedule: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.schedule is required"
+
+  - it: should fail when a ping source timezone is empty
+    set:
+      pingsources.scheduled.sink: api
+      pingsources.scheduled.timezone: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.timezone is required"
+
+  - it: should fail when ceOverrides.extensions is not a map
+    set:
+      pingsources.scheduled.sink: api
+      pingsources.scheduled.ceOverrides.extensions: "not-a-map"
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.ceOverrides.extensions must be a map when set"
+
+  - it: should fail when ceOverrides.extensions.type is set
+    set:
+      pingsources.scheduled.sink: api
+      pingsources.scheduled.ceOverrides.extensions.type: custom
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.ceOverrides.extensions.type cannot be overridden (PingSource fixes the event type at dev.knative.sources.ping)"
+
+  - it: should fail when a ping source key is not a DNS-1123 label
+    set:
+      pingsources.Bad_Key.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.Bad_Key must be a DNS-1123 label"
