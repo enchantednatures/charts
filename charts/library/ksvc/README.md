@@ -25,6 +25,8 @@ Consumer Chart
               ├── Per-source loop (kafka.sources map)
               │     ├── KafkaSource
               │     └── DLQ Knative Service (opt-in)
+              ├── Per-source loop (pingsources map)
+              │     └── PingSource
               └── Global resources
                     ├── ObjectBucketClaim (per objectBuckets entry, opt-in)
                     ├── CNPG Cluster, Pooler, Backup, ObjectStore, PodMonitor, Alerts
@@ -42,6 +44,7 @@ Consumer Chart
 | PodDisruptionBudget (Deployment mode, opt-in) | `<release>-<service-key>` |
 | KafkaSource | `<release>-<source-key>-kafka-source` |
 | DLQ Service | `<release>-<source-key>-dlq` |
+| PingSource | `<release>-<source-key>-ping-source` (per `pingsources` entry) |
 | CNPG Cluster | `<release>` (global) |
 | Dragonfly | `<release>` (global) |
 | ObjectBucketClaim | `<release>-<key>` (per `objectBuckets` entry) |
@@ -64,7 +67,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.7.2
+        version: 0.9.0
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -97,6 +100,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **Flagger** | Canary (per service with `flagger.enabled: true`) | Per-service |
 | **Kafka** | KafkaSource (per entry in `kafka.sources`) | Per-source |
 | **Kafka DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
+| **PingSource** | PingSource (per entry in `pingsources`) | Per-source |
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
@@ -112,10 +116,11 @@ The table below is generated from [`values.yaml`](values.yaml) by
 [helm-docs](https://github.com/norwoodj/helm-docs) — do not edit it by hand,
 run `make docs` instead.
 
-`services`, `kafka.sources`, and `objectBuckets` are keyed maps: use any
-consumer-chosen key. The generated table uses the default example key (`api`)
-for `services`. Because `kafka.sources` and `objectBuckets` ship empty, their
-per-entry schemas are documented in the sections following the table.
+`services`, `kafka.sources`, `pingsources`, and `objectBuckets` are keyed maps:
+use any consumer-chosen key. The generated table uses the default example key
+(`api`) for `services`. Because `kafka.sources`, `pingsources`, and
+`objectBuckets` ship empty, their per-entry schemas are documented in the
+sections following the table.
 
 ## Values
 
@@ -174,6 +179,7 @@ per-entry schemas are documented in the sections following the table.
 | kyverno.scaling.enabled | bool | `false` | Render the scaling/HA guardrail policies (Knative Service, CNPG instances, Dragonfly replicas/PDB). |
 | kyverno.scaling.validationActions | list | `["Deny"]` | Enforcement actions (`Deny` and/or `Audit`). |
 | objectBuckets | object | `{}` | Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each key renders an ObjectBucketClaim named `<release>-<key>`; see the Object Buckets section for the per-entry schema. |
+| pingsources | object | `{}` | Map of PingSource entries, keyed by source name. Each key renders a PingSource named `<release>-<key>-ping-source`; every entry's `sink` must reference a key in `services` (validated at render time). Per-entry fields: `schedule`, `timezone`, `data`, `contentType`, `ceOverrides.extensions` (custom extensions only, never `type`), and the required `sink`. |
 | postgres.backup.enabled | bool | `true` | Enable WAL archiving and scheduled backups. |
 | postgres.backup.objectStore.data.compression | string | `"gzip"` | Compression algorithm for data backups (`snappy`, `gzip`, `bzip2` or `lz4`). |
 | postgres.backup.objectStore.data.jobs | int | `2` | Number of parallel jobs for data backups. |
@@ -352,6 +358,38 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+
+## PingSource Event Sources (Map)
+
+Each key in `pingsources:` defines a PingSource. The `sink` field must reference a valid key in the `services` map (validated at render time).
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `pingsources.<key>.schedule` | Cron schedule for the emitted event | `"0 * * * *"` |
+| `pingsources.<key>.timezone` | IANA time zone for the schedule | `"UTC"` |
+| `pingsources.<key>.data` | CloudEvent payload | `""` |
+| `pingsources.<key>.contentType` | Payload content type | `"application/json"` |
+| `pingsources.<key>.sink` | **Required.** Key from the `services` map | — |
+| `pingsources.<key>.ceOverrides.extensions` | Map of custom CloudEvent extension attributes (never `type`) | `{}` |
+
+Each entry renders a PingSource named `<release>-<key>-ping-source`. Every event has the fixed CloudEvent type `dev.knative.sources.ping`. `ceOverrides.extensions` can add or override extension attributes, but it cannot change `type`; the validator rejects a `type` key there.
+
+The chart defaults differ from the Knative API defaults: the chart uses `0 * * * *` (hourly) and `UTC`, while the Knative API defaults to `* * * * *` (every minute) and the cluster's system time zone. Set `schedule` and `timezone` explicitly if you depend on the API defaults.
+
+The sink is rendered as a Knative Service `ref` with no path, so events are delivered to the service's root path (`/`). There is no per-entry sink path option; serve the handler at `/` or route to it from there.
+
+```yaml
+pingsources:
+  scheduled:
+    schedule: "0 * * * *"
+    timezone: "UTC"
+    data: '{"hello":"world"}'
+    contentType: application/json
+    sink: api
+    ceOverrides:
+      extensions:
+        my-extension: value
+```
 
 ## Object Buckets (Ceph RGW)
 
@@ -613,7 +651,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 The repository uses GitHub Actions for automated quality assurance:
 
 *   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
-*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.7.1`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
+*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.9.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing
