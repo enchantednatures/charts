@@ -63,6 +63,16 @@
         }
       }
     },
+    "pingsources": {
+      "type": "object",
+      "description": "Map of PingSource entries. Each key becomes: <release>-<key>-ping-source",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/pingSourceEntry"
+      }
+    },
     "postgres": {
       "type": "object",
       "additionalProperties": false,
@@ -1091,6 +1101,45 @@
             },
             "resources": {
               "$ref": "#/$defs/resources"
+            }
+          }
+        }
+      }
+    },
+    "pingSourceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sink"
+      ],
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data": {
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string"
+        },
+        "sink": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Must reference a key in the services map"
+        },
+        "ceOverrides": {
+          "type": "object",
+          "properties": {
+            "extensions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           }
         }

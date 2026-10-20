@@ -55,7 +55,7 @@ Consumers reference a published chart by OCI repository and version:
 ```yaml
 dependencies:
   - name: ksvc
-    version: 0.7.1
+    version: 0.9.0
     repository: oci://ghcr.io/enchantednatures/charts
 ```
 

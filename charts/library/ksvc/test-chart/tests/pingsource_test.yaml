@@ -1,0 +1,156 @@
+suite: ping source tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # With one service and one ping source:
+  # doc 0 = Knative Service (api), doc 1 = PingSource (scheduled)
+  - it: should render a PingSource when a ping source is defined
+    set:
+      pingsources.scheduled.sink: api
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: PingSource
+      - equal:
+          path: apiVersion
+          value: sources.knative.dev/v1
+
+  - it: should set the correct name
+    set:
+      pingsources.scheduled.sink: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-scheduled-ping-source
+
+  - it: should set the correct namespace
+    set:
+      pingsources.scheduled.sink: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+
+  - it: should apply the default schedule, timezone, and content type
+    set:
+      pingsources.scheduled.sink: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.schedule
+          value: "0 * * * *"
+      - equal:
+          path: spec.timezone
+          value: UTC
+      - equal:
+          path: spec.contentType
+          value: application/json
+
+  - it: should render data and custom CloudEvent extensions
+    set:
+      pingsources.scheduled.sink: api
+      pingsources.scheduled.data: '{"hello":"world"}'
+      pingsources.scheduled.ceOverrides.extensions.myextension: custom-value
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.data
+          value: '{"hello":"world"}'
+      - equal:
+          path: spec.ceOverrides.extensions.myextension
+          value: custom-value
+
+  - it: should not render data or ceOverrides when they are empty
+    set:
+      pingsources.scheduled.sink: api
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.data
+      - notExists:
+          path: spec.ceOverrides
+
+  - it: should reference the Knative Service as sink
+    set:
+      pingsources.scheduled.sink: api
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.sink.ref.apiVersion
+          value: serving.knative.dev/v1
+      - equal:
+          path: spec.sink.ref.kind
+          value: Service
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-api
+
+  - it: "should honor the sink service's nameOverride in the sink ref"
+    set:
+      pingsources.scheduled.sink: api
+      services.api.nameOverride: "prod-api"
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-prod-api
+
+  - it: should render only the service when the pingsources map is empty
+    set:
+      pingsources: {}
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should render only the service when pingsources is absent
+    set:
+      pingsources: null
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  # Combined fixture: Service 0, KafkaSource 1, DLQ Service 2, PingSource 3.
+  # The ping source is rendered after the Kafka loop, so the pre-existing
+  # KafkaSource/DLQ document indexes must remain unchanged.
+  - it: should keep KafkaSource and DLQ indexes and append the PingSource after them
+    set:
+      pingsources.scheduled.sink: api
+      kafka.sources.events.topic: "events"
+      kafka.sources.events.sink: api
+      kafka.sources.events.dlq.enabled: true
+    asserts:
+      - isKind:
+          of: Service
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: test-release-api
+        documentIndex: 0
+      - isKind:
+          of: KafkaSource
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: test-release-events-kafka-source
+        documentIndex: 1
+      - isKind:
+          of: Service
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: test-release-events-dlq
+        documentIndex: 2
+      - isKind:
+          of: PingSource
+        documentIndex: 3
+      - equal:
+          path: metadata.name
+          value: test-release-scheduled-ping-source
+        documentIndex: 3

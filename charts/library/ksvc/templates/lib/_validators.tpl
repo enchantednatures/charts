@@ -207,6 +207,39 @@ Call this from the loader to catch misconfigurations early.
     {{- end -}}
   {{- end -}}
 
+  {{/* pingsource validation: sink, schedule/timezone, ceOverrides, and map key */}}
+  {{- if .Values.pingsources -}}
+    {{- range $key, $source := .Values.pingsources -}}
+      {{- if not $source.sink -}}
+        {{- fail (printf "pingsources.%s.sink is required and must reference a key in the services map" $key) -}}
+      {{- end -}}
+      {{- if not (hasKey $.Values.services $source.sink) -}}
+        {{- fail (printf "pingsources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
+      {{- end -}}
+      {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a PingSource sink */}}
+      {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
+        {{- fail (printf "pingsources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
+      {{- end -}}
+      {{- if not $source.schedule -}}
+        {{- fail (printf "pingsources.%s.schedule is required" $key) -}}
+      {{- end -}}
+      {{- if not $source.timezone -}}
+        {{- fail (printf "pingsources.%s.timezone is required" $key) -}}
+      {{- end -}}
+      {{- if and $source.ceOverrides (kindIs "map" $source.ceOverrides) (hasKey $source.ceOverrides "extensions") -}}
+        {{- if not (kindIs "map" $source.ceOverrides.extensions) -}}
+          {{- fail (printf "pingsources.%s.ceOverrides.extensions must be a map when set" $key) -}}
+        {{- end -}}
+        {{- if hasKey $source.ceOverrides.extensions "type" -}}
+          {{- fail (printf "pingsources.%s.ceOverrides.extensions.type cannot be overridden (PingSource fixes the event type at dev.knative.sources.ping)" $key) -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if or (gt (len $key) 63) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $key)) -}}
+        {{- fail (printf "pingsources.%s must be a DNS-1123 label" $key) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
   {{/* cert-manager issuer validation: an enabled certManager block must resolve to a non-empty issuer name (locally or via global.certManager.issuerRef.name) */}}
   {{- $globalIssuerName := "" }}
   {{- if and .Values.global .Values.global.certManager -}}
