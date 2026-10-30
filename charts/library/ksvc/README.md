@@ -77,7 +77,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.9.0
+        version: 0.10.0
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -447,11 +447,11 @@ Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: r
 *   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32.
 *   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
 *   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.cluster.local:9092|9093`; Redpanda `<cluster>.<namespace>.svc.cluster.local:9093`.
-*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`).
+*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`). Redpanda TLS requires cert-manager.
 *   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret.
 *   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
 *   **Replication:** topic/broker replication factors clamp to `min(replicas, 3)` for Strimzi and `1`/`3` for Redpanda.
-*   **Operators:** the chart never installs Strimzi, Redpanda, Knative, or their CRDs.
+*   **Operators:** the chart never installs Strimzi, Redpanda, Knative, or their CRDs. `make install-strimzi-crds` and `make install-redpanda-crds` install CRDs only; `hack/install-strimzi-operator.sh` and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
 
 ## PingSource Event Sources (Map)
 
@@ -739,6 +739,8 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **kafka-consumer** — Consumer service with KafkaSource and DLQ.
 *   **kafka-broker** — Kafka Broker with filtered Triggers and a broker-sink KafkaSource.
 *   **kafka-source-net** — KafkaSource with TLS and SASL against an external Kafka cluster.
+*   **kafka-strimzi** — Managed Strimzi cluster with TLS, SCRAM, topics, users, and a shared project topic.
+*   **kafka-redpanda** — Managed Redpanda cluster with managed topics and a shared project topic.
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
 *   **longrunning-websocket** — Websocket gateway as a standard Deployment workload with a ClientIP core Service, a PodDisruptionBudget, and a preStop drain delay.
 
@@ -747,7 +749,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 The repository uses GitHub Actions for automated quality assurance:
 
 *   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
-*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.9.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
+*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.10.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing
