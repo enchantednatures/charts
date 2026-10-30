@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Install only the Redpanda CRDs (no controller). Helm is used to extract the
-# chart's CRDs so the Makefile target remains CRD-only.
+# Install only the Redpanda CRDs (no controller). The operator chart installs
+# CRDs through a post-install job, so fetch the three stable CRDs upstream.
 set -euo pipefail
 
 operator_version="${REDPANDA_OPERATOR_VERSION:-26.2.5}"
+base="https://raw.githubusercontent.com/redpanda-data/redpanda-operator/operator/v${operator_version}/operator/config/crd/bases"
 
-helm repo add --force-update redpanda https://charts.redpanda.com >/dev/null
-helm repo update redpanda >/dev/null
-helm show crds redpanda/operator --version "$operator_version" | kubectl apply --server-side -f -
+for crd in \
+  cluster.redpanda.com_redpandas.yaml \
+  cluster.redpanda.com_topics.yaml \
+  cluster.redpanda.com_users.yaml; do
+  kubectl apply --server-side -f "${base}/${crd}"
+done

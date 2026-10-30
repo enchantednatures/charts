@@ -18,3 +18,12 @@ helm upgrade --install "$release" redpanda/operator \
   --timeout 10m
 
 kubectl -n "$namespace" rollout status "deployment/${release}-operator" --timeout=300s
+
+for _ in $(seq 1 60); do
+  if kubectl get crd     redpandas.cluster.redpanda.com     topics.cluster.redpanda.com     users.cluster.redpanda.com >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
+done
+
+kubectl wait --for=condition=Established   crd/redpandas.cluster.redpanda.com   crd/topics.cluster.redpanda.com   crd/users.cluster.redpanda.com   --timeout=300s
