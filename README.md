@@ -16,7 +16,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. |
-| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `dragonfly-cache`, `longrunning-websocket`. |
+| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
 | `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
@@ -45,9 +45,9 @@ the real operators for an actual install.
 |-------------|------------|-------|
 | Kubernetes >= 1.28 | Everything | `kubeVersion` in the library, app, and example charts. |
 | [Knative Serving](https://knative.dev/docs/serving/) | `services` (default `workload.type: Knative`) | Includes a networking layer (Kourier, Istio, Contour, …). Deployment-mode services do not need Knative. |
-| [Knative Eventing](https://knative.dev/docs/eventing/) | `pingsources` | Provides the `PingSource` CR and its controller. |
-| [Knative Eventing Kafka](https://github.com/knative-extensions/eventing-kafka-broker) | `kafka.sources` | Provides the `KafkaSource` CR and its controller. |
-| A Kafka cluster: [Strimzi](https://strimzi.io/) **or** [Redpanda](https://docs.redpanda.com/current/deploy/redpanda/kubernetes/) operator | `kafka.sources` | The chart renders `KafkaSource` only; it does not provision Kafka. The default `bootstrapServers` (`kafka.kafka.svc.cluster.local:9092`) matches a Strimzi `Kafka` named `kafka` in namespace `kafka`; with Redpanda, point `bootstrapServers` at its seed service. Topics must exist. |
+| [Knative Eventing](https://knative.dev/docs/eventing/) | `pingsources`, `kafka.broker`, `kafka.triggers` | Provides the `PingSource`, `Broker`, and `Trigger` CRs and their controllers. |
+| [Knative Eventing Kafka](https://github.com/knative-extensions/eventing-kafka-broker) | `kafka.sources`, `kafka.broker` | Provides the `KafkaSource` CR, the Kafka Broker implementation, and their controllers. |
+| A Kafka cluster: [Strimzi](https://strimzi.io/) **or** [Redpanda](https://docs.redpanda.com/current/deploy/redpanda/kubernetes/) operator | `kafka.sources`, `kafka.cluster` | The chart renders `KafkaSource` and, when `kafka.cluster.enabled: true`, a managed Strimzi (`Kafka`, `KafkaNodePool`, `KafkaTopic`, `KafkaUser`) or Redpanda (`Redpanda`, `Topic`, `User`) cluster plus a per-release `ConfigMap` for the Broker. The default `bootstrapServers` (`kafka.kafka.svc.cluster.local:9092`) matches a Strimzi `Kafka` named `kafka` in namespace `kafka`; with Redpanda, point `bootstrapServers` at its seed service. Topics must exist unless managed topic creation is enabled. |
 | [CloudNativePG](https://cloudnative-pg.io/) operator | `postgres.enabled` | Provides `Cluster`, `Pooler`, `ScheduledBackup`. Also requires a `ClusterImageCatalog` named `postgresql` containing the requested major version (the chart default); apply one from the [CloudNativePG catalogs](https://github.com/cloudnative-pg/artifacts/tree/main/image-catalogs) or override `postgres.imageCatalog.name`. |
 | [Barman Cloud plugin](https://github.com/cloudnative-pg/plugin-barman-cloud) | `postgres.backup.enabled` | Provides the `ObjectStore` CR (`barmancloud.cnpg.io/v1`) used for S3 backups and WAL archiving. |
 | [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) CRDs | `postgres.monitoring.enabled` (default `true` when Postgres is enabled) | Renders `PodMonitor` and `PrometheusRule`. Disable monitoring if the CRDs are absent. A Prometheus instance is also required by Flagger. |

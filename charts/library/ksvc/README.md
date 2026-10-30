@@ -22,9 +22,15 @@ Consumer Chart
               │           ├── apps/v1 Deployment
               │           ├── core/v1 Service
               │           └── PodDisruptionBudget (opt-in)
+              ├── Kafka Broker (kafka.broker.enabled, opt-in)
+              │     ├── Broker ConfigMap
+              │     └── Broker
               ├── Per-source loop (kafka.sources map)
               │     ├── KafkaSource
               │     └── DLQ Knative Service (opt-in)
+              ├── Per-trigger loop (kafka.triggers map)
+              │     ├── Trigger
+              │     └── Trigger DLQ Knative Service (opt-in)
               ├── Per-source loop (pingsources map)
               │     └── PingSource
               └── Global resources
@@ -44,6 +50,10 @@ Consumer Chart
 | PodDisruptionBudget (Deployment mode, opt-in) | `<release>-<service-key>` |
 | KafkaSource | `<release>-<source-key>-kafka-source` |
 | DLQ Service | `<release>-<source-key>-dlq` |
+| Broker ConfigMap | `<release>-kafka-broker-config` (when `kafka.broker.enabled: true`) |
+| Broker | `<release>-kafka-broker` (when `kafka.broker.enabled: true`) |
+| Trigger | `<release>-<trigger-key>-trigger` (per `kafka.triggers` entry) |
+| Trigger DLQ Service | `<release>-<trigger-key>-trigger-dlq` (per trigger with `dlq.enabled: true`) |
 | PingSource | `<release>-<source-key>-ping-source` (per `pingsources` entry) |
 | CNPG Cluster | `<release>` (global) |
 | Dragonfly | `<release>` (global) |
@@ -100,6 +110,8 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **Flagger** | Canary (per service with `flagger.enabled: true`) | Per-service |
 | **Kafka** | KafkaSource (per entry in `kafka.sources`) | Per-source |
 | **Kafka DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
+| **Kafka Broker (opt-in)** | ConfigMap + Broker (when `kafka.broker.enabled: true`) | Global |
+| **Kafka Triggers (opt-in)** | Trigger + optional Knative Service DLQ (per entry in `kafka.triggers`) | Per-trigger |
 | **PingSource** | PingSource (per entry in `pingsources`) | Per-source |
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
@@ -173,7 +185,24 @@ sections following the table.
 | global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
 | global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
+| kafka.broker.annotations | object | `{}` | Annotations added to the Broker. |
+| kafka.broker.config.authSecretName | string | `""` | Secret containing the broker's Kafka auth credentials. |
+| kafka.broker.config.bootstrapServers | list | `["kafka.kafka.svc.cluster.local:9092"]` | Kafka bootstrap servers used by the broker. |
+| kafka.broker.config.extra | object | `{}` | Extra ConfigMap entries for the broker. |
+| kafka.broker.config.topicPartitions | int | `10` | Default partition count for broker-created topics. |
+| kafka.broker.config.topicReplicationFactor | int | `3` | Default replication factor for broker-created topics. |
+| kafka.broker.delivery.backoffDelay | string | `"PT1S"` | Backoff delay (ISO 8601). |
+| kafka.broker.delivery.backoffPolicy | string | `"exponential"` | Backoff policy (`linear` or `exponential`). |
+| kafka.broker.delivery.deadLetterSink.enabled | bool | `false` | Enable a dead-letter sink for the broker. |
+| kafka.broker.delivery.deadLetterSink.ref.apiVersion | string | `"serving.knative.dev/v1"` | API version of the dead-letter sink reference. |
+| kafka.broker.delivery.deadLetterSink.ref.kind | string | `"Service"` | Kind of the dead-letter sink reference. |
+| kafka.broker.delivery.deadLetterSink.ref.name | string | `""` | Name of the dead-letter sink reference. |
+| kafka.broker.delivery.deadLetterSink.uri | string | `""` | URI for the dead-letter sink (mutually exclusive with `ref`). |
+| kafka.broker.delivery.retry | int | `5` | Delivery retry count. |
+| kafka.broker.enabled | bool | `false` | Enable a Knative Eventing Broker backed by Kafka. |
+| kafka.broker.externalTopic | string | `""` | Pre-existing Kafka topic used for the broker's internal state. |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
+| kafka.triggers | object | `{}` | Map of Kafka Trigger entries, keyed by trigger name. Each key renders a Trigger named `<release>-<key>-trigger`; every entry's `subscriber` must reference a key in `services` (validated at render time). Requires `kafka.broker.enabled: true`. See the Kafka Event Sources section for the per-entry schema. |
 | kyverno.enabled | bool | `false` | Render the Kyverno admission policies. |
 | kyverno.scaling.apiVersion | string | `"policies.kyverno.io/v1beta1"` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` for Kyverno >= 1.16, `policies.kyverno.io/v1` for Kyverno >= 1.17). |
 | kyverno.scaling.enabled | bool | `false` | Render the scaling/HA guardrail policies (Knative Service, CNPG instances, Dragonfly replicas/PDB). |
@@ -343,12 +372,12 @@ A PodDisruptionBudget governs **voluntary** evictions only, which means node dra
 
 ## Kafka Event Sources (Map)
 
-Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must reference a valid key in the `services` map (validated at render time).
+Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must reference a valid key in the `services` map (validated at render time). When `kafka.broker.enabled: true`, sources sink to the Broker instead and must not set `sink`.
 
 | Key | Description | Default |
 |-----|-------------|---------|
 | `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
-| `kafka.sources.<key>.sink` | **Required.** Key from the `services` map | — |
+| `kafka.sources.<key>.sink` | **Required unless `kafka.broker.enabled` is true.** Key from the `services` map, or omit to sink to the Broker | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
 | `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
 | `kafka.sources.<key>.consumers` | Concurrent consumers per replica | `3` |
@@ -358,6 +387,14 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+
+### Kafka Broker and Triggers (Opt-In)
+
+`kafka.broker.enabled: true` renders a `Broker` (`eventing.knative.dev/v1`, Kafka class) and a per-release `ConfigMap` containing `bootstrap.servers`, `default.topic.partitions`, and `default.topic.replication.factor`. Sources with no `sink` deliver to the Broker; setting `sink` while the broker is enabled fails rendering.
+
+`kafka.triggers` maps trigger names to subscribers. Each entry requires `subscriber` (a key in `services`) and supports legacy `filter` attributes or modern `filters`, delivery settings, annotations, and an optional DLQ. The generated values table lists the `kafka.broker` surface; per-entry trigger fields are documented here because `kafka.triggers` ships empty.
+
+When the Broker connects to an authenticated Kafka cluster, set `kafka.broker.config.authSecretName` to a Secret containing the keys expected by the Knative Kafka Broker: `sasl.mechanism`, `user`, `password`, `security.protocol`, and `ca.crt` when TLS is enabled.
 
 ## PingSource Event Sources (Map)
 
@@ -643,6 +680,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **full-stack** — Multi-service deployment with PostgreSQL, Kafka, DragonflyDB, and Flagger.
 *   **postgres-only** — API service with CloudNativePG integration.
 *   **kafka-consumer** — Consumer service with KafkaSource and DLQ.
+*   **kafka-broker** — Kafka Broker with filtered Triggers and a broker-sink KafkaSource.
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
 *   **longrunning-websocket** — Websocket gateway as a standard Deployment workload with a ClientIP core Service, a PodDisruptionBudget, and a preStop drain delay.
 
