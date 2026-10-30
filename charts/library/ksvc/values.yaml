@@ -461,6 +461,24 @@ postgres:
 #       commands:
 #         topic: my-commands
 #         sink: worker
+#
+# TLS/SASL is configured per source under `net`. TLS-only uses mTLS and
+# requires a client certificate and key; SASL_SSL needs the CA plus credentials.
+# Example:
+#   kafka:
+#     sources:
+#       events:
+#         topic: my-events
+#         sink: api
+#         net:
+#           tls:
+#             enabled: true
+#             caCertSecret: kafka-ca
+#           sasl:
+#             enabled: true
+#             mechanism: SCRAM-SHA-512
+#             userSecret: kafka-auth
+#             passwordSecret: kafka-auth
 # =============================================================================
 kafka:
   # -- Map of KafkaSource entries, keyed by source name. Each key renders a

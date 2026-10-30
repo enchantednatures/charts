@@ -167,6 +167,30 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
         ),
         "is less than the minimum of 1",
     ),
+    (
+        "unknown kafka source net field",
+        mutate(
+            ["kafka", "sources", "events"],
+            {"topic": "events", "net": {"unexpected": True}},
+        ),
+        "Additional properties are not allowed",
+    ),
+    (
+        "invalid kafka source sasl mechanism",
+        mutate(
+            ["kafka", "sources", "events"],
+            {"topic": "events", "net": {"sasl": {"mechanism": "SCRAM"}}},
+        ),
+        "'SCRAM' is not one of ['PLAIN', 'SCRAM-SHA-256', 'SCRAM-SHA-512']",
+    ),
+    (
+        "kafka source net tls enabled must be boolean",
+        mutate(
+            ["kafka", "sources", "events"],
+            {"topic": "events", "net": {"tls": {"enabled": "yes"}}},
+        ),
+        "'yes' is not of type 'boolean'",
+    ),
 ]
 
 

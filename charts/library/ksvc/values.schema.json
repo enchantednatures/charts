@@ -1141,6 +1141,68 @@
           "type": "string",
           "description": "Must reference a key in the services map"
         },
+        "net": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "caCertSecret": {
+                  "type": "string"
+                },
+                "caCertKey": {
+                  "type": "string"
+                },
+                "certSecret": {
+                  "type": "string"
+                },
+                "certKey": {
+                  "type": "string"
+                },
+                "keySecret": {
+                  "type": "string"
+                },
+                "keyKey": {
+                  "type": "string"
+                }
+              }
+            },
+            "sasl": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "mechanism": {
+                  "type": "string",
+                  "enum": [
+                    "PLAIN",
+                    "SCRAM-SHA-256",
+                    "SCRAM-SHA-512"
+                  ]
+                },
+                "userSecret": {
+                  "type": "string"
+                },
+                "userKey": {
+                  "type": "string"
+                },
+                "passwordSecret": {
+                  "type": "string"
+                },
+                "passwordKey": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
         "delivery": {
           "type": "object",
           "additionalProperties": false,
