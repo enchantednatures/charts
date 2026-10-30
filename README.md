@@ -19,7 +19,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 | `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
-| `hack/` | Repo automation scripts: `check-version-bump.sh` (PR version gate) and `lint-app.sh` (resolve the app chart against the local library). |
+| `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
 | `.github/workflows/` | CI/CD workflows (see [CI](#ci--cd)). |
 
 ## The charts
@@ -32,6 +32,35 @@ all supporting infrastructure. A ready-to-use application wrapper
 *   **ksvc-app application chart** (`charts/app/ksvc/`) — wraps `ksvc` so that
     consumers can `helm install` a normal chart. Pins a `ksvc` version via an
     `oci://ghcr.io/enchantednatures/charts` dependency.
+
+## Requirements
+
+The charts render custom resources; the matching operators must already run in
+the cluster. Most `make install-*` targets install **CRDs only** — enough for
+`helm template` and server-side dry-runs, but not for reconciliation
+(`install-kyverno` is the exception and installs the controller via Helm). Use
+the real operators for an actual install.
+
+| Requirement | Needed for | Notes |
+|-------------|------------|-------|
+| Kubernetes >= 1.28 | Everything | `kubeVersion` in the library, app, and example charts. |
+| [Knative Serving](https://knative.dev/docs/serving/) | `services` (default `workload.type: Knative`) | Includes a networking layer (Kourier, Istio, Contour, …). Deployment-mode services do not need Knative. |
+| [Knative Eventing](https://knative.dev/docs/eventing/) | `pingsources` | Provides the `PingSource` CR and its controller. |
+| [Knative Eventing Kafka](https://github.com/knative-extensions/eventing-kafka-broker) | `kafka.sources` | Provides the `KafkaSource` CR and its controller. |
+| A Kafka cluster: [Strimzi](https://strimzi.io/) **or** [Redpanda](https://docs.redpanda.com/current/deploy/redpanda/kubernetes/) operator | `kafka.sources` | The chart renders `KafkaSource` only; it does not provision Kafka. The default `bootstrapServers` (`kafka.kafka.svc.cluster.local:9092`) matches a Strimzi `Kafka` named `kafka` in namespace `kafka`; with Redpanda, point `bootstrapServers` at its seed service. Topics must exist. |
+| [CloudNativePG](https://cloudnative-pg.io/) operator | `postgres.enabled` | Provides `Cluster`, `Pooler`, `ScheduledBackup`. Also requires a `ClusterImageCatalog` named `postgresql` containing the requested major version (the chart default); apply one from the [CloudNativePG catalogs](https://github.com/cloudnative-pg/artifacts/tree/main/image-catalogs) or override `postgres.imageCatalog.name`. |
+| [Barman Cloud plugin](https://github.com/cloudnative-pg/plugin-barman-cloud) | `postgres.backup.enabled` | Provides the `ObjectStore` CR (`barmancloud.cnpg.io/v1`) used for S3 backups and WAL archiving. |
+| [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) CRDs | `postgres.monitoring.enabled` (default `true` when Postgres is enabled) | Renders `PodMonitor` and `PrometheusRule`. Disable monitoring if the CRDs are absent. A Prometheus instance is also required by Flagger. |
+| [Dragonfly Operator](https://github.com/dragonflydb/dragonfly-operator) | `dragonfly.enabled` | Provides the `Dragonfly` CR (`dragonflydb.io/v1alpha1`). |
+| [Flagger](https://flagger.app/) | `services.<key>.flagger.enabled` | Renders `Canary`; must be configured with the Knative provider and a metrics provider. Defaults assume Prometheus at `prometheus.observability.svc.cluster.local:9090` and the k6 load tester at `k6-loadtester.flagger-system` (load tests can be disabled). |
+| [Rook-Ceph](https://rook.io/) (CephObjectStore + RGW) and the [lib-bucket-provisioner](https://github.com/kube-object-storage/lib-bucket-provisioner) CRDs | `objectBuckets` | The chart renders `ObjectBucketClaim` only. Requires an existing bucket `StorageClass` (for example `provisioner: rook-ceph.ceph.rook.io/bucket`) and a reachable RGW endpoint. |
+| [cert-manager](https://cert-manager.io/) | `postgres.certManager.enabled`, `dragonfly.tls.certManager.enabled` | Optional; renders `Certificate` resources. Without it, supply the TLS Secrets yourself. |
+| [Kyverno](https://kyverno.io/) >= 1.16 | `kyverno.enabled` | Optional admission guardrails (`NamespacedValidatingPolicy`). Use `policies.kyverno.io/v1` on Kyverno >= 1.17. |
+| A default StorageClass (or an explicit `storageClassName`) | `postgres.enabled`, `dragonfly.snapshot` | PVCs for Postgres instance volumes and Dragonfly snapshots. |
+
+The versions exercised by CI are pinned at the top of the [`Makefile`](Makefile)
+(Knative Serving/Eventing v1.17.0, CNPG release-1.25, eventing-kafka v1.17.0,
+Kyverno 3.9.1).
 
 ## Release process
 
@@ -75,7 +104,11 @@ Requires `helm`, `kubectl`, `kind`, and `docker` (for `make docs`).
 make help                 # list every target
 
 make lint                 # helm lint library + app + all examples
-make test                 # helm-unittest (210+ tests)
+make test                 # helm-unittest suite
+make test-schema          # values.schema.json positive + negative cases
+make test-kube-version    # examples/app reject Kubernetes < 1.28
+make check-docs           # README requirements drift check
+make check-markdown-links # local Markdown link check
 make docs                 # regenerate charts/library/ksvc/README.md (helm-docs, docker)
 make update-locks         # refresh committed Chart.lock files
 make template EXAMPLE=minimal
@@ -88,10 +121,12 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
 ## CI / CD
 
 *   **Lint and Test** (`.github/workflows/lint-test.yaml`) — `make lint`,
-    `make test`, JSON-schema validation of example values, template rendering,
-    kubeconform validation, Kyverno policy tests, the PR chart-version gate, and
-    a **docs check** that runs `make docs` and fails if the generated README is
-    out of sync with `values.yaml`.
+    `make test`, positive and negative schema validation, Kubernetes-version
+    enforcement, template rendering, kubeconform validation, Kyverno policy
+    tests, and the PR chart-version gate.
+*   **Docs** (`.github/workflows/docs.yaml`) — helm-docs sync, README
+    requirements drift checks, Markdown lint, local link checks, and external
+    link checks (also run weekly).
 *   **Integration Test** (`.github/workflows/integration-test.yaml`) — nightly
     and PR Kind-cluster dry-runs for every example, plus a Kyverno guardrails
     end-to-end test.

@@ -1,0 +1,33 @@
+globs:
+  - "**/*.md"
+  - "!**/.git/**"
+  - "!**/.omo/**"
+  - "!**/.debug/**"
+  - "!**/node_modules/**"
+
+# Keep the rules structural and deterministic. Stylistic rules that conflict
+# with the generated helm-docs README (line length, list indentation, fence
+# spacing) are intentionally off.
+config:
+  default: false
+  MD001: true
+  MD004: true
+  MD005: true
+  MD007: true
+  MD009: true
+  MD010: true
+  MD012: true
+  MD022: true
+  MD023: true
+  MD025: true
+  MD026: true
+  MD027: true
+  MD028: true
+  MD032: true
+  MD034: true
+  MD037: true
+  MD038: true
+  MD039: true
+  MD042: true
+  MD046: true
+  MD048: true
