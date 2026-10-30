@@ -469,6 +469,54 @@ kafka:
   # Event Sources section for the per-entry schema.
   sources: {}
 
+  # Knative Eventing Kafka Broker (opt-in). When enabled, KafkaSources render
+  # a Broker sink instead of a Knative Service sink; they must not set `sink`.
+  broker:
+    # -- Enable a Knative Eventing Broker backed by Kafka.
+    enabled: false
+    # -- Pre-existing Kafka topic used for the broker's internal state.
+    externalTopic: ""
+    # -- Annotations added to the Broker.
+    annotations: {}
+    config:
+      # -- Kafka bootstrap servers used by the broker.
+      bootstrapServers:
+        - kafka.kafka.svc.cluster.local:9092
+      # -- Default partition count for broker-created topics.
+      topicPartitions: 10
+      # -- Default replication factor for broker-created topics.
+      topicReplicationFactor: 3
+      # -- Secret containing the broker's Kafka auth credentials.
+      authSecretName: ""
+      # -- Extra ConfigMap entries for the broker.
+      extra: {}
+    delivery:
+      # -- Delivery retry count.
+      retry: 5
+      # -- Backoff policy (`linear` or `exponential`).
+      backoffPolicy: exponential
+      # -- Backoff delay (ISO 8601).
+      backoffDelay: PT1S
+      deadLetterSink:
+        # -- Enable a dead-letter sink for the broker.
+        enabled: false
+        # -- URI for the dead-letter sink (mutually exclusive with `ref`).
+        uri: ""
+        ref:
+          # -- API version of the dead-letter sink reference.
+          apiVersion: serving.knative.dev/v1
+          # -- Kind of the dead-letter sink reference.
+          kind: Service
+          # -- Name of the dead-letter sink reference.
+          name: ""
+
+  # -- Map of Kafka Trigger entries, keyed by trigger name. Each key renders a
+  # Trigger named `<release>-<key>-trigger`; every entry's `subscriber` must
+  # reference a key in `services` (validated at render time). Requires
+  # `kafka.broker.enabled: true`. See the Kafka Event Sources section for the
+  # per-entry schema.
+  triggers: {}
+
 # =============================================================================
 # Ping Event Sources — Map of PingSource entries
 #

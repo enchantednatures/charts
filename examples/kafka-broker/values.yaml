@@ -1,0 +1,39 @@
+services:
+  event-handler:
+    image:
+      repository: ghcr.io/example-org/event-handler
+      tag: "v1.0.0"
+    scaling:
+      minScale: 0
+      maxScale: 20
+  order-processor:
+    image:
+      repository: ghcr.io/example-org/order-processor
+      tag: "v1.0.0"
+    scaling:
+      minScale: 0
+      maxScale: 20
+
+kafka:
+  broker:
+    enabled: true
+  sources:
+    incoming:
+      topic: "incoming-events"
+      bootstrapServers:
+        - kafka.kafka.svc.cluster.local:9092
+      dlq:
+        enabled: false
+  triggers:
+    all-events:
+      subscriber: event-handler
+    order-events:
+      subscriber: order-processor
+      filter:
+        type: com.example.order.created
+      delivery:
+        retry: 10
+        backoffPolicy: exponential
+        backoffDelay: PT2S
+      dlq:
+        enabled: true

@@ -131,6 +131,42 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
         mutate(["pingsources", "nightly"], {"schedule": "0 * * * *"}),
         "'sink' is a required property",
     ),
+    (
+        "unknown broker field",
+        mutate(["kafka", "broker", "unexpected"], True),
+        "Additional properties are not allowed",
+    ),
+    (
+        "broker bootstrap servers must not be empty",
+        mutate(["kafka", "broker", "config", "bootstrapServers"], []),
+        "should be non-empty",
+    ),
+    (
+        "trigger must define subscriber",
+        mutate(["kafka", "triggers", "order"], {}),
+        "'subscriber' is a required property",
+    ),
+    (
+        "unknown trigger field",
+        mutate(["kafka", "triggers", "order"], {"subscriber": "api", "unexpected": True}),
+        "Additional properties are not allowed",
+    ),
+    (
+        "invalid trigger backoff policy",
+        mutate(
+            ["kafka", "triggers", "order"],
+            {"subscriber": "api", "delivery": {"backoffPolicy": "random"}},
+        ),
+        "'random' is not one of ['linear', 'exponential']",
+    ),
+    (
+        "trigger dlq maxScale below minimum",
+        mutate(
+            ["kafka", "triggers", "order"],
+            {"subscriber": "api", "dlq": {"scaling": {"maxScale": 0}}},
+        ),
+        "is less than the minimum of 1",
+    ),
 ]
 
 
