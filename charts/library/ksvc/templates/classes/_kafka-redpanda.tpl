@@ -68,5 +68,80 @@ spec:
     {{- toYaml $clusterSpec | nindent 4 }}
 {{- end }}
 
-{{- define "ksvc.class.kafkaRedpandaTopic" -}}{{- end }}
-{{- define "ksvc.class.kafkaRedpandaUser" -}}{{- end }}
+{{/*
+ksvc.class.kafkaRedpandaTopic — Render one managed Kafka topic.
+
+Context: dict "root" $ "topic" <raw topic name>. The topic is emitted verbatim
+because validators require a DNS-1123 subdomain for Redpanda topics.
+*/}}
+{{- define "ksvc.class.kafkaRedpandaTopic" -}}
+{{- $root := .root -}}
+{{- $cluster := $root.Values.kafka.cluster -}}
+apiVersion: cluster.redpanda.com/v1alpha2
+kind: Topic
+metadata:
+  name: {{ .topic }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "ksvc.labels" $root | nindent 4 }}
+spec:
+  cluster:
+    clusterRef:
+      name: {{ include "ksvc.kafkaClusterName" $root }}
+  partitions: {{ int $cluster.topics.partitions }}
+  replicationFactor: {{ int (include "ksvc.kafkaTopicReplicationFactor" $root) }}
+{{- end }}
+
+{{/*
+ksvc.class.kafkaRedpandaUser — Render the managed SCRAM user and its ACLs.
+
+Context: root. The operator creates/adopts the password Secret, so the chart
+never renders it. One topic ACL is emitted per distinct source topic and one
+group ACL per distinct effective consumer group.
+*/}}
+{{- define "ksvc.class.kafkaRedpandaUser" -}}
+{{- $topics := dict -}}
+{{- $groups := dict -}}
+{{- range $key, $source := .Values.kafka.sources -}}
+{{- $_ := set $topics $source.topic true -}}
+{{- $group := default (include "ksvc.kafkaConsumerGroup" (dict "root" $ "key" $key)) $source.consumerGroup -}}
+{{- $_ := set $groups $group true -}}
+{{- end -}}
+{{- $acls := list -}}
+{{- range $topic, $_ := $topics -}}
+{{- $acls = append $acls (dict
+      "type" "allow"
+      "resource" (dict "type" "topic" "name" $topic "patternType" "literal")
+      "operations" (list "Read" "Describe" "Write")
+      "host" "*") -}}
+{{- end -}}
+{{- range $group, $_ := $groups -}}
+{{- $acls = append $acls (dict
+      "type" "allow"
+      "resource" (dict "type" "group" "name" $group "patternType" "literal")
+      "operations" (list "Read")
+      "host" "*") -}}
+{{- end -}}
+apiVersion: cluster.redpanda.com/v1alpha2
+kind: User
+metadata:
+  name: {{ include "ksvc.kafkaUserName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ksvc.labels" . | nindent 4 }}
+spec:
+  cluster:
+    clusterRef:
+      name: {{ include "ksvc.kafkaClusterName" . }}
+  authentication:
+    type: scram-sha-512
+    password:
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "ksvc.kafkaUserSecretName" . }}
+          key: password
+  authorization:
+    type: simple
+    acls:
+      {{- toYaml $acls | nindent 6 }}
+{{- end }}
