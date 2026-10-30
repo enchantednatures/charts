@@ -269,6 +269,22 @@ test: ## Run helm unit tests
 	helm dependency build charts/library/ksvc/test-chart
 	helm unittest charts/library/ksvc/test-chart
 
+.PHONY: test-schema
+test-schema: ## Validate values.schema.json with positive and negative cases
+	python3 hack/test-values-schema.py
+
+.PHONY: test-kube-version
+test-kube-version: ## Verify examples and the app chart enforce kubeVersion >= 1.28
+	hack/check-kube-version.sh
+
+.PHONY: check-docs
+check-docs: ## Verify README requirements match the chart sources
+	python3 hack/check-requirements-docs.py
+
+.PHONY: check-markdown-links
+check-markdown-links: ## Check local links in repository Markdown files
+	python3 hack/check-markdown-links.py
+
 .PHONY: docs
 docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-docs
 	@# Runs the pinned helm-docs image; scans only the library chart and skips

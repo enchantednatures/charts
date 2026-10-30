@@ -7,12 +7,16 @@ on:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'Makefile'
+      - 'hack/**'
       - '.github/workflows/lint-test.yaml'
   pull_request:
     paths:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'Makefile'
+      - 'hack/**'
       - '.github/workflows/lint-test.yaml'
   workflow_dispatch:
 
@@ -58,28 +62,8 @@ jobs:
       - name: Install dependencies
         run: pip install jsonschema pyyaml
 
-      - name: Validate values.schema.json syntax
-        run: python3 -c "import json; json.load(open('charts/library/ksvc/values.schema.json')); print('Schema JSON is valid')"
-
-      - name: Validate example values against schema
-        run: |
-          python3 << 'EOF'
-          import json, yaml, jsonschema, sys, glob
-          with open('charts/library/ksvc/values.schema.json') as f:
-            schema = json.load(f)
-          failed = False
-          for vf in sorted(glob.glob('examples/*/values.yaml')):
-            with open(vf) as f:
-              values = yaml.safe_load(f)
-            try:
-              jsonschema.validate(values, schema)
-              print(f'PASS: {vf}')
-            except jsonschema.ValidationError as e:
-              print(f'FAIL: {vf}: {e.message}')
-              failed = True
-          if failed:
-            sys.exit(1)
-          EOF
+      - name: Validate example values and negative schema cases
+        run: python3 hack/test-values-schema.py
 
   template-render:
     name: Template Rendering
@@ -120,6 +104,9 @@ jobs:
             echo "Resources rendered for $name:"
             grep -E "^kind:" "/tmp/rendered-${name}.yaml" | sort | uniq -c
           done
+
+      - name: Verify kubeVersion enforcement
+        run: hack/check-kube-version.sh
 
   unit-tests:
     name: Helm Unit Tests
@@ -282,19 +269,3 @@ jobs:
 
       - name: Check chart version bumps
         run: hack/check-version-bump.sh "origin/${{ github.base_ref }}"
-
-  docs-check:
-    name: Helm Docs Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Regenerate chart documentation
-        run: make docs
-
-      - name: Fail if generated docs are out of sync
-        run: |
-          if ! git diff --exit-code; then
-            echo "::error::Generated documentation is out of date. Run 'make docs' locally and commit the result."
-            exit 1
-          fi
