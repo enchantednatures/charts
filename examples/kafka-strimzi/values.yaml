@@ -1,0 +1,45 @@
+services:
+  orders:
+    image:
+      repository: ghcr.io/example-org/order-processor
+      tag: "v1.0.0"
+  audit:
+    image:
+      repository: ghcr.io/example-org/audit-logger
+      tag: "v1.0.0"
+
+kafka:
+  cluster:
+    enabled: true
+    provider: strimzi
+    replicas: 3
+    storage:
+      size: "20Gi"
+      storageClassName: standard
+    tls:
+      enabled: true
+    auth:
+      type: scram
+    topics:
+      create: true
+      partitions: 3
+  sources:
+    # Both sources consume the same topic, so the chart renders one KafkaTopic
+    # and a single user ACL for the topic while keeping one ACL per consumer
+    # group.
+    orders:
+      topic: "shared-events"
+      sink: orders
+      net:
+        tls:
+          enabled: true
+        sasl:
+          enabled: true
+    audit:
+      topic: "shared-events"
+      sink: audit
+      net:
+        tls:
+          enabled: true
+        sasl:
+          enabled: true

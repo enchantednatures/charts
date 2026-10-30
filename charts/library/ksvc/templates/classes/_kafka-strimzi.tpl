@@ -77,6 +77,68 @@ spec:
   {{- toYaml $spec | nindent 2 }}
 {{- end }}
 
-{{- define "ksvc.class.kafkaStrimziTopic" -}}{{- end }}
+{{- define "ksvc.class.kafkaStrimziTopic" -}}
+{{- $root := .root -}}
+{{- $cluster := $root.Values.kafka.cluster -}}
+{{- $name := .name -}}
+{{- $topic := .topic -}}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ $name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "ksvc.labels" $root | nindent 4 }}
+    strimzi.io/cluster: {{ include "ksvc.kafkaClusterName" $root }}
+spec:
+  partitions: {{ int $cluster.topics.partitions }}
+  replicas: {{ int (include "ksvc.kafkaTopicReplicationFactor" $root) }}
+  {{- if ne $topic $name }}
+  topicName: {{ $topic }}
+  {{- end }}
+{{- end }}
 
-{{- define "ksvc.class.kafkaStrimziUser" -}}{{- end }}
+{{- define "ksvc.class.kafkaStrimziUser" -}}
+{{- $topics := dict -}}
+{{- $groups := dict -}}
+{{- range $key, $source := .Values.kafka.sources -}}
+{{- $_ := set $topics $source.topic true -}}
+{{- $group := default (include "ksvc.kafkaConsumerGroup" (dict "root" $ "key" $key)) $source.consumerGroup -}}
+{{- $_ := set $groups $group true -}}
+{{- end }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: {{ include "ksvc.kafkaUserName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ksvc.labels" . | nindent 4 }}
+    strimzi.io/cluster: {{ include "ksvc.kafkaClusterName" . }}
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+  {{- if or $topics $groups }}
+  acls:
+    {{- range $topic, $_ := $topics }}
+    - resource:
+        type: topic
+        name: {{ $topic }}
+        patternType: literal
+      operations:
+        - Read
+        - Describe
+      host: "*"
+    {{- end }}
+    {{- range $group, $_ := $groups }}
+    - resource:
+        type: group
+        name: {{ $group }}
+        patternType: literal
+      operations:
+        - Read
+      host: "*"
+    {{- end }}
+  {{- end }}
+{{- end }}
