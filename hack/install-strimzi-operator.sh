@@ -20,4 +20,4 @@ helm upgrade --install "$release" strimzi/strimzi-kafka-operator \
   --wait \
   --timeout 10m
 
-kubectl -n "$namespace" rollout status deployment -l "app.kubernetes.io/instance=${release}" --timeout=300s
+kubectl -n "$namespace" rollout status deployment -l "app=strimzi,release=${release}" --timeout=300s
