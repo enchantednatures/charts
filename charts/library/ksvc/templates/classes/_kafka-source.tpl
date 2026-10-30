@@ -6,9 +6,13 @@ The source.sink field must reference a valid key in .Values.services.
 */}}
 {{- define "ksvc.class.kafkaSource" -}}
 {{- $source := .source -}}
+{{- $hasBroker := and .root.Values.kafka .root.Values.kafka.broker .root.Values.kafka.broker.enabled -}}
+{{- $sinkServiceName := "" -}}
+{{- if not $hasBroker -}}
 {{- /* Resolve the sink service name using the sink's own config (honours nameOverride). */ -}}
 {{- $sinkSvc := index .root.Values.services $source.sink -}}
-{{- $sinkServiceName := include "ksvc.serviceName" (dict "root" .root "key" $source.sink "svc" $sinkSvc) -}}
+{{- $sinkServiceName = include "ksvc.serviceName" (dict "root" .root "key" $source.sink "svc" $sinkSvc) -}}
+{{- end -}}
 {{- $sourceName := include "ksvc.kafkaSourceName" . -}}
 {{- $dlqName := include "ksvc.kafkaDlqName" . -}}
 apiVersion: sources.knative.dev/v1beta1
@@ -27,10 +31,17 @@ spec:
   topics:
     - {{ $source.topic }}
   sink:
+    {{- if $hasBroker }}
+    ref:
+      apiVersion: eventing.knative.dev/v1
+      kind: Broker
+      name: {{ include "ksvc.kafkaBrokerName" .root }}
+    {{- else }}
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
       name: {{ $sinkServiceName }}
+    {{- end }}
   delivery:
     retry: {{ $source.delivery.retry }}
     backoffPolicy: {{ $source.delivery.backoffPolicy }}

@@ -172,18 +172,40 @@ Call this from the loader to catch misconfigurations early.
     {{- end -}}
   {{- end -}}
 
-  {{/* kafka source sink validation: each source's sink must reference a valid services key */}}
+  {{- /* kafka broker, source, and trigger validation */ -}}
+  {{- $hasBroker := and .Values.kafka .Values.kafka.broker .Values.kafka.broker.enabled -}}
+  {{- if $hasBroker -}}
+    {{- if not (kindIs "map" .Values.kafka.broker.config) -}}
+      {{- fail "kafka.broker.config must be a map" -}}
+    {{- end -}}
+    {{- if not .Values.kafka.broker.config.bootstrapServers -}}
+      {{- fail "kafka.broker.config.bootstrapServers must contain at least one server when kafka.broker.enabled=true" -}}
+    {{- end -}}
+    {{- if .Values.kafka.broker.delivery.deadLetterSink.enabled -}}
+      {{- if and (not .Values.kafka.broker.delivery.deadLetterSink.uri) (not .Values.kafka.broker.delivery.deadLetterSink.ref.name) -}}
+        {{- fail "kafka.broker.delivery.deadLetterSink requires either uri or ref.name when enabled" -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- /* kafka source sink validation */ -}}
   {{- if and .Values.kafka .Values.kafka.sources -}}
     {{- range $key, $source := .Values.kafka.sources -}}
-      {{- if not $source.sink -}}
-        {{- fail (printf "kafka.sources.%s.sink is required and must reference a key in the services map" $key) -}}
-      {{- end -}}
-      {{- if not (hasKey $.Values.services $source.sink) -}}
-        {{- fail (printf "kafka.sources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
-      {{- end -}}
-      {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a Kafka sink */}}
-      {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
-        {{- fail (printf "kafka.sources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
+      {{- if $hasBroker -}}
+        {{- if $source.sink -}}
+          {{- fail (printf "kafka.sources.%s.sink must not be set when kafka.broker.enabled=true — sources sink to the broker; remove sink or disable the broker" $key) -}}
+        {{- end -}}
+      {{- else -}}
+        {{- if not $source.sink -}}
+          {{- fail (printf "kafka.sources.%s.sink is required and must reference a key in the services map" $key) -}}
+        {{- end -}}
+        {{- if not (hasKey $.Values.services $source.sink) -}}
+          {{- fail (printf "kafka.sources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
+        {{- end -}}
+        {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a Kafka sink */}}
+        {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
+          {{- fail (printf "kafka.sources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
+        {{- end -}}
       {{- end -}}
       {{/* DLQ scaling validation (only when the DLQ is enabled) */}}
       {{- if and $source.dlq $source.dlq.enabled -}}
@@ -202,6 +224,42 @@ Call this from the loader to catch misconfigurations early.
         {{- end -}}
         {{- if gt $dlqMinScale $dlqMaxScale -}}
           {{- fail (printf "kafka.sources.%s.dlq.scaling: minScale (%d) must be <= maxScale (%d)" $key $dlqMinScale $dlqMaxScale) -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- /* kafka trigger validation */ -}}
+  {{- if and .Values.kafka .Values.kafka.triggers -}}
+    {{- if not $hasBroker -}}
+      {{- fail "kafka.triggers requires kafka.broker.enabled=true — triggers route events from the broker to services" -}}
+    {{- end -}}
+    {{- range $key, $trigger := .Values.kafka.triggers -}}
+      {{- if not $trigger.subscriber -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber is required and must reference a key in the services map" $key) -}}
+      {{- end -}}
+      {{- if not (hasKey $.Values.services $trigger.subscriber) -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber references '%s' which does not exist in the services map" $key $trigger.subscriber) -}}
+      {{- end -}}
+      {{- if eq (index $.Values.services $trigger.subscriber).workload.type "Deployment" -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable subscriber; point the subscriber at a Knative service" $key $trigger.subscriber) -}}
+      {{- end -}}
+      {{- if and $trigger.dlq $trigger.dlq.enabled -}}
+        {{- if not (kindIs "map" $trigger.dlq.scaling) -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling must be a map (got %v)" $key $trigger.dlq.scaling) -}}
+        {{- end -}}
+        {{- include "ksvc.validate.requireInteger" (dict "value" $trigger.dlq.scaling.minScale "path" (printf "kafka.triggers.%s.dlq.scaling.minScale" $key)) -}}
+        {{- $dlqMinScale := int $trigger.dlq.scaling.minScale -}}
+        {{- include "ksvc.validate.requireInteger" (dict "value" $trigger.dlq.scaling.maxScale "path" (printf "kafka.triggers.%s.dlq.scaling.maxScale" $key)) -}}
+        {{- $dlqMaxScale := int $trigger.dlq.scaling.maxScale -}}
+        {{- if lt $dlqMinScale 0 -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling.minScale must be >= 0 (got %d)" $key $dlqMinScale) -}}
+        {{- end -}}
+        {{- if lt $dlqMaxScale 1 -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling.maxScale must be >= 1 (got %d)" $key $dlqMaxScale) -}}
+        {{- end -}}
+        {{- if gt $dlqMinScale $dlqMaxScale -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling: minScale (%d) must be <= maxScale (%d)" $key $dlqMinScale $dlqMaxScale) -}}
         {{- end -}}
       {{- end -}}
     {{- end -}}

@@ -96,3 +96,19 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- define "ksvc.kafkaConsumerGroup" -}}
 {{- printf "%s-%s-consumers" (include "ksvc.fullname" .root) .key }}
 {{- end }}
+
+{{- define "ksvc.kafkaBrokerName" -}}
+{{- printf "%s-kafka-broker" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}
+
+{{- define "ksvc.kafkaBrokerConfigName" -}}
+{{- printf "%s-kafka-broker-config" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}
+
+{{- define "ksvc.kafkaTriggerName" -}}
+{{- printf "%s-%s-trigger" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}
+
+{{- define "ksvc.kafkaTriggerDlqName" -}}
+{{- printf "%s-%s-trigger-dlq" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}
