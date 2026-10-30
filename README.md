@@ -16,7 +16,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. |
-| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `dragonfly-cache`, `longrunning-websocket`. |
+| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
 | `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |

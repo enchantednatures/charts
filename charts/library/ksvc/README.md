@@ -387,6 +387,29 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+| `kafka.sources.<key>.net.tls.enabled` | Enable TLS for the KafkaSource connection | `false` |
+| `kafka.sources.<key>.net.tls.caCertSecret` | Secret containing the broker CA certificate | `""` |
+| `kafka.sources.<key>.net.tls.caCertKey` | CA certificate key within the Secret | `ca.crt` |
+| `kafka.sources.<key>.net.tls.certSecret` | Secret containing the client certificate (TLS-only/mTLS) | `""` |
+| `kafka.sources.<key>.net.tls.certKey` | Client certificate key within the Secret | `tls.crt` |
+| `kafka.sources.<key>.net.tls.keySecret` | Secret containing the client private key (TLS-only/mTLS) | `""` |
+| `kafka.sources.<key>.net.tls.keyKey` | Client private key key within the Secret | `tls.key` |
+| `kafka.sources.<key>.net.sasl.enabled` | Enable SASL for the KafkaSource connection | `false` |
+| `kafka.sources.<key>.net.sasl.mechanism` | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512` | `SCRAM-SHA-512` |
+| `kafka.sources.<key>.net.sasl.userSecret` | Secret containing the SASL username | `""` |
+| `kafka.sources.<key>.net.sasl.userKey` | Username key within the Secret | `user` |
+| `kafka.sources.<key>.net.sasl.passwordSecret` | Secret containing the SASL password | `""` |
+| `kafka.sources.<key>.net.sasl.passwordKey` | Password key within the Secret | `password` |
+
+### TLS and SASL
+
+`kafka.sources.<key>.net` renders the upstream Knative KafkaSource `spec.net` block. Only enabled sections render; an empty `net` block is never emitted.
+
+*   **TLS + SASL (SASL_SSL):** set `net.tls.enabled` and `net.sasl.enabled`, provide `net.tls.caCertSecret` and the SASL user/password Secrets. Client certificate and key are optional.
+*   **TLS only:** Knative treats this as mTLS. `net.tls.certSecret` and `net.tls.keySecret` are required.
+*   **SASL only:** set `net.sasl.enabled` and provide `userSecret` / `passwordSecret`; no TLS block renders.
+*   The chart creates `<release>-<key>-kafka-sasl-type` with `saslType: <mechanism>` and references it from `spec.net.sasl.type`. Managed clusters also add the managed username to that Secret.
+*   `net.sasl.mechanism` defaults to `SCRAM-SHA-512`; upstream defaults to `PLAIN` when the type is omitted.
 
 ### Kafka Broker and Triggers (Opt-In)
 
@@ -681,6 +704,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **postgres-only** — API service with CloudNativePG integration.
 *   **kafka-consumer** — Consumer service with KafkaSource and DLQ.
 *   **kafka-broker** — Kafka Broker with filtered Triggers and a broker-sink KafkaSource.
+*   **kafka-source-net** — KafkaSource with TLS and SASL against an external Kafka cluster.
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
 *   **longrunning-websocket** — Websocket gateway as a standard Deployment workload with a ClientIP core Service, a PodDisruptionBudget, and a preStop drain delay.
 
