@@ -226,6 +226,38 @@ Call this from the loader to catch misconfigurations early.
           {{- fail (printf "kafka.sources.%s.dlq.scaling: minScale (%d) must be <= maxScale (%d)" $key $dlqMinScale $dlqMaxScale) -}}
         {{- end -}}
       {{- end -}}
+      {{/* KafkaSource TLS/SASL validation */}}
+      {{- $net := $source.net | default dict -}}
+      {{- $tls := $net.tls | default dict -}}
+      {{- $sasl := $net.sasl | default dict -}}
+      {{- $managed := and $.Values.kafka $.Values.kafka.cluster $.Values.kafka.cluster.enabled -}}
+      {{- if $tls.enabled -}}
+        {{- if and (not $tls.caCertSecret) (not $managed) -}}
+          {{- fail (printf "kafka.sources.%s.net.tls.caCertSecret is required when net.tls.enabled=true and kafka.cluster is not enabled" $key) -}}
+        {{- end -}}
+        {{- if not $sasl.enabled -}}
+          {{- if not $tls.certSecret -}}
+            {{- fail (printf "kafka.sources.%s.net.tls.certSecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret" $key) -}}
+          {{- end -}}
+          {{- if not $tls.keySecret -}}
+            {{- fail (printf "kafka.sources.%s.net.tls.keySecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret" $key) -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if $sasl.enabled -}}
+        {{- $mechanisms := list "PLAIN" "SCRAM-SHA-256" "SCRAM-SHA-512" -}}
+        {{- if not (has $sasl.mechanism $mechanisms) -}}
+          {{- fail (printf "kafka.sources.%s.net.sasl.mechanism must be one of PLAIN, SCRAM-SHA-256, SCRAM-SHA-512 (got %v)" $key $sasl.mechanism) -}}
+        {{- end -}}
+        {{- if not $managed -}}
+          {{- if not $sasl.userSecret -}}
+            {{- fail (printf "kafka.sources.%s.net.sasl.userSecret is required for external SASL; set kafka.cluster.enabled=true for managed credentials" $key) -}}
+          {{- end -}}
+          {{- if not $sasl.passwordSecret -}}
+            {{- fail (printf "kafka.sources.%s.net.sasl.passwordSecret is required for external SASL; set kafka.cluster.enabled=true for managed credentials" $key) -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
     {{- end -}}
   {{- end -}}
 

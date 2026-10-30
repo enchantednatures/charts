@@ -112,3 +112,7 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- define "ksvc.kafkaTriggerDlqName" -}}
 {{- printf "%s-%s-trigger-dlq" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
 {{- end }}
+
+{{- define "ksvc.kafkaSourceSaslTypeSecretName" -}}
+{{- printf "%s-%s-kafka-sasl-type" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}

@@ -101,6 +101,10 @@ merged. We must apply defaults explicitly before rendering.
   {{/* ============================================================ */}}
   {{- if and .Values.kafka .Values.kafka.sources }}
     {{- range $key, $source := .Values.kafka.sources }}
+      {{- if and $source.net $source.net.sasl $source.net.sasl.enabled }}
+---
+  {{- include "ksvc.class.kafkaSaslTypeSecret" (dict "root" $ "key" $key "source" $source) | nindent 0 }}
+      {{- end }}
 ---
   {{- include "ksvc.class.kafkaSource" (dict "root" $ "key" $key "source" $source) | nindent 0 }}
       {{- if and $source.dlq $source.dlq.enabled }}
@@ -237,6 +241,10 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
       "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "latest")
       "scaling" (dict "minScale" 0 "maxScale" 2)
       "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
+    )
+    "net" (dict
+      "tls" (dict "enabled" false "caCertSecret" "" "caCertKey" "ca.crt" "certSecret" "" "certKey" "tls.crt" "keySecret" "" "keyKey" "tls.key")
+      "sasl" (dict "enabled" false "mechanism" "SCRAM-SHA-512" "userSecret" "" "userKey" "user" "passwordSecret" "" "passwordKey" "password")
     )
   -}}
 

@@ -1,0 +1,204 @@
+suite: kafka source net tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.sources.events.topic: events
+  kafka.sources.events.sink: api
+  kafka.sources.events.dlq.enabled: false
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # Document order without SASL: doc 0 = Knative Service, doc 1 = KafkaSource.
+  # With SASL an additional Secret is rendered first: doc 1 = Secret, doc 2 = KafkaSource.
+  - it: should not render a net block by default
+    documentIndex: 1
+    asserts:
+      - isNull:
+          path: spec.net
+
+  - it: should render a TLS-only mTLS net block
+    set:
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.tls.caCertSecret: kafka-ca
+      kafka.sources.events.net.tls.certSecret: kafka-client
+      kafka.sources.events.net.tls.keySecret: kafka-client
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.net.tls.enable
+          value: true
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.name
+          value: kafka-ca
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.key
+          value: ca.crt
+      - equal:
+          path: spec.net.tls.cert.secretKeyRef.name
+          value: kafka-client
+      - equal:
+          path: spec.net.tls.cert.secretKeyRef.key
+          value: tls.crt
+      - equal:
+          path: spec.net.tls.key.secretKeyRef.name
+          value: kafka-client
+      - equal:
+          path: spec.net.tls.key.secretKeyRef.key
+          value: tls.key
+      - isNull:
+          path: spec.net.sasl
+
+  - it: should fail when TLS-only is missing the client certificate
+    set:
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.tls.caCertSecret: kafka-ca
+      kafka.sources.events.net.tls.keySecret: kafka-client
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.tls.certSecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret"
+
+  - it: should fail when TLS-only is missing the client key
+    set:
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.tls.caCertSecret: kafka-ca
+      kafka.sources.events.net.tls.certSecret: kafka-client
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.tls.keySecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret"
+
+  - it: should fail when TLS is enabled without a CA secret
+    set:
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.tls.certSecret: kafka-client
+      kafka.sources.events.net.tls.keySecret: kafka-client
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.tls.caCertSecret is required when net.tls.enabled=true and kafka.cluster is not enabled"
+
+  - it: should render a SASL type Secret and SASL refs
+    set:
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.userSecret: kafka-auth
+      kafka.sources.events.net.sasl.passwordSecret: kafka-auth
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: test-release-events-kafka-sasl-type
+      - equal:
+          path: stringData.saslType
+          value: SCRAM-SHA-512
+      - isNull:
+          path: stringData.user
+
+  - it: should reference the SASL type Secret from the KafkaSource
+    set:
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.userSecret: kafka-auth
+      kafka.sources.events.net.sasl.passwordSecret: kafka-auth
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.net.sasl.enable
+          value: true
+      - equal:
+          path: spec.net.sasl.type.secretKeyRef.name
+          value: test-release-events-kafka-sasl-type
+      - equal:
+          path: spec.net.sasl.type.secretKeyRef.key
+          value: saslType
+      - equal:
+          path: spec.net.sasl.user.secretKeyRef.name
+          value: kafka-auth
+      - equal:
+          path: spec.net.sasl.user.secretKeyRef.key
+          value: user
+      - equal:
+          path: spec.net.sasl.password.secretKeyRef.name
+          value: kafka-auth
+      - equal:
+          path: spec.net.sasl.password.secretKeyRef.key
+          value: password
+      - isNull:
+          path: spec.net.tls
+
+  - it: should honor a custom SASL mechanism
+    set:
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.mechanism: SCRAM-SHA-256
+      kafka.sources.events.net.sasl.userSecret: kafka-auth
+      kafka.sources.events.net.sasl.passwordSecret: kafka-auth
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: stringData.saslType
+          value: SCRAM-SHA-256
+
+  - it: should fail on an unsupported SASL mechanism
+    set:
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.mechanism: SCRAM
+      kafka.sources.events.net.sasl.userSecret: kafka-auth
+      kafka.sources.events.net.sasl.passwordSecret: kafka-auth
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.sasl.mechanism must be one of PLAIN, SCRAM-SHA-256, SCRAM-SHA-512 (got SCRAM)"
+
+  - it: should fail on external SASL without a user secret
+    set:
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.passwordSecret: kafka-auth
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.sasl.userSecret is required for external SASL; set kafka.cluster.enabled=true for managed credentials"
+
+  - it: should fail on external SASL without a password secret
+    set:
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.userSecret: kafka-auth
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.sasl.passwordSecret is required for external SASL; set kafka.cluster.enabled=true for managed credentials"
+
+  - it: should render SASL_SSL with a CA but without client cert or key
+    set:
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.tls.caCertSecret: kafka-ca
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.userSecret: kafka-auth
+      kafka.sources.events.net.sasl.passwordSecret: kafka-auth
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.net.tls.enable
+          value: true
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.name
+          value: kafka-ca
+      - isNull:
+          path: spec.net.tls.cert
+      - isNull:
+          path: spec.net.tls.key
+      - equal:
+          path: spec.net.sasl.enable
+          value: true
+
+  - it: should honor custom user and password keys
+    set:
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.net.sasl.userSecret: kafka-auth
+      kafka.sources.events.net.sasl.userKey: username
+      kafka.sources.events.net.sasl.passwordSecret: kafka-auth
+      kafka.sources.events.net.sasl.passwordKey: pass
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.net.sasl.user.secretKeyRef.key
+          value: username
+      - equal:
+          path: spec.net.sasl.password.secretKeyRef.key
+          value: pass
