@@ -481,6 +481,62 @@ postgres:
 #             passwordSecret: kafka-auth
 # =============================================================================
 kafka:
+  # Managed Kafka cluster (opt-in). When enabled, the chart renders a Strimzi
+  # or Redpanda cluster and derives KafkaSource/Broker connection details.
+  cluster:
+    # -- Enable a chart-managed Kafka cluster.
+    enabled: false
+    # -- Managed Kafka provider (`strimzi` or `redpanda`).
+    provider: strimzi
+    # -- Cluster name. Defaults to `<fullname>-kafka`; max 48 characters.
+    name: ""
+    # -- Broker/controller replicas (1-16).
+    replicas: 3
+    storage:
+      # -- Persistent volume size per broker.
+      size: "20Gi"
+      # -- StorageClass for broker volumes.
+      storageClassName: ""
+    resources:
+      requests:
+        # -- CPU request per broker.
+        cpu: "500m"
+        # -- Memory request per broker.
+        memory: "1Gi"
+      limits:
+        # -- CPU limit per broker.
+        cpu: "2"
+        # -- Memory limit per broker.
+        memory: "4Gi"
+    tls:
+      # -- Enable the internal TLS listener.
+      enabled: false
+    auth:
+      # -- Managed authentication type (`none` or `scram`).
+      type: none
+      # -- Managed username. Defaults to `<fullname>-kafka-user`.
+      username: ""
+    topics:
+      # -- Create the source topics on the managed cluster.
+      create: true
+      # -- Partition count for created topics.
+      partitions: 3
+    strimzi:
+      # -- Strimzi Kafka version (empty uses the operator default).
+      version: ""
+      # -- Kafka metadata version (empty uses the operator default).
+      metadataVersion: ""
+      # -- Extra fields merged into the Kafka `spec`.
+      extraSpec: {}
+      # -- Extra fields merged into the KafkaNodePool `spec`.
+      nodePoolExtraSpec: {}
+    redpanda:
+      # -- Extra fields merged into the Redpanda `spec.clusterSpec`.
+      extraClusterSpec: {}
+      sasl:
+        # -- Superuser Secret for managed Redpanda SCRAM.
+        secretRef: ""
+
   # -- Map of KafkaSource entries, keyed by source name. Each key renders a
   # KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must
   # reference a key in `services` (validated at render time). See the Kafka

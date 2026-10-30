@@ -54,6 +54,120 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "cluster": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "strimzi",
+                "redpanda"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 48
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            "storage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "size": {
+                  "type": "string"
+                },
+                "storageClassName": {
+                  "type": "string"
+                }
+              }
+            },
+            "resources": {
+              "$ref": "#/$defs/resources"
+            },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "auth": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "scram"
+                  ]
+                },
+                "username": {
+                  "type": "string"
+                }
+              }
+            },
+            "topics": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "create": {
+                  "type": "boolean"
+                },
+                "partitions": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "strimzi": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "metadataVersion": {
+                  "type": "string"
+                },
+                "extraSpec": {
+                  "type": "object"
+                },
+                "nodePoolExtraSpec": {
+                  "type": "object"
+                }
+              }
+            },
+            "redpanda": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "extraClusterSpec": {
+                  "type": "object"
+                },
+                "sasl": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "secretRef": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "sources": {
           "type": "object",
           "description": "Map of KafkaSource entries. Each key becomes: <release-name>-<key>-kafka-source",

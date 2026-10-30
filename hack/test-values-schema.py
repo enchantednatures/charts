@@ -191,6 +191,41 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
         ),
         "'yes' is not of type 'boolean'",
     ),
+    (
+        "invalid kafka cluster provider",
+        mutate(["kafka", "cluster", "provider"], "kinesis"),
+        "'kinesis' is not one of ['strimzi', 'redpanda']",
+    ),
+    (
+        "kafka cluster replicas below minimum",
+        mutate(["kafka", "cluster", "replicas"], 0),
+        "is less than the minimum of 1",
+    ),
+    (
+        "kafka cluster replicas above maximum",
+        mutate(["kafka", "cluster", "replicas"], 17),
+        "is greater than the maximum of 16",
+    ),
+    (
+        "kafka cluster name too long",
+        mutate(["kafka", "cluster", "name"], "x" * 49),
+        "is too long",
+    ),
+    (
+        "invalid kafka cluster auth type",
+        mutate(["kafka", "cluster", "auth", "type"], "mtls"),
+        "'mtls' is not one of ['none', 'scram']",
+    ),
+    (
+        "unknown kafka cluster field",
+        mutate(["kafka", "cluster", "unexpected"], True),
+        "Additional properties are not allowed",
+    ),
+    (
+        "unknown redpanda cluster field",
+        mutate(["kafka", "cluster", "redpanda", "unexpected"], True),
+        "Additional properties are not allowed",
+    ),
 ]
 
 
