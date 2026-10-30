@@ -255,6 +255,19 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 
 When the Broker connects to an authenticated Kafka cluster, set `kafka.broker.config.authSecretName` to a Secret containing the keys expected by the Knative Kafka Broker: `sasl.mechanism`, `user`, `password`, `security.protocol`, and `ca.crt` when TLS is enabled.
 
+### Managed Kafka (Opt-In)
+
+Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: redpanda` to render a managed Kafka cluster and derive the KafkaSource/Broker bootstrap endpoint. The chart renders CRs only; install the operator and CRDs separately.
+
+*   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32.
+*   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
+*   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.cluster.local:9092|9093`; Redpanda `<cluster>.<namespace>.svc.cluster.local:9093`.
+*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`).
+*   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret.
+*   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
+*   **Replication:** topic/broker replication factors clamp to `min(replicas, 3)` for Strimzi and `1`/`3` for Redpanda.
+*   **Operators:** the chart never installs Strimzi, Redpanda, Knative, or their CRDs.
+
 ## PingSource Event Sources (Map)
 
 Each key in `pingsources:` defines a PingSource. The `sink` field must reference a valid key in the `services` map (validated at render time).

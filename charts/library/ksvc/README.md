@@ -201,6 +201,27 @@ sections following the table.
 | kafka.broker.delivery.retry | int | `5` | Delivery retry count. |
 | kafka.broker.enabled | bool | `false` | Enable a Knative Eventing Broker backed by Kafka. |
 | kafka.broker.externalTopic | string | `""` | Pre-existing Kafka topic used for the broker's internal state. |
+| kafka.cluster.auth.type | string | `"none"` | Managed authentication type (`none` or `scram`). |
+| kafka.cluster.auth.username | string | `""` | Managed username. Defaults to `<fullname>-kafka-user`. |
+| kafka.cluster.enabled | bool | `false` | Enable a chart-managed Kafka cluster. |
+| kafka.cluster.name | string | `""` | Cluster name. Defaults to `<fullname>-kafka`; max 48 characters. |
+| kafka.cluster.provider | string | `"strimzi"` | Managed Kafka provider (`strimzi` or `redpanda`). |
+| kafka.cluster.redpanda.extraClusterSpec | object | `{}` | Extra fields merged into the Redpanda `spec.clusterSpec`. |
+| kafka.cluster.redpanda.sasl.secretRef | string | `""` | Superuser Secret for managed Redpanda SCRAM. |
+| kafka.cluster.replicas | int | `3` | Broker/controller replicas (1-16). |
+| kafka.cluster.resources.limits.cpu | string | `"2"` | CPU limit per broker. |
+| kafka.cluster.resources.limits.memory | string | `"4Gi"` | Memory limit per broker. |
+| kafka.cluster.resources.requests.cpu | string | `"500m"` | CPU request per broker. |
+| kafka.cluster.resources.requests.memory | string | `"1Gi"` | Memory request per broker. |
+| kafka.cluster.storage.size | string | `"20Gi"` | Persistent volume size per broker. |
+| kafka.cluster.storage.storageClassName | string | `""` | StorageClass for broker volumes. |
+| kafka.cluster.strimzi.extraSpec | object | `{}` | Extra fields merged into the Kafka `spec`. |
+| kafka.cluster.strimzi.metadataVersion | string | `""` | Kafka metadata version (empty uses the operator default). |
+| kafka.cluster.strimzi.nodePoolExtraSpec | object | `{}` | Extra fields merged into the KafkaNodePool `spec`. |
+| kafka.cluster.strimzi.version | string | `""` | Strimzi Kafka version (empty uses the operator default). |
+| kafka.cluster.tls.enabled | bool | `false` | Enable the internal TLS listener. |
+| kafka.cluster.topics.create | bool | `true` | Create the source topics on the managed cluster. |
+| kafka.cluster.topics.partitions | int | `3` | Partition count for created topics. |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
 | kafka.triggers | object | `{}` | Map of Kafka Trigger entries, keyed by trigger name. Each key renders a Trigger named `<release>-<key>-trigger`; every entry's `subscriber` must reference a key in `services` (validated at render time). Requires `kafka.broker.enabled: true`. See the Kafka Event Sources section for the per-entry schema. |
 | kyverno.enabled | bool | `false` | Render the Kyverno admission policies. |
@@ -418,6 +439,19 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 `kafka.triggers` maps trigger names to subscribers. Each entry requires `subscriber` (a key in `services`) and supports legacy `filter` attributes or modern `filters`, delivery settings, annotations, and an optional DLQ. The generated values table lists the `kafka.broker` surface; per-entry trigger fields are documented here because `kafka.triggers` ships empty.
 
 When the Broker connects to an authenticated Kafka cluster, set `kafka.broker.config.authSecretName` to a Secret containing the keys expected by the Knative Kafka Broker: `sasl.mechanism`, `user`, `password`, `security.protocol`, and `ca.crt` when TLS is enabled.
+
+### Managed Kafka (Opt-In)
+
+Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: redpanda` to render a managed Kafka cluster and derive the KafkaSource/Broker bootstrap endpoint. The chart renders CRs only; install the operator and CRDs separately.
+
+*   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32.
+*   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
+*   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.cluster.local:9092|9093`; Redpanda `<cluster>.<namespace>.svc.cluster.local:9093`.
+*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`).
+*   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret.
+*   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
+*   **Replication:** topic/broker replication factors clamp to `min(replicas, 3)` for Strimzi and `1`/`3` for Redpanda.
+*   **Operators:** the chart never installs Strimzi, Redpanda, Knative, or their CRDs.
 
 ## PingSource Event Sources (Map)
 
