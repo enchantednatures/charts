@@ -86,6 +86,19 @@ merged. We must apply defaults explicitly before rendering.
     {{- end }}
   {{- end }}
 
+  {{- if and .Values.kafka .Values.kafka.cluster .Values.kafka.cluster.enabled }}
+---
+  {{- include "ksvc.class.kafkaCluster" . | nindent 0 }}
+  {{- if and .Values.kafka.cluster.topics.create .Values.kafka.sources }}
+---
+  {{- include "ksvc.class.kafkaTopics" . | nindent 0 }}
+  {{- end }}
+  {{- if eq .Values.kafka.cluster.auth.type "scram" }}
+---
+  {{- include "ksvc.class.kafkaUsers" . | nindent 0 }}
+  {{- end }}
+  {{- end }}
+
   {{- if and .Values.kafka .Values.kafka.broker .Values.kafka.broker.enabled }}
   {{/* ============================================================ */}}
   {{/* Kafka Broker (eventing bus backed by Kafka)                  */}}
@@ -228,7 +241,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- end }}
   {{- $_ := set .Values "services" $services -}}
 
-  {{/* --- kafka source defaults (applied to each entry in kafka.sources map) --- */}}
+  {{/* --- kafka source, cluster, broker, and trigger defaults --- */}}
   {{- $kafkaSourceDefaults := dict
     "topic" "events"
     "consumerGroup" ""
@@ -248,17 +261,20 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     )
   -}}
 
-  {{- $kafka := .Values.kafka | default dict -}}
-  {{- if or (not (hasKey $kafka "sources")) (not $kafka.sources) -}}
-    {{- $_ := set $kafka "sources" dict -}}
-  {{- end -}}
-  {{- range $key, $source := $kafka.sources }}
-    {{- $merged := mustMergeOverwrite (deepCopy $kafkaSourceDefaults) $source -}}
-    {{- $_ := set $kafka.sources $key $merged -}}
-  {{- end }}
-  {{- $_ := set .Values "kafka" $kafka -}}
+  {{- $clusterDefaults := dict
+    "enabled" false
+    "provider" "strimzi"
+    "name" ""
+    "replicas" 3
+    "storage" (dict "size" "20Gi" "storageClassName" "")
+    "resources" (dict "requests" (dict "cpu" "500m" "memory" "1Gi") "limits" (dict "cpu" "2" "memory" "4Gi"))
+    "tls" (dict "enabled" false)
+    "auth" (dict "type" "none" "username" "")
+    "topics" (dict "create" true "partitions" 3)
+    "strimzi" (dict "version" "" "metadataVersion" "" "extraSpec" (dict) "nodePoolExtraSpec" (dict))
+    "redpanda" (dict "extraClusterSpec" (dict) "sasl" (dict "secretRef" ""))
+  -}}
 
-  {{- /* --- kafka broker defaults --- */ -}}
   {{- $brokerDefaults := dict
     "enabled" false
     "externalTopic" ""
@@ -277,10 +293,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
       "deadLetterSink" (dict "enabled" false "uri" "" "ref" (dict "apiVersion" "serving.knative.dev/v1" "kind" "Service" "name" ""))
     )
   -}}
-  {{- $broker := $kafka.broker | default dict -}}
-  {{- $_ := set $kafka "broker" (mustMergeOverwrite (deepCopy $brokerDefaults) $broker) -}}
 
-  {{- /* --- kafka trigger defaults (applied to each entry in kafka.triggers map) --- */ -}}
   {{- $triggerDefaults := dict
     "subscriber" ""
     "subscriberUri" ""
@@ -294,6 +307,98 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
       "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
     )
   -}}
+
+  {{- $kafka := .Values.kafka | default dict -}}
+  {{- if or (not (hasKey $kafka "sources")) (not $kafka.sources) -}}
+    {{- $_ := set $kafka "sources" dict -}}
+  {{- end -}}
+
+  {{- $rawSourceBootstrap := dict -}}
+  {{- range $key, $source := $kafka.sources -}}
+    {{- if and (hasKey $source "bootstrapServers") $source.bootstrapServers -}}
+      {{- $_ := set $rawSourceBootstrap $key $source.bootstrapServers -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- $rawBrokerBootstrap := list -}}
+  {{- if and (hasKey $kafka "broker") $kafka.broker -}}
+    {{- $rawBrokerConfig := $kafka.broker.config | default dict -}}
+    {{- if and (hasKey $rawBrokerConfig "bootstrapServers") $rawBrokerConfig.bootstrapServers -}}
+      {{- $rawBrokerBootstrap = $rawBrokerConfig.bootstrapServers -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- $cluster := $kafka.cluster | default dict -}}
+  {{- if not (kindIs "map" $cluster) -}}
+    {{- $cluster = dict -}}
+  {{- end -}}
+  {{- $_ := set $kafka "cluster" (mustMergeOverwrite (deepCopy $clusterDefaults) $cluster) -}}
+  {{- $cluster = $kafka.cluster -}}
+
+  {{- range $key, $source := $kafka.sources }}
+    {{- $merged := mustMergeOverwrite (deepCopy $kafkaSourceDefaults) $source -}}
+    {{- if $cluster.enabled -}}
+      {{- $derivedBootstrap := list (include "ksvc.kafkaBootstrapServers" $) -}}
+      {{- if hasKey $rawSourceBootstrap $key -}}
+        {{- if ne (toYaml (index $rawSourceBootstrap $key)) (toYaml $derivedBootstrap) -}}
+          {{- fail (printf "kafka.sources.%s.bootstrapServers must not be set when kafka.cluster.enabled=true (derived: %s)" $key (join "," $derivedBootstrap)) -}}
+        {{- end -}}
+      {{- else -}}
+        {{- $_ := set $merged "bootstrapServers" $derivedBootstrap -}}
+      {{- end -}}
+      {{- $net := $merged.net | default dict -}}
+      {{- if not (kindIs "map" $net) -}}
+        {{- $net = dict -}}
+      {{- end -}}
+      {{- $tls := $net.tls | default dict -}}
+      {{- if not (kindIs "map" $tls) -}}
+        {{- $tls = dict -}}
+      {{- end -}}
+      {{- $sasl := $net.sasl | default dict -}}
+      {{- if not (kindIs "map" $sasl) -}}
+        {{- $sasl = dict -}}
+      {{- end -}}
+      {{- if and $tls.enabled (not $tls.caCertSecret) -}}
+        {{- if eq $cluster.provider "redpanda" -}}
+          {{- $_ := set $tls "caCertSecret" (printf "%s-default-cert" (include "ksvc.kafkaClusterName" $)) -}}
+        {{- else -}}
+          {{- $_ := set $tls "caCertSecret" (printf "%s-cluster-ca-cert" (include "ksvc.kafkaClusterName" $)) -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if and $sasl.enabled (not $sasl.userSecret) -}}
+        {{- $_ := set $sasl "userSecret" (include "ksvc.kafkaSourceSaslTypeSecretName" (dict "root" $ "key" $key)) -}}
+      {{- end -}}
+      {{- if and $sasl.enabled (not $sasl.passwordSecret) -}}
+        {{- $_ := set $sasl "passwordSecret" (include "ksvc.kafkaUserSecretName" $) -}}
+      {{- end -}}
+      {{- $_ := set $net "tls" $tls -}}
+      {{- $_ := set $net "sasl" $sasl -}}
+      {{- $_ := set $merged "net" $net -}}
+    {{- end -}}
+    {{- $_ := set $kafka.sources $key $merged -}}
+  {{- end }}
+
+  {{- $broker := $kafka.broker | default dict -}}
+  {{- $_ := set $kafka "broker" (mustMergeOverwrite (deepCopy $brokerDefaults) $broker) -}}
+  {{- $broker = $kafka.broker -}}
+  {{- $brokerConfig := $broker.config | default dict -}}
+  {{- if not (kindIs "map" $brokerConfig) -}}
+    {{- $brokerConfig = deepCopy $brokerDefaults.config -}}
+  {{- end -}}
+  {{- if $cluster.enabled -}}
+    {{- $derivedBootstrap := list (include "ksvc.kafkaBootstrapServers" $) -}}
+    {{- if $rawBrokerBootstrap -}}
+      {{- if ne (toYaml $rawBrokerBootstrap) (toYaml $derivedBootstrap) -}}
+        {{- fail (printf "kafka.broker.config.bootstrapServers must not be set when kafka.cluster.enabled=true (derived: %s)" (join "," $derivedBootstrap)) -}}
+      {{- end -}}
+    {{- else -}}
+      {{- $_ := set $brokerConfig "bootstrapServers" $derivedBootstrap -}}
+    {{- end -}}
+    {{- $_ := set $brokerConfig "topicReplicationFactor" (int (include "ksvc.kafkaTopicReplicationFactor" $)) -}}
+  {{- end -}}
+  {{- $_ := set $broker "config" $brokerConfig -}}
+  {{- $_ := set $kafka "broker" $broker -}}
+
   {{- if or (not (hasKey $kafka "triggers")) (not $kafka.triggers) -}}
     {{- $_ := set $kafka "triggers" dict -}}
   {{- end -}}

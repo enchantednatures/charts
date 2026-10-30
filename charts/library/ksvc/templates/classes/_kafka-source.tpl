@@ -130,7 +130,7 @@ metadata:
 type: Opaque
 stringData:
   saslType: {{ $sasl.mechanism | quote }}
-  {{- if and $managed .root.Values.kafka.cluster.auth .root.Values.kafka.cluster.auth.username }}
-  user: {{ .root.Values.kafka.cluster.auth.username | quote }}
+  {{- if and $managed (eq .root.Values.kafka.cluster.auth.type "scram") }}
+  user: {{ include "ksvc.kafkaUserName" .root | quote }}
   {{- end }}
 {{- end }}

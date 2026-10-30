@@ -116,3 +116,67 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- define "ksvc.kafkaSourceSaslTypeSecretName" -}}
 {{- printf "%s-%s-kafka-sasl-type" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
 {{- end }}
+
+{{- define "ksvc.kafkaClusterName" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- $name := $cluster.name | default "" -}}
+{{- if $name -}}
+{{- $name | trunc 48 | trimSuffix "-" | replace "_" "-" -}}
+{{- else -}}
+{{- printf "%s-kafka" (include "ksvc.fullname" .) | trunc 48 | trimSuffix "-" | replace "_" "-" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "ksvc.kafkaUserName" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- $auth := $cluster.auth | default dict -}}
+{{- $name := $auth.username | default "" -}}
+{{- if $name -}}
+{{- $name | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- else -}}
+{{- printf "%s-kafka-user" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "ksvc.kafkaUserSecretName" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- if eq ($cluster.provider | default "strimzi") "redpanda" -}}
+{{- printf "%s-kafka-user" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- else -}}
+{{- include "ksvc.kafkaUserName" . -}}
+{{- end -}}
+{{- end }}
+
+{{- define "ksvc.kafkaTopicName" -}}
+{{- . | lower | replace "_" "-" | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "ksvc.kafkaBootstrapServers" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- $name := include "ksvc.kafkaClusterName" . -}}
+{{- $ns := .Release.Namespace | default "default" -}}
+{{- if eq ($cluster.provider | default "strimzi") "redpanda" -}}
+{{- printf "%s.%s.svc.cluster.local:9093" $name $ns -}}
+{{- else -}}
+{{- if and $cluster.tls $cluster.tls.enabled -}}
+{{- printf "%s-kafka-bootstrap.%s.svc.cluster.local:9093" $name $ns -}}
+{{- else -}}
+{{- printf "%s-kafka-bootstrap.%s.svc.cluster.local:9092" $name $ns -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{- define "ksvc.kafkaTopicReplicationFactor" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- $replicas := int ($cluster.replicas | default 3) -}}
+{{- if eq ($cluster.provider | default "strimzi") "redpanda" -}}
+{{- if lt $replicas 3 -}}1{{- else -}}3{{- end -}}
+{{- else -}}
+{{- if lt $replicas 3 -}}{{- $replicas -}}{{- else -}}3{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{- define "ksvc.kafkaMinInSyncReplicas" -}}
+{{- $rf := int (include "ksvc.kafkaTopicReplicationFactor" .) -}}
+{{- if gt $rf 1 -}}{{- sub $rf 1 -}}{{- else -}}1{{- end -}}
+{{- end }}

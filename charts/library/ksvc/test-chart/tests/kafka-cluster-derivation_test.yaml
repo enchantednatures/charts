@@ -1,0 +1,226 @@
+suite: kafka cluster derivation tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.sources.events.topic: events
+  kafka.sources.events.sink: api
+  kafka.sources.events.dlq.enabled: false
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should keep the legacy bootstrap when the cluster is disabled
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: kafka.kafka.svc.cluster.local:9092
+
+  - it: should keep an explicit bootstrap when the cluster is disabled
+    set:
+      kafka.sources.events.bootstrapServers:
+        - custom-kafka:9092
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: custom-kafka:9092
+
+  - it: should derive the Strimzi plaintext bootstrap
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: test-release-kafka-kafka-bootstrap.test-ns.svc.cluster.local:9092
+
+  - it: should derive the Strimzi TLS bootstrap and CA secret
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.auth.type: scram
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.sasl.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: test-release-kafka-kafka-bootstrap.test-ns.svc.cluster.local:9093
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.name
+          value: test-release-kafka-cluster-ca-cert
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.key
+          value: ca.crt
+
+  - it: should derive the Strimzi managed SASL user and password refs
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.auth.type: scram
+      kafka.sources.events.net.sasl.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: spec.net.sasl.type.secretKeyRef.name
+          value: test-release-events-kafka-sasl-type
+      - equal:
+          path: spec.net.sasl.user.secretKeyRef.name
+          value: test-release-events-kafka-sasl-type
+      - equal:
+          path: spec.net.sasl.password.secretKeyRef.name
+          value: test-release-kafka-user
+      - equal:
+          path: spec.net.sasl.password.secretKeyRef.key
+          value: password
+
+  - it: should add the managed username to the SASL type Secret
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.auth.type: scram
+      kafka.sources.events.net.sasl.enabled: true
+    documentSelector:
+      path: metadata.name
+      value: test-release-events-kafka-sasl-type
+    asserts:
+      - equal:
+          path: stringData.saslType
+          value: SCRAM-SHA-512
+      - equal:
+          path: stringData.user
+          value: test-release-kafka-user
+
+  - it: should derive the Redpanda bootstrap
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: redpanda
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: test-release-kafka.test-ns.svc.cluster.local:9093
+
+  - it: should derive the Redpanda CA secret
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: redpanda
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.auth.type: scram
+      kafka.cluster.redpanda.sasl.secretRef: redpanda-superusers
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.sasl.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.name
+          value: test-release-kafka-default-cert
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.key
+          value: ca.crt
+
+  - it: should derive the Redpanda managed SASL password ref
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: redpanda
+      kafka.cluster.auth.type: scram
+      kafka.cluster.redpanda.sasl.secretRef: redpanda-superusers
+      kafka.sources.events.net.sasl.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: spec.net.sasl.password.secretKeyRef.name
+          value: test-release-kafka-user
+      - equal:
+          path: spec.net.sasl.user.secretKeyRef.name
+          value: test-release-events-kafka-sasl-type
+
+  - it: should derive the broker bootstrap and replication factor
+    set:
+      kafka.cluster.enabled: true
+      kafka.broker.enabled: true
+      kafka.sources: null
+    documentSelector:
+      path: metadata.name
+      value: test-release-kafka-broker-config
+    asserts:
+      - equal:
+          path: data["bootstrap.servers"]
+          value: test-release-kafka-kafka-bootstrap.test-ns.svc.cluster.local:9092
+      - equal:
+          path: data["default.topic.replication.factor"]
+          value: "3"
+
+  - it: should clamp the Redpanda broker replication factor for two brokers
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: redpanda
+      kafka.cluster.replicas: 2
+      kafka.broker.enabled: true
+      kafka.sources: null
+    documentSelector:
+      path: metadata.name
+      value: test-release-kafka-broker-config
+    asserts:
+      - equal:
+          path: data["bootstrap.servers"]
+          value: test-release-kafka.test-ns.svc.cluster.local:9093
+      - equal:
+          path: data["default.topic.replication.factor"]
+          value: "1"
+
+  - it: should honor a custom cluster name
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.name: custom
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: custom-kafka-bootstrap.test-ns.svc.cluster.local:9092
+
+  - it: should clamp the Strimzi single-broker replication factor
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.replicas: 1
+      kafka.broker.enabled: true
+      kafka.sources: null
+    documentSelector:
+      path: metadata.name
+      value: test-release-kafka-broker-config
+    asserts:
+      - equal:
+          path: data["default.topic.replication.factor"]
+          value: "1"
+
+  - it: should keep the Strimzi two-broker replication factor
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.replicas: 2
+      kafka.broker.enabled: true
+      kafka.sources: null
+    documentSelector:
+      path: metadata.name
+      value: test-release-kafka-broker-config
+    asserts:
+      - equal:
+          path: data["default.topic.replication.factor"]
+          value: "2"

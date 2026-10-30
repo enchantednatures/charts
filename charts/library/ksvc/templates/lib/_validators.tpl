@@ -174,6 +174,53 @@ Call this from the loader to catch misconfigurations early.
 
   {{- /* kafka broker, source, and trigger validation */ -}}
   {{- $hasBroker := and .Values.kafka .Values.kafka.broker .Values.kafka.broker.enabled -}}
+  {{- $cluster := .Values.kafka.cluster | default dict -}}
+  {{- if $cluster.enabled -}}
+    {{- if not (has $cluster.provider (list "strimzi" "redpanda")) -}}
+      {{- fail (printf "kafka.cluster.provider must be one of strimzi, redpanda (got %v)" $cluster.provider) -}}
+    {{- end -}}
+    {{- include "ksvc.validate.requireInteger" (dict "value" $cluster.replicas "path" "kafka.cluster.replicas") -}}
+    {{- $clusterReplicas := int $cluster.replicas -}}
+    {{- if or (lt $clusterReplicas 1) (gt $clusterReplicas 16) -}}
+      {{- fail (printf "kafka.cluster.replicas must be >= 1 and <= 16 (got %d)" $clusterReplicas) -}}
+    {{- end -}}
+    {{- if and $cluster.name (gt (len $cluster.name) 48) -}}
+      {{- fail (printf "kafka.cluster.name must be <= 48 characters so derived Service names stay <= 63 (got %d)" (len $cluster.name)) -}}
+    {{- end -}}
+    {{- if not (has $cluster.auth.type (list "none" "scram")) -}}
+      {{- fail (printf "kafka.cluster.auth.type must be one of none, scram (got %v)" $cluster.auth.type) -}}
+    {{- end -}}
+    {{- if and $cluster.auth.username (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $cluster.auth.username)) -}}
+      {{- fail (printf "kafka.cluster.auth.username must be a DNS-1123 label (got %v)" $cluster.auth.username) -}}
+    {{- end -}}
+    {{- include "ksvc.validate.requireInteger" (dict "value" $cluster.topics.partitions "path" "kafka.cluster.topics.partitions") -}}
+    {{- if lt (int $cluster.topics.partitions) 1 -}}
+      {{- fail (printf "kafka.cluster.topics.partitions must be >= 1 (got %d)" (int $cluster.topics.partitions)) -}}
+    {{- end -}}
+    {{- if and (eq $cluster.provider "redpanda") (eq $cluster.auth.type "scram") (not $cluster.redpanda.sasl.secretRef) -}}
+      {{- fail "kafka.cluster.redpanda.sasl.secretRef is required when kafka.cluster.auth.type=scram for Redpanda — provide a superuser Secret in users.txt format" -}}
+    {{- end -}}
+    {{- if and $hasBroker (or (eq $cluster.auth.type "scram") $cluster.tls.enabled) (not .Values.kafka.broker.config.authSecretName) -}}
+      {{- fail "kafka.broker.config.authSecretName is required when kafka.broker.enabled=true and the managed cluster uses SCRAM or TLS — the Broker needs a Secret with sasl.mechanism, user, password, security.protocol (and ca.crt for TLS)" -}}
+    {{- end -}}
+    {{- $topicNames := dict -}}
+    {{- range $key, $source := .Values.kafka.sources -}}
+      {{- if eq $cluster.provider "redpanda" -}}
+        {{- if not (regexMatch "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" $source.topic) -}}
+          {{- fail (printf "kafka.sources.%s.topic must be a DNS-1123 subdomain for Redpanda (got %v)" $key $source.topic) -}}
+        {{- end -}}
+      {{- else -}}
+        {{- $sanitized := include "ksvc.kafkaTopicName" $source.topic -}}
+        {{- if hasKey $topicNames $sanitized -}}
+          {{- if ne (index $topicNames $sanitized) $source.topic -}}
+            {{- fail (printf "kafka.sources.%s.topic sanitizes to '%s', which collides with topic '%s'" $key $sanitized (index $topicNames $sanitized)) -}}
+          {{- end -}}
+        {{- else -}}
+          {{- $_ := set $topicNames $sanitized $source.topic -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
   {{- if $hasBroker -}}
     {{- if not (kindIs "map" .Values.kafka.broker.config) -}}
       {{- fail "kafka.broker.config must be a map" -}}
@@ -231,6 +278,14 @@ Call this from the loader to catch misconfigurations early.
       {{- $tls := $net.tls | default dict -}}
       {{- $sasl := $net.sasl | default dict -}}
       {{- $managed := and $.Values.kafka $.Values.kafka.cluster $.Values.kafka.cluster.enabled -}}
+      {{- if $managed -}}
+        {{- if and (eq $cluster.auth.type "scram") (not $sasl.enabled) -}}
+          {{- fail (printf "kafka.sources.%s.net.sasl.enabled must be true when kafka.cluster.auth.type=scram" $key) -}}
+        {{- end -}}
+        {{- if and (eq $cluster.provider "redpanda") $cluster.tls.enabled (not $tls.enabled) -}}
+          {{- fail (printf "kafka.sources.%s.net.tls.enabled must be true when kafka.cluster.provider=redpanda and kafka.cluster.tls.enabled=true" $key) -}}
+        {{- end -}}
+      {{- end -}}
       {{- if $tls.enabled -}}
         {{- if and (not $tls.caCertSecret) (not $managed) -}}
           {{- fail (printf "kafka.sources.%s.net.tls.caCertSecret is required when net.tls.enabled=true and kafka.cluster is not enabled" $key) -}}
