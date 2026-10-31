@@ -44,6 +44,9 @@ needs Strimzi >= 1.0 on Kubernetes >= 1.32, or the Redpanda operator >= 26.2;
 Redpanda TLS also requires cert-manager. `make install-strimzi-crds` and
 `make install-redpanda-crds` install CRDs only; `hack/install-strimzi-operator.sh`
 and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
+`hack/install-kafka-source-controller.sh` installs the KafkaSource controller
+and conversion webhook for the Strimzi e2e (the `make install-kafka` target
+installs only the KafkaSource CRD).
 
 | Requirement | Needed for | Notes |
 |-------------|------------|-------|

@@ -347,8 +347,8 @@ jobs:
       - name: Install Knative Serving CRDs
         run: make install-knative
 
-      - name: Install KafkaSource CRDs
-        run: make install-kafka
+      - name: Install KafkaSource controller and webhook
+        run: hack/install-kafka-source-controller.sh
 
       - name: Install Strimzi operator
         run: hack/install-strimzi-operator.sh
