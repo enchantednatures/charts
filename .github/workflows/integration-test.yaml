@@ -347,6 +347,9 @@ jobs:
       - name: Install Knative Serving CRDs
         run: make install-knative
 
+      - name: Install Knative Eventing core
+        run: hack/install-eventing-core.sh
+
       - name: Install KafkaSource controller and webhook
         run: hack/install-kafka-source-controller.sh
 
@@ -384,4 +387,8 @@ jobs:
           kubectl get kafka,kafkatopic,kafkauser,kafkasource -n test-ns -o wide || true
           kubectl describe kafka,kafkatopic,kafkauser,kafkasource -n test-ns || true
           kubectl get pods -n test-ns -o wide || true
+          kubectl get pods -n knative-eventing -o wide || true
+          kubectl describe deployment/kafka-webhook-eventing -n knative-eventing || true
+          kubectl logs -n knative-eventing deployment/kafka-webhook-eventing --tail=200 || true
+          kubectl get events -n knative-eventing --sort-by=.lastTimestamp | tail -50 || true
           kubectl logs -n strimzi-system deployment/strimzi-cluster-operator --tail=200 || true

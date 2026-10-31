@@ -46,7 +46,8 @@ Redpanda TLS also requires cert-manager. `make install-strimzi-crds` and
 and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
 `hack/install-kafka-source-controller.sh` installs the KafkaSource controller
 and conversion webhook for the Strimzi e2e (the `make install-kafka` target
-installs only the KafkaSource CRD).
+installs only the KafkaSource CRD). `hack/install-eventing-core.sh` installs
+the Knative Eventing core that the KafkaSource controller and webhook require.
 
 | Requirement | Needed for | Notes |
 |-------------|------------|-------|
