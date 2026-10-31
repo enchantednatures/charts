@@ -121,9 +121,9 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- $cluster := .Values.kafka.cluster | default dict -}}
 {{- $name := $cluster.name | default "" -}}
 {{- if $name -}}
-{{- $name | trunc 48 | trimSuffix "-" | replace "_" "-" -}}
+{{- $name | trunc 47 | trimSuffix "-" | replace "_" "-" -}}
 {{- else -}}
-{{- printf "%s-kafka" (include "ksvc.fullname" .) | trunc 48 | trimSuffix "-" | replace "_" "-" -}}
+{{- printf "%s-kafka" (include "ksvc.fullname" .) | trunc 47 | trimSuffix "-" | replace "_" "-" -}}
 {{- end -}}
 {{- end }}
 

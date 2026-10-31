@@ -70,7 +70,8 @@
             },
             "name": {
               "type": "string",
-              "maxLength": 48
+              "maxLength": 47,
+              "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
             },
             "replicas": {
               "type": "integer",

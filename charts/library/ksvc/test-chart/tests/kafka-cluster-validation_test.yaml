@@ -41,7 +41,33 @@ tests:
       kafka.cluster.name: "this-name-is-way-too-long-for-a-derived-service-name"
     asserts:
       - failedTemplate:
-          errorMessage: "kafka.cluster.name must be <= 48 characters so derived Service names stay <= 63 (got 52)"
+          errorMessage: "kafka.cluster.name must be <= 47 characters so derived Service names stay <= 63 (got 52)"
+
+  - it: should reject a 48-character cluster name
+    set:
+      kafka.cluster.name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.name must be <= 47 characters so derived Service names stay <= 63 (got 48)"
+
+  - it: should accept a 47-character cluster name
+    set:
+      kafka.cluster.name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - isKind:
+          of: KafkaSource
+
+  - it: should reject a non-DNS cluster name
+    set:
+      kafka.cluster.name: Bad_Name
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.name must be a DNS-1123 label (got Bad_Name)"
 
   - it: should fail on an unknown auth type
     set:
@@ -108,7 +134,25 @@ tests:
       kafka.sources.events.sink: api
     asserts:
       - failedTemplate:
-          errorMessage: "kafka.sources.events.net.tls.enabled must be true when kafka.cluster.provider=redpanda and kafka.cluster.tls.enabled=true"
+          errorMessage: "kafka.sources.events.net.tls.enabled must be true when kafka.cluster.tls.enabled=true"
+
+  - it: should fail when Strimzi TLS is enabled but a source disables TLS
+    set:
+      kafka.cluster.tls.enabled: true
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.tls.enabled must be true when kafka.cluster.tls.enabled=true"
+
+  - it: should fail when managed SASL is enabled without SCRAM auth
+    set:
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+      kafka.sources.events.net.sasl.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.sasl.enabled requires kafka.cluster.auth.type=scram"
 
   - it: should fail on an invalid Redpanda topic name
     set:

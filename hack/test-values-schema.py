@@ -208,8 +208,13 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
     ),
     (
         "kafka cluster name too long",
-        mutate(["kafka", "cluster", "name"], "x" * 49),
+        mutate(["kafka", "cluster", "name"], "x" * 48),
         "is too long",
+    ),
+    (
+        "kafka cluster name must be DNS-1123",
+        mutate(["kafka", "cluster", "name"], "Bad_Name"),
+        "does not match",
     ),
     (
         "invalid kafka cluster auth type",

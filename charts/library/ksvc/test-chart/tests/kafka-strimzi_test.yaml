@@ -151,6 +151,9 @@ tests:
     set:
       kafka.cluster.enabled: true
       kafka.cluster.tls.enabled: true
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.tls.certSecret: kafka-client
+      kafka.sources.events.net.tls.keySecret: kafka-client
     documentSelector:
       path: kind
       value: Kafka
@@ -173,6 +176,7 @@ tests:
       kafka.cluster.enabled: true
       kafka.cluster.tls.enabled: true
       kafka.cluster.auth.type: scram
+      kafka.sources.events.net.tls.enabled: true
       kafka.sources.events.net.sasl.enabled: true
     documentSelector:
       path: kind

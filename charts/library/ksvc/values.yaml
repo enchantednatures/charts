@@ -488,7 +488,7 @@ kafka:
     enabled: false
     # -- Managed Kafka provider (`strimzi` or `redpanda`).
     provider: strimzi
-    # -- Cluster name. Defaults to `<fullname>-kafka`; max 48 characters.
+    # -- Cluster name. Defaults to `<fullname>-kafka`; max 47 characters.
     name: ""
     # -- Broker/controller replicas (1-16).
     replicas: 3

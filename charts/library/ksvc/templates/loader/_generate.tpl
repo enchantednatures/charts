@@ -365,10 +365,10 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
           {{- $_ := set $tls "caCertSecret" (printf "%s-cluster-ca-cert" (include "ksvc.kafkaClusterName" $)) -}}
         {{- end -}}
       {{- end -}}
-      {{- if and $sasl.enabled (not $sasl.userSecret) -}}
+      {{- if and $sasl.enabled (eq $cluster.auth.type "scram") (not $sasl.userSecret) -}}
         {{- $_ := set $sasl "userSecret" (include "ksvc.kafkaSourceSaslTypeSecretName" (dict "root" $ "key" $key)) -}}
       {{- end -}}
-      {{- if and $sasl.enabled (not $sasl.passwordSecret) -}}
+      {{- if and $sasl.enabled (eq $cluster.auth.type "scram") (not $sasl.passwordSecret) -}}
         {{- $_ := set $sasl "passwordSecret" (include "ksvc.kafkaUserSecretName" $) -}}
       {{- end -}}
       {{- $_ := set $net "tls" $tls -}}

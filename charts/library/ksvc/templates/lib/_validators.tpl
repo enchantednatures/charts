@@ -184,8 +184,11 @@ Call this from the loader to catch misconfigurations early.
     {{- if or (lt $clusterReplicas 1) (gt $clusterReplicas 16) -}}
       {{- fail (printf "kafka.cluster.replicas must be >= 1 and <= 16 (got %d)" $clusterReplicas) -}}
     {{- end -}}
-    {{- if and $cluster.name (gt (len $cluster.name) 48) -}}
-      {{- fail (printf "kafka.cluster.name must be <= 48 characters so derived Service names stay <= 63 (got %d)" (len $cluster.name)) -}}
+    {{- if and $cluster.name (gt (len $cluster.name) 47) -}}
+      {{- fail (printf "kafka.cluster.name must be <= 47 characters so derived Service names stay <= 63 (got %d)" (len $cluster.name)) -}}
+    {{- end -}}
+    {{- if and $cluster.name (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $cluster.name)) -}}
+      {{- fail (printf "kafka.cluster.name must be a DNS-1123 label (got %v)" $cluster.name) -}}
     {{- end -}}
     {{- if not (has $cluster.auth.type (list "none" "scram")) -}}
       {{- fail (printf "kafka.cluster.auth.type must be one of none, scram (got %v)" $cluster.auth.type) -}}
@@ -282,8 +285,11 @@ Call this from the loader to catch misconfigurations early.
         {{- if and (eq $cluster.auth.type "scram") (not $sasl.enabled) -}}
           {{- fail (printf "kafka.sources.%s.net.sasl.enabled must be true when kafka.cluster.auth.type=scram" $key) -}}
         {{- end -}}
-        {{- if and (eq $cluster.provider "redpanda") $cluster.tls.enabled (not $tls.enabled) -}}
-          {{- fail (printf "kafka.sources.%s.net.tls.enabled must be true when kafka.cluster.provider=redpanda and kafka.cluster.tls.enabled=true" $key) -}}
+        {{- if and $cluster.tls.enabled (not $tls.enabled) -}}
+          {{- fail (printf "kafka.sources.%s.net.tls.enabled must be true when kafka.cluster.tls.enabled=true" $key) -}}
+        {{- end -}}
+        {{- if and $sasl.enabled (ne $cluster.auth.type "scram") -}}
+          {{- fail (printf "kafka.sources.%s.net.sasl.enabled requires kafka.cluster.auth.type=scram" $key) -}}
         {{- end -}}
       {{- end -}}
       {{- if $tls.enabled -}}
