@@ -1,0 +1,202 @@
+suite: kafka redpanda provider tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.cluster.enabled: true
+  kafka.cluster.provider: redpanda
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # -------------------------------------------------------------------------
+  # Redpanda cluster
+  # -------------------------------------------------------------------------
+  - it: renders the Redpanda CR with the expected identity
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - isKind:
+          of: Redpanda
+      - equal:
+          path: apiVersion
+          value: cluster.redpanda.com/v1alpha2
+      - equal:
+          path: metadata.name
+          value: test-release-kafka
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - notExists:
+          path: spec.extraClusterSpec
+      - notExists:
+          path: spec.clusterSpec.extraClusterSpec
+
+  - it: does not render a cluster when disabled
+    set:
+      kafka.cluster.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: maps replicas, storage size, and storage class
+    set:
+      kafka.cluster.storage.storageClassName: fast-ssd
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.statefulset.replicas
+          value: 3
+      - equal:
+          path: spec.clusterSpec.storage.persistentVolume.enabled
+          value: true
+      - equal:
+          path: spec.clusterSpec.storage.persistentVolume.size
+          value: 20Gi
+      - equal:
+          path: spec.clusterSpec.storage.persistentVolume.storageClass
+          value: fast-ssd
+
+  - it: omits the storage class when it is empty
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - notExists:
+          path: spec.clusterSpec.storage.persistentVolume.storageClass
+
+  - it: maps a 500m CPU request to one core and memory min/max
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.resources.cpu.cores
+          value: 1
+      - equal:
+          path: spec.clusterSpec.resources.memory.container.min
+          value: 1Gi
+      - equal:
+          path: spec.clusterSpec.resources.memory.container.max
+          value: 4Gi
+
+  - it: maps a whole-number CPU request to cores
+    set:
+      kafka.cluster.resources.requests.cpu: "2"
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.resources.cpu.cores
+          value: 2
+
+  - it: rounds a fractional-core CPU request up
+    set:
+      kafka.cluster.resources.requests.cpu: 1500m
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.resources.cpu.cores
+          value: 2
+
+  - it: renders the plaintext Kafka listener on port 9093
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.listeners.kafka.port
+          value: 9093
+      - equal:
+          path: spec.clusterSpec.listeners.kafka.tls.enabled
+          value: false
+      - equal:
+          path: spec.clusterSpec.tls.enabled
+          value: false
+      - notExists:
+          path: spec.clusterSpec.listeners.kafka.authenticationMethod
+      - notExists:
+          path: spec.clusterSpec.auth
+      - equal:
+          path: spec.clusterSpec.external.enabled
+          value: false
+
+  - it: enables TLS on the listener and cluster
+    set:
+      kafka.cluster.tls.enabled: true
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.listeners.kafka.tls.enabled
+          value: true
+      - equal:
+          path: spec.clusterSpec.tls.enabled
+          value: true
+
+  - it: enables SASL and wires the superuser secret
+    set:
+      kafka.cluster.auth.type: scram
+      kafka.cluster.redpanda.sasl.secretRef: redpanda-superusers
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.listeners.kafka.authenticationMethod
+          value: sasl
+      - equal:
+          path: spec.clusterSpec.auth.sasl.enabled
+          value: true
+      - equal:
+          path: spec.clusterSpec.auth.sasl.secretRef
+          value: redpanda-superusers
+
+  - it: sets the default replication factor to three for three or more replicas
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.config.redpanda.default_topic_replications
+          value: 3
+
+  - it: omits the default replication factor for two replicas
+    set:
+      kafka.cluster.replicas: 2
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - notExists:
+          path: spec.clusterSpec.config.redpanda.default_topic_replications
+
+  - it: merges extraClusterSpec into clusterSpec with user values winning
+    set:
+      kafka.cluster.redpanda.extraClusterSpec.statefulset.replicas: 5
+      kafka.cluster.redpanda.extraClusterSpec.config.redpanda.default_topic_replications: 5
+      kafka.cluster.redpanda.extraClusterSpec.extraField: merged
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.statefulset.replicas
+          value: 5
+      - equal:
+          path: spec.clusterSpec.config.redpanda.default_topic_replications
+          value: 5
+      - equal:
+          path: spec.clusterSpec.extraField
+          value: merged
+      - notExists:
+          path: spec.extraClusterSpec
+      - notExists:
+          path: spec.clusterSpec.extraClusterSpec

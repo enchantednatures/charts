@@ -131,6 +131,106 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
         mutate(["pingsources", "nightly"], {"schedule": "0 * * * *"}),
         "'sink' is a required property",
     ),
+    (
+        "unknown broker field",
+        mutate(["kafka", "broker", "unexpected"], True),
+        "Additional properties are not allowed",
+    ),
+    (
+        "broker bootstrap servers must not be empty",
+        mutate(["kafka", "broker", "config", "bootstrapServers"], []),
+        "should be non-empty",
+    ),
+    (
+        "trigger must define subscriber",
+        mutate(["kafka", "triggers", "order"], {}),
+        "'subscriber' is a required property",
+    ),
+    (
+        "unknown trigger field",
+        mutate(["kafka", "triggers", "order"], {"subscriber": "api", "unexpected": True}),
+        "Additional properties are not allowed",
+    ),
+    (
+        "invalid trigger backoff policy",
+        mutate(
+            ["kafka", "triggers", "order"],
+            {"subscriber": "api", "delivery": {"backoffPolicy": "random"}},
+        ),
+        "'random' is not one of ['linear', 'exponential']",
+    ),
+    (
+        "trigger dlq maxScale below minimum",
+        mutate(
+            ["kafka", "triggers", "order"],
+            {"subscriber": "api", "dlq": {"scaling": {"maxScale": 0}}},
+        ),
+        "is less than the minimum of 1",
+    ),
+    (
+        "unknown kafka source net field",
+        mutate(
+            ["kafka", "sources", "events"],
+            {"topic": "events", "net": {"unexpected": True}},
+        ),
+        "Additional properties are not allowed",
+    ),
+    (
+        "invalid kafka source sasl mechanism",
+        mutate(
+            ["kafka", "sources", "events"],
+            {"topic": "events", "net": {"sasl": {"mechanism": "SCRAM"}}},
+        ),
+        "'SCRAM' is not one of ['PLAIN', 'SCRAM-SHA-256', 'SCRAM-SHA-512']",
+    ),
+    (
+        "kafka source net tls enabled must be boolean",
+        mutate(
+            ["kafka", "sources", "events"],
+            {"topic": "events", "net": {"tls": {"enabled": "yes"}}},
+        ),
+        "'yes' is not of type 'boolean'",
+    ),
+    (
+        "invalid kafka cluster provider",
+        mutate(["kafka", "cluster", "provider"], "kinesis"),
+        "'kinesis' is not one of ['strimzi', 'redpanda']",
+    ),
+    (
+        "kafka cluster replicas below minimum",
+        mutate(["kafka", "cluster", "replicas"], 0),
+        "is less than the minimum of 1",
+    ),
+    (
+        "kafka cluster replicas above maximum",
+        mutate(["kafka", "cluster", "replicas"], 17),
+        "is greater than the maximum of 16",
+    ),
+    (
+        "kafka cluster name too long",
+        mutate(["kafka", "cluster", "name"], "x" * 48),
+        "is too long",
+    ),
+    (
+        "kafka cluster name must be DNS-1123",
+        mutate(["kafka", "cluster", "name"], "Bad_Name"),
+        "does not match",
+    ),
+    (
+        "invalid kafka cluster auth type",
+        mutate(["kafka", "cluster", "auth", "type"], "mtls"),
+        "'mtls' is not one of ['none', 'scram']",
+    ),
+    (
+        "unknown kafka cluster field",
+        mutate(["kafka", "cluster", "unexpected"], True),
+        "Additional properties are not allowed",
+    ),
+    (
+        "unknown redpanda cluster field",
+        mutate(["kafka", "cluster", "redpanda", "unexpected"], True),
+        "Additional properties are not allowed",
+    ),
 ]
 
 

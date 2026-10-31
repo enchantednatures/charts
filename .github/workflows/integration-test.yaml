@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [minimal, full-stack, postgres-only, kafka-consumer, dragonfly-cache, longrunning-websocket]
+        example: [minimal, full-stack, postgres-only, kafka-consumer, kafka-broker, kafka-source-net, kafka-strimzi, kafka-redpanda, dragonfly-cache, longrunning-websocket]
         include:
           - example: minimal
             install_cnpg_crds: false
@@ -75,6 +75,37 @@ jobs:
             install_dragonfly_crds: false
             install_monitoring_crds: false
             install_object_bucket_crds: false
+          - example: kafka-broker
+            install_eventing_crds: true
+            install_kafka_crds: true
+            install_cnpg_crds: false
+            install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+            install_object_bucket_crds: false
+          - example: kafka-source-net
+            install_kafka_crds: true
+            install_cnpg_crds: false
+            install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+            install_object_bucket_crds: false
+          - example: kafka-strimzi
+            install_kafka_crds: true
+            install_strimzi_crds: true
+            install_cnpg_crds: false
+            install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+            install_object_bucket_crds: false
+          - example: kafka-redpanda
+            install_kafka_crds: true
+            install_redpanda_crds: true
+            install_cnpg_crds: false
+            install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+            install_object_bucket_crds: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -89,6 +120,10 @@ jobs:
 
       - name: Install Knative Serving CRDs
         run: make install-knative
+
+      - name: Install Knative Eventing CRDs
+        if: matrix.install_eventing_crds
+        run: make install-eventing
 
       - name: Install CNPG CRDs
         if: matrix.install_cnpg_crds
@@ -109,6 +144,14 @@ jobs:
       - name: Install Kafka CRDs
         if: matrix.install_kafka_crds
         run: make install-kafka
+
+      - name: Install Strimzi CRDs
+        if: matrix.install_strimzi_crds
+        run: make install-strimzi-crds
+
+      - name: Install Redpanda CRDs
+        if: matrix.install_redpanda_crds
+        run: make install-redpanda-crds
 
       - name: Install DragonflyDB CRDs
         if: matrix.install_dragonfly_crds
@@ -283,3 +326,62 @@ jobs:
           expect_admitted test/kyverno/dragonfly-valid.yaml
 
           echo "ALL_GUARDRAIL_ASSERTIONS_PASSED"
+
+  kafka-strimzi-e2e:
+    name: Kafka Strimzi E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          cluster_name: kafka-e2e
+          node_image: kindest/node:v1.32.0
+
+      - name: Install Knative Serving CRDs
+        run: make install-knative
+
+      - name: Install KafkaSource CRDs
+        run: make install-kafka
+
+      - name: Install Strimzi operator
+        run: hack/install-strimzi-operator.sh
+
+      - name: Install the Strimzi example
+        run: |
+          helm dependency build examples/kafka-strimzi
+          helm install kafka-e2e examples/kafka-strimzi \
+            --namespace test-ns \
+            --create-namespace \
+            --set kafka.cluster.replicas=1 \
+            --set kafka.cluster.storage.size=5Gi \
+            --timeout 10m
+
+      - name: Wait for Kafka, topics, and users
+        run: |
+          KAFKA=$(kubectl get kafka -n test-ns -o jsonpath='{.items[0].metadata.name}')
+          test -n "$KAFKA"
+          kubectl wait "kafka/$KAFKA" -n test-ns --for=condition=Ready --timeout=10m
+          if kubectl get kafkatopic -n test-ns -o name | grep -q .; then
+            kubectl wait kafkatopic --all -n test-ns --for=condition=Ready --timeout=10m
+          fi
+          if kubectl get kafkauser -n test-ns -o name | grep -q .; then
+            kubectl wait kafkauser --all -n test-ns --for=condition=Ready --timeout=10m
+          fi
+
+      - name: Assert the KafkaSource exists
+        run: kubectl get kafkasource -n test-ns
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get kafka,kafkatopic,kafkauser,kafkasource -n test-ns -o wide || true
+          kubectl describe kafka,kafkatopic,kafkauser,kafkasource -n test-ns || true
+          kubectl get pods -n test-ns -o wide || true
+          kubectl logs -n strimzi-system deployment/strimzi-cluster-operator --tail=200 || true

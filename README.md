@@ -16,7 +16,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. |
-| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `dragonfly-cache`, `longrunning-websocket`. |
+| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
 | `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
@@ -39,15 +39,19 @@ The charts render custom resources; the matching operators must already run in
 the cluster. Most `make install-*` targets install **CRDs only** — enough for
 `helm template` and server-side dry-runs, but not for reconciliation
 (`install-kyverno` is the exception and installs the controller via Helm). Use
-the real operators for an actual install.
+the real operators for an actual install. Managed Kafka (`kafka.cluster.enabled`)
+needs Strimzi >= 1.0 on Kubernetes >= 1.32, or the Redpanda operator >= 26.2;
+Redpanda TLS also requires cert-manager. `make install-strimzi-crds` and
+`make install-redpanda-crds` install CRDs only; `hack/install-strimzi-operator.sh`
+and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
 
 | Requirement | Needed for | Notes |
 |-------------|------------|-------|
 | Kubernetes >= 1.28 | Everything | `kubeVersion` in the library, app, and example charts. |
 | [Knative Serving](https://knative.dev/docs/serving/) | `services` (default `workload.type: Knative`) | Includes a networking layer (Kourier, Istio, Contour, …). Deployment-mode services do not need Knative. |
-| [Knative Eventing](https://knative.dev/docs/eventing/) | `pingsources` | Provides the `PingSource` CR and its controller. |
-| [Knative Eventing Kafka](https://github.com/knative-extensions/eventing-kafka-broker) | `kafka.sources` | Provides the `KafkaSource` CR and its controller. |
-| A Kafka cluster: [Strimzi](https://strimzi.io/) **or** [Redpanda](https://docs.redpanda.com/current/deploy/redpanda/kubernetes/) operator | `kafka.sources` | The chart renders `KafkaSource` only; it does not provision Kafka. The default `bootstrapServers` (`kafka.kafka.svc.cluster.local:9092`) matches a Strimzi `Kafka` named `kafka` in namespace `kafka`; with Redpanda, point `bootstrapServers` at its seed service. Topics must exist. |
+| [Knative Eventing](https://knative.dev/docs/eventing/) | `pingsources`, `kafka.broker`, `kafka.triggers` | Provides the `PingSource`, `Broker`, and `Trigger` CRs and their controllers. |
+| [Knative Eventing Kafka](https://github.com/knative-extensions/eventing-kafka-broker) | `kafka.sources`, `kafka.broker` | Provides the `KafkaSource` CR, the Kafka Broker implementation, and their controllers. |
+| A Kafka cluster: [Strimzi](https://strimzi.io/) **or** [Redpanda](https://docs.redpanda.com/current/deploy/redpanda/kubernetes/) operator | `kafka.sources`, `kafka.cluster` | The chart renders `KafkaSource` and, when `kafka.cluster.enabled: true`, a managed Strimzi (`Kafka`, `KafkaNodePool`, `KafkaTopic`, `KafkaUser`) or Redpanda (`Redpanda`, `Topic`, `User`) cluster plus a per-release `ConfigMap` for the Broker. The default `bootstrapServers` (`kafka.kafka.svc.cluster.local:9092`) matches a Strimzi `Kafka` named `kafka` in namespace `kafka`; with an external Redpanda cluster, point `bootstrapServers` at its seed service. Topics must exist unless managed topic creation is enabled. |
 | [CloudNativePG](https://cloudnative-pg.io/) operator | `postgres.enabled` | Provides `Cluster`, `Pooler`, `ScheduledBackup`. Also requires a `ClusterImageCatalog` named `postgresql` containing the requested major version (the chart default); apply one from the [CloudNativePG catalogs](https://github.com/cloudnative-pg/artifacts/tree/main/image-catalogs) or override `postgres.imageCatalog.name`. |
 | [Barman Cloud plugin](https://github.com/cloudnative-pg/plugin-barman-cloud) | `postgres.backup.enabled` | Provides the `ObjectStore` CR (`barmancloud.cnpg.io/v1`) used for S3 backups and WAL archiving. |
 | [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) CRDs | `postgres.monitoring.enabled` (default `true` when Postgres is enabled) | Renders `PodMonitor` and `PrometheusRule`. Disable monitoring if the CRDs are absent. A Prometheus instance is also required by Flagger. |
@@ -60,7 +64,8 @@ the real operators for an actual install.
 
 The versions exercised by CI are pinned at the top of the [`Makefile`](Makefile)
 (Knative Serving/Eventing v1.17.0, CNPG release-1.25, eventing-kafka v1.17.0,
-Kyverno 3.9.1).
+Kyverno 3.9.1, Strimzi 1.3.0, Redpanda operator 26.2.5). Managed Strimzi
+requires Kubernetes >= 1.32; the Strimzi e2e job pins a Kind 1.32 node image.
 
 ## Release process
 
@@ -74,7 +79,7 @@ Charts are published to **GHCR as OCI artifacts** at
 2.  **Merge to `main`** — `release.yaml` diff-detects charts whose `Chart.yaml`
     `version:` changed on the push, packages them, pushes them to GHCR, tags the
     commit, and creates a GitHub Release. Pushing a tag of the form
-    **`<chart>-v<version>`** (for example `ksvc-v0.7.1`) also triggers a release.
+    **`<chart>-v<version>`** (for example `ksvc-v0.10.0`) also triggers a release.
 3.  **Dependent bump** — when a **library** chart is released, the
     `update-dependents` job opens a PR that bumps the library dependency (and the
     dependent app chart's patch version) and refreshes its `Chart.lock`.
@@ -84,7 +89,7 @@ Consumers reference a published chart by OCI repository and version:
 ```yaml
 dependencies:
   - name: ksvc
-    version: 0.9.0
+    version: 0.10.0
     repository: oci://ghcr.io/enchantednatures/charts
 ```
 
@@ -128,8 +133,8 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
     requirements drift checks, Markdown lint, local link checks, and external
     link checks (also run weekly).
 *   **Integration Test** (`.github/workflows/integration-test.yaml`) — nightly
-    and PR Kind-cluster dry-runs for every example, plus a Kyverno guardrails
-    end-to-end test.
+    and PR Kind-cluster dry-runs for every example, a Kyverno guardrails
+    end-to-end test, and a Strimzi Kafka end-to-end test.
 *   **Release** (`.github/workflows/release.yaml`) — the OCI release pipeline
     described above.
 

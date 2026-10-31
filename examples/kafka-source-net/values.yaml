@@ -1,0 +1,25 @@
+services:
+  processor:
+    image:
+      repository: ghcr.io/example-org/event-processor
+      tag: "v1.0.0"
+
+kafka:
+  sources:
+    events:
+      topic: "incoming-events"
+      sink: processor
+      bootstrapServers:
+        - kafka.example.svc.cluster.local:9093
+      net:
+        tls:
+          enabled: true
+          caCertSecret: kafka-ca
+          caCertKey: ca.crt
+        sasl:
+          enabled: true
+          mechanism: SCRAM-SHA-512
+          userSecret: kafka-auth
+          userKey: user
+          passwordSecret: kafka-auth
+          passwordKey: password

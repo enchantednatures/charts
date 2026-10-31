@@ -1,0 +1,182 @@
+suite: kafka cluster validation tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.cluster.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should fail on an unknown provider
+    set:
+      kafka.cluster.provider: kinesis
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.provider must be one of strimzi, redpanda (got kinesis)"
+
+  - it: should fail when replicas is below one
+    set:
+      kafka.cluster.replicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.replicas must be >= 1 and <= 16 (got 0)"
+
+  - it: should fail when replicas is above sixteen
+    set:
+      kafka.cluster.replicas: 17
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.replicas must be >= 1 and <= 16 (got 17)"
+
+  - it: should fail when replicas is fractional
+    set:
+      kafka.cluster.replicas: 1.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.replicas must be an integer (got 1.5)"
+
+  - it: should fail when the cluster name is too long
+    set:
+      kafka.cluster.name: "this-name-is-way-too-long-for-a-derived-service-name"
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.name must be <= 47 characters so derived Service names stay <= 63 (got 52)"
+
+  - it: should reject a 48-character cluster name
+    set:
+      kafka.cluster.name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.name must be <= 47 characters so derived Service names stay <= 63 (got 48)"
+
+  - it: should accept a 47-character cluster name
+    set:
+      kafka.cluster.name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - isKind:
+          of: KafkaSource
+
+  - it: should reject a non-DNS cluster name
+    set:
+      kafka.cluster.name: Bad_Name
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.name must be a DNS-1123 label (got Bad_Name)"
+
+  - it: should fail on an unknown auth type
+    set:
+      kafka.cluster.auth.type: mtls
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.auth.type must be one of none, scram (got mtls)"
+
+  - it: should fail on an invalid managed username
+    set:
+      kafka.cluster.auth.username: Bad_User
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.auth.username must be a DNS-1123 label (got Bad_User)"
+
+  - it: should fail when topic partitions is below one
+    set:
+      kafka.cluster.topics.partitions: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.topics.partitions must be >= 1 (got 0)"
+
+  - it: should fail when Redpanda SCRAM has no superuser secret
+    set:
+      kafka.cluster.provider: redpanda
+      kafka.cluster.auth.type: scram
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.redpanda.sasl.secretRef is required when kafka.cluster.auth.type=scram for Redpanda — provide a superuser Secret in users.txt format"
+
+  - it: should fail when a source sets an explicit bootstrap server
+    set:
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+      kafka.sources.events.bootstrapServers:
+        - other-kafka:9092
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.bootstrapServers must not be set when kafka.cluster.enabled=true (derived: test-release-kafka-kafka-bootstrap.test-ns.svc.cluster.local:9092)"
+
+  - it: should fail when the broker sets an explicit bootstrap server
+    set:
+      kafka.broker.enabled: true
+      kafka.broker.config.bootstrapServers:
+        - other-kafka:9092
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.broker.config.bootstrapServers must not be set when kafka.cluster.enabled=true (derived: test-release-kafka-kafka-bootstrap.test-ns.svc.cluster.local:9092)"
+
+  - it: should fail when managed SCRAM is enabled but a source disables SASL
+    set:
+      kafka.cluster.auth.type: scram
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.sasl.enabled must be true when kafka.cluster.auth.type=scram"
+
+  - it: should fail when Redpanda TLS is enabled but a source disables TLS
+    set:
+      kafka.cluster.provider: redpanda
+      kafka.cluster.tls.enabled: true
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.tls.enabled must be true when kafka.cluster.tls.enabled=true"
+
+  - it: should fail when Strimzi TLS is enabled but a source disables TLS
+    set:
+      kafka.cluster.tls.enabled: true
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.tls.enabled must be true when kafka.cluster.tls.enabled=true"
+
+  - it: should fail when managed SASL is enabled without SCRAM auth
+    set:
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+      kafka.sources.events.net.sasl.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.net.sasl.enabled requires kafka.cluster.auth.type=scram"
+
+  - it: should fail on an invalid Redpanda topic name
+    set:
+      kafka.cluster.provider: redpanda
+      kafka.sources.events.topic: Bad_Topic
+      kafka.sources.events.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.topic must be a DNS-1123 subdomain for Redpanda (got Bad_Topic)"
+
+  - it: should fail when two Strimzi topics sanitize to the same name
+    set:
+      kafka.sources.a.topic: a_b
+      kafka.sources.a.sink: api
+      kafka.sources.b.topic: a-b
+      kafka.sources.b.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.b.topic sanitizes to 'a-b', which collides with topic 'a_b'"
+
+  - it: should fail when the broker uses managed auth without an auth secret
+    set:
+      kafka.cluster.auth.type: scram
+      kafka.broker.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.broker.config.authSecretName is required when kafka.broker.enabled=true and the managed cluster uses SCRAM or TLS — the Broker needs a Secret with sasl.mechanism, user, password, security.protocol (and ca.crt for TLS)"

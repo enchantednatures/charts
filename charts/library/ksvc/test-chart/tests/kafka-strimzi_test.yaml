@@ -1,0 +1,472 @@
+suite: kafka strimzi provider tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.sources.events.topic: events
+  kafka.sources.events.sink: api
+  kafka.sources.events.dlq.enabled: false
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should render the KafkaNodePool document
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaNodePool
+    asserts:
+      - equal:
+          path: apiVersion
+          value: kafka.strimzi.io/v1
+      - equal:
+          path: kind
+          value: KafkaNodePool
+      - equal:
+          path: metadata.name
+          value: test-release-kafka-dual-role
+      - equal:
+          path: metadata.labels["strimzi.io/cluster"]
+          value: test-release-kafka
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: test-release
+
+  - it: should render the Kafka document
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: apiVersion
+          value: kafka.strimzi.io/v1
+      - equal:
+          path: kind
+          value: Kafka
+      - equal:
+          path: metadata.name
+          value: test-release-kafka
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: test-release
+
+  - it: should render node pool replicas, roles, jbod storage, and resources
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.replicas: 3
+      kafka.cluster.storage.size: 50Gi
+      kafka.cluster.storage.storageClassName: fast-ssd
+      kafka.cluster.resources.requests.cpu: 750m
+      kafka.cluster.resources.limits.memory: 6Gi
+    documentSelector:
+      path: kind
+      value: KafkaNodePool
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.roles
+          value: [controller, broker]
+      - equal:
+          path: spec.storage.type
+          value: jbod
+      - equal:
+          path: spec.storage.volumes[0].id
+          value: 0
+      - equal:
+          path: spec.storage.volumes[0].type
+          value: persistent-claim
+      - equal:
+          path: spec.storage.volumes[0].size
+          value: 50Gi
+      - equal:
+          path: spec.storage.volumes[0].class
+          value: fast-ssd
+      - equal:
+          path: spec.storage.volumes[0].deleteClaim
+          value: false
+      - equal:
+          path: spec.storage.volumes[0].kraftMetadata
+          value: shared
+      - equal:
+          path: spec.resources.requests.cpu
+          value: 750m
+      - equal:
+          path: spec.resources.limits.memory
+          value: 6Gi
+
+  - it: should omit the storage class when none is configured
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaNodePool
+    asserts:
+      - notExists:
+          path: spec.storage.volumes[0].class
+
+  - it: should not render forbidden Strimzi annotations
+    set:
+      kafka.cluster.enabled: true
+    asserts:
+      - notExists:
+          path: metadata.annotations["strimzi.io/node-pools"]
+        documentSelector:
+          path: kind
+          value: KafkaNodePool
+      - notExists:
+          path: metadata.annotations["strimzi.io/kraft"]
+        documentSelector:
+          path: kind
+          value: Kafka
+
+  - it: should render only the plain listener by default
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - lengthEqual:
+          path: spec.kafka.listeners
+          count: 1
+      - equal:
+          path: spec.kafka.listeners[0].name
+          value: plain
+      - equal:
+          path: spec.kafka.listeners[0].port
+          value: 9092
+      - equal:
+          path: spec.kafka.listeners[0].type
+          value: internal
+      - equal:
+          path: spec.kafka.listeners[0].tls
+          value: false
+
+  - it: should add the TLS listener when enabled
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.tls.enabled: true
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.tls.certSecret: kafka-client
+      kafka.sources.events.net.tls.keySecret: kafka-client
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - lengthEqual:
+          path: spec.kafka.listeners
+          count: 2
+      - equal:
+          path: spec.kafka.listeners[1].name
+          value: tls
+      - equal:
+          path: spec.kafka.listeners[1].port
+          value: 9093
+      - equal:
+          path: spec.kafka.listeners[1].tls
+          value: true
+
+  - it: should configure SCRAM authentication on every listener
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.auth.type: scram
+      kafka.sources.events.net.tls.enabled: true
+      kafka.sources.events.net.sasl.enabled: true
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: spec.kafka.listeners[0].authentication.type
+          value: scram-sha-512
+      - equal:
+          path: spec.kafka.listeners[1].authentication.type
+          value: scram-sha-512
+      - equal:
+          path: spec.kafka.authorization.type
+          value: simple
+
+  - it: should omit authorization when auth is none
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - notExists:
+          path: spec.kafka.authorization
+
+  - it: should configure replication factors for three brokers
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.replicas: 3
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: spec.kafka.config["offsets.topic.replication.factor"]
+          value: 3
+      - equal:
+          path: spec.kafka.config["transaction.state.log.replication.factor"]
+          value: 3
+      - equal:
+          path: spec.kafka.config["transaction.state.log.min.isr"]
+          value: 2
+      - equal:
+          path: spec.kafka.config["default.replication.factor"]
+          value: 3
+      - equal:
+          path: spec.kafka.config["min.insync.replicas"]
+          value: 2
+
+  - it: should clamp replication factors for a single broker
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.replicas: 1
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: spec.kafka.config["offsets.topic.replication.factor"]
+          value: 1
+      - equal:
+          path: spec.kafka.config["transaction.state.log.replication.factor"]
+          value: 1
+      - equal:
+          path: spec.kafka.config["transaction.state.log.min.isr"]
+          value: 1
+      - equal:
+          path: spec.kafka.config["default.replication.factor"]
+          value: 1
+      - equal:
+          path: spec.kafka.config["min.insync.replicas"]
+          value: 1
+
+  - it: should not render ZooKeeper-style fields with KafkaNodePool
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - notExists:
+          path: spec.kafka.replicas
+      - notExists:
+          path: spec.kafka.storage
+      - notExists:
+          path: spec.zookeeper
+
+  - it: should enable the topic and user operators
+    set:
+      kafka.cluster.enabled: true
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: spec.entityOperator.topicOperator
+          value: {}
+      - equal:
+          path: spec.entityOperator.userOperator
+          value: {}
+
+  - it: should merge extraSpec into the Kafka spec without dropping core fields
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.strimzi.extraSpec:
+        kafka:
+          config:
+            log.retention.hours: 168
+        entityOperator:
+          userOperator:
+            reconciliationIntervalSeconds: 120
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: spec.kafka.config["log.retention.hours"]
+          value: 168
+      - equal:
+          path: spec.kafka.config["default.replication.factor"]
+          value: 3
+      - equal:
+          path: spec.entityOperator.userOperator.reconciliationIntervalSeconds
+          value: 120
+      - equal:
+          path: spec.entityOperator.topicOperator
+          value: {}
+
+  - it: should merge nodePoolExtraSpec into the node pool spec
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.strimzi.nodePoolExtraSpec:
+        jvmOptions:
+          "-Xms": 2g
+    documentSelector:
+      path: kind
+      value: KafkaNodePool
+    asserts:
+      - equal:
+          path: spec.jvmOptions["-Xms"]
+          value: 2g
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.storage.type
+          value: jbod
+
+  - it: should sanitize topic metadata and keep the raw topic name
+    set:
+      kafka.cluster.enabled: true
+      kafka.sources.events.topic: My_Topic
+    documentSelector:
+      path: kind
+      value: KafkaTopic
+    asserts:
+      - equal:
+          path: metadata.name
+          value: my-topic
+      - equal:
+          path: spec.topicName
+          value: My_Topic
+
+  - it: should render a SCRAM user with ACLs for distinct topics and groups
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.auth.type: scram
+      kafka.sources.events.net.sasl.enabled: true
+      kafka.sources.events.consumerGroup: shared-group
+      kafka.sources.events2.topic: commands
+      kafka.sources.events2.sink: api
+      kafka.sources.events2.dlq.enabled: false
+      kafka.sources.events2.net.sasl.enabled: true
+      kafka.sources.events2.consumerGroup: shared-group
+    documentSelector:
+      path: kind
+      value: KafkaUser
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-kafka-user
+      - equal:
+          path: metadata.labels["strimzi.io/cluster"]
+          value: test-release-kafka
+      - equal:
+          path: spec.authentication.type
+          value: scram-sha-512
+      - equal:
+          path: spec.authorization.type
+          value: simple
+      - lengthEqual:
+          path: spec.acls
+          count: 3
+      - equal:
+          path: spec.acls[0].resource.type
+          value: topic
+      - equal:
+          path: spec.acls[0].resource.name
+          value: commands
+      - equal:
+          path: spec.acls[0].resource.patternType
+          value: literal
+      - equal:
+          path: spec.acls[0].operations
+          value: [Read, Describe]
+      - equal:
+          path: spec.acls[0].host
+          value: "*"
+      - equal:
+          path: spec.acls[1].resource.name
+          value: events
+      - equal:
+          path: spec.acls[2].resource.type
+          value: group
+      - equal:
+          path: spec.acls[2].resource.name
+          value: shared-group
+      - equal:
+          path: spec.acls[2].operations
+          value: [Read]
+
+  - it: should not render a KafkaUser when auth is none
+    set:
+      kafka.cluster.enabled: true
+    asserts:
+      - not: true
+        containsDocument:
+          kind: KafkaUser
+          apiVersion: kafka.strimzi.io/v1
+
+  - it: should not render topics when topic creation is disabled
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.topics.create: false
+    asserts:
+      - not: true
+        containsDocument:
+          kind: KafkaTopic
+          apiVersion: kafka.strimzi.io/v1
+
+  - it: should not render Strimzi resources when the cluster is disabled
+    asserts:
+      - not: true
+        containsDocument:
+          kind: Kafka
+          apiVersion: kafka.strimzi.io/v1
+      - not: true
+        containsDocument:
+          kind: KafkaNodePool
+          apiVersion: kafka.strimzi.io/v1
+      - not: true
+        containsDocument:
+          kind: KafkaTopic
+          apiVersion: kafka.strimzi.io/v1
+      - not: true
+        containsDocument:
+          kind: KafkaUser
+          apiVersion: kafka.strimzi.io/v1
+---
+suite: kafka strimzi topic rendering tests
+templates:
+  - templates/kafka-topics.yaml
+set:
+  kafka.cluster.enabled: true
+  kafka.cluster.provider: strimzi
+  kafka.cluster.topics.create: true
+  kafka.cluster.topics.partitions: 3
+  kafka.cluster.replicas: 3
+  kafka.sources.events.topic: events
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should render a single KafkaTopic for two sources sharing a topic
+    set:
+      kafka.sources.events2.topic: events
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: events
+      - equal:
+          path: metadata.labels["strimzi.io/cluster"]
+          value: test-release-kafka
+      - equal:
+          path: spec.partitions
+          value: 3
+      - equal:
+          path: spec.replicas
+          value: 3
+      - notExists:
+          path: spec.topicName

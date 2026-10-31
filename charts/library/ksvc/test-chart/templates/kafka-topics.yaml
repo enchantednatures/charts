@@ -1,0 +1,7 @@
+{{- /* Test helper: render only the managed Kafka topic documents. */ -}}
+{{- $kafka := .Values.kafka | default dict -}}
+{{- $cluster := $kafka.cluster | default dict -}}
+{{- $topics := $cluster.topics | default dict -}}
+{{- if and $cluster.enabled $topics.create .Values.kafka.sources -}}
+{{- include "ksvc.class.kafkaTopics" . -}}
+{{- end }}

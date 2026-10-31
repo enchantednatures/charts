@@ -22,9 +22,15 @@ Consumer Chart
               │           ├── apps/v1 Deployment
               │           ├── core/v1 Service
               │           └── PodDisruptionBudget (opt-in)
+              ├── Kafka Broker (kafka.broker.enabled, opt-in)
+              │     ├── Broker ConfigMap
+              │     └── Broker
               ├── Per-source loop (kafka.sources map)
               │     ├── KafkaSource
               │     └── DLQ Knative Service (opt-in)
+              ├── Per-trigger loop (kafka.triggers map)
+              │     ├── Trigger
+              │     └── Trigger DLQ Knative Service (opt-in)
               ├── Per-source loop (pingsources map)
               │     └── PingSource
               └── Global resources
@@ -44,6 +50,10 @@ Consumer Chart
 | PodDisruptionBudget (Deployment mode, opt-in) | `<release>-<service-key>` |
 | KafkaSource | `<release>-<source-key>-kafka-source` |
 | DLQ Service | `<release>-<source-key>-dlq` |
+| Broker ConfigMap | `<release>-kafka-broker-config` (when `kafka.broker.enabled: true`) |
+| Broker | `<release>-kafka-broker` (when `kafka.broker.enabled: true`) |
+| Trigger | `<release>-<trigger-key>-trigger` (per `kafka.triggers` entry) |
+| Trigger DLQ Service | `<release>-<trigger-key>-trigger-dlq` (per trigger with `dlq.enabled: true`) |
 | PingSource | `<release>-<source-key>-ping-source` (per `pingsources` entry) |
 | CNPG Cluster | `<release>` (global) |
 | Dragonfly | `<release>` (global) |
@@ -67,7 +77,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.9.0
+        version: 0.10.0
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -100,6 +110,8 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **Flagger** | Canary (per service with `flagger.enabled: true`) | Per-service |
 | **Kafka** | KafkaSource (per entry in `kafka.sources`) | Per-source |
 | **Kafka DLQ** | Knative Service (per source with `dlq.enabled: true`) | Per-source |
+| **Kafka Broker (opt-in)** | ConfigMap + Broker (when `kafka.broker.enabled: true`) | Global |
+| **Kafka Triggers (opt-in)** | Trigger + optional Knative Service DLQ (per entry in `kafka.triggers`) | Per-trigger |
 | **PingSource** | PingSource (per entry in `pingsources`) | Per-source |
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
@@ -173,7 +185,45 @@ sections following the table.
 | global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
 | global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
+| kafka.broker.annotations | object | `{}` | Annotations added to the Broker. |
+| kafka.broker.config.authSecretName | string | `""` | Secret containing the broker's Kafka auth credentials. |
+| kafka.broker.config.bootstrapServers | list | `["kafka.kafka.svc.cluster.local:9092"]` | Kafka bootstrap servers used by the broker. |
+| kafka.broker.config.extra | object | `{}` | Extra ConfigMap entries for the broker. |
+| kafka.broker.config.topicPartitions | int | `10` | Default partition count for broker-created topics. |
+| kafka.broker.config.topicReplicationFactor | int | `3` | Default replication factor for broker-created topics. |
+| kafka.broker.delivery.backoffDelay | string | `"PT1S"` | Backoff delay (ISO 8601). |
+| kafka.broker.delivery.backoffPolicy | string | `"exponential"` | Backoff policy (`linear` or `exponential`). |
+| kafka.broker.delivery.deadLetterSink.enabled | bool | `false` | Enable a dead-letter sink for the broker. |
+| kafka.broker.delivery.deadLetterSink.ref.apiVersion | string | `"serving.knative.dev/v1"` | API version of the dead-letter sink reference. |
+| kafka.broker.delivery.deadLetterSink.ref.kind | string | `"Service"` | Kind of the dead-letter sink reference. |
+| kafka.broker.delivery.deadLetterSink.ref.name | string | `""` | Name of the dead-letter sink reference. |
+| kafka.broker.delivery.deadLetterSink.uri | string | `""` | URI for the dead-letter sink (mutually exclusive with `ref`). |
+| kafka.broker.delivery.retry | int | `5` | Delivery retry count. |
+| kafka.broker.enabled | bool | `false` | Enable a Knative Eventing Broker backed by Kafka. |
+| kafka.broker.externalTopic | string | `""` | Pre-existing Kafka topic used for the broker's internal state. |
+| kafka.cluster.auth.type | string | `"none"` | Managed authentication type (`none` or `scram`). |
+| kafka.cluster.auth.username | string | `""` | Managed username. Defaults to `<fullname>-kafka-user`. |
+| kafka.cluster.enabled | bool | `false` | Enable a chart-managed Kafka cluster. |
+| kafka.cluster.name | string | `""` | Cluster name. Defaults to `<fullname>-kafka`; max 47 characters. |
+| kafka.cluster.provider | string | `"strimzi"` | Managed Kafka provider (`strimzi` or `redpanda`). |
+| kafka.cluster.redpanda.extraClusterSpec | object | `{}` | Extra fields merged into the Redpanda `spec.clusterSpec`. |
+| kafka.cluster.redpanda.sasl.secretRef | string | `""` | Superuser Secret for managed Redpanda SCRAM. |
+| kafka.cluster.replicas | int | `3` | Broker/controller replicas (1-16). |
+| kafka.cluster.resources.limits.cpu | string | `"2"` | CPU limit per broker. |
+| kafka.cluster.resources.limits.memory | string | `"4Gi"` | Memory limit per broker. |
+| kafka.cluster.resources.requests.cpu | string | `"500m"` | CPU request per broker. |
+| kafka.cluster.resources.requests.memory | string | `"1Gi"` | Memory request per broker. |
+| kafka.cluster.storage.size | string | `"20Gi"` | Persistent volume size per broker. |
+| kafka.cluster.storage.storageClassName | string | `""` | StorageClass for broker volumes. |
+| kafka.cluster.strimzi.extraSpec | object | `{}` | Extra fields merged into the Kafka `spec`. |
+| kafka.cluster.strimzi.metadataVersion | string | `""` | Kafka metadata version (empty uses the operator default). |
+| kafka.cluster.strimzi.nodePoolExtraSpec | object | `{}` | Extra fields merged into the KafkaNodePool `spec`. |
+| kafka.cluster.strimzi.version | string | `""` | Strimzi Kafka version (empty uses the operator default). |
+| kafka.cluster.tls.enabled | bool | `false` | Enable the internal TLS listener. |
+| kafka.cluster.topics.create | bool | `true` | Create the source topics on the managed cluster. |
+| kafka.cluster.topics.partitions | int | `3` | Partition count for created topics. |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
+| kafka.triggers | object | `{}` | Map of Kafka Trigger entries, keyed by trigger name. Each key renders a Trigger named `<release>-<key>-trigger`; every entry's `subscriber` must reference a key in `services` (validated at render time). Requires `kafka.broker.enabled: true`. See the Kafka Event Sources section for the per-entry schema. |
 | kyverno.enabled | bool | `false` | Render the Kyverno admission policies. |
 | kyverno.scaling.apiVersion | string | `"policies.kyverno.io/v1beta1"` | Policy `apiVersion` (`policies.kyverno.io/v1beta1` for Kyverno >= 1.16, `policies.kyverno.io/v1` for Kyverno >= 1.17). |
 | kyverno.scaling.enabled | bool | `false` | Render the scaling/HA guardrail policies (Knative Service, CNPG instances, Dragonfly replicas/PDB). |
@@ -343,12 +393,12 @@ A PodDisruptionBudget governs **voluntary** evictions only, which means node dra
 
 ## Kafka Event Sources (Map)
 
-Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must reference a valid key in the `services` map (validated at render time).
+Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must reference a valid key in the `services` map (validated at render time). When `kafka.broker.enabled: true`, sources sink to the Broker instead and must not set `sink`.
 
 | Key | Description | Default |
 |-----|-------------|---------|
 | `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
-| `kafka.sources.<key>.sink` | **Required.** Key from the `services` map | — |
+| `kafka.sources.<key>.sink` | **Required unless `kafka.broker.enabled` is true.** Key from the `services` map, or omit to sink to the Broker | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
 | `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
 | `kafka.sources.<key>.consumers` | Concurrent consumers per replica | `3` |
@@ -358,6 +408,50 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+| `kafka.sources.<key>.net.tls.enabled` | Enable TLS for the KafkaSource connection | `false` |
+| `kafka.sources.<key>.net.tls.caCertSecret` | Secret containing the broker CA certificate | `""` |
+| `kafka.sources.<key>.net.tls.caCertKey` | CA certificate key within the Secret | `ca.crt` |
+| `kafka.sources.<key>.net.tls.certSecret` | Secret containing the client certificate (TLS-only/mTLS) | `""` |
+| `kafka.sources.<key>.net.tls.certKey` | Client certificate key within the Secret | `tls.crt` |
+| `kafka.sources.<key>.net.tls.keySecret` | Secret containing the client private key (TLS-only/mTLS) | `""` |
+| `kafka.sources.<key>.net.tls.keyKey` | Client private key key within the Secret | `tls.key` |
+| `kafka.sources.<key>.net.sasl.enabled` | Enable SASL for the KafkaSource connection | `false` |
+| `kafka.sources.<key>.net.sasl.mechanism` | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512` | `SCRAM-SHA-512` |
+| `kafka.sources.<key>.net.sasl.userSecret` | Secret containing the SASL username | `""` |
+| `kafka.sources.<key>.net.sasl.userKey` | Username key within the Secret | `user` |
+| `kafka.sources.<key>.net.sasl.passwordSecret` | Secret containing the SASL password | `""` |
+| `kafka.sources.<key>.net.sasl.passwordKey` | Password key within the Secret | `password` |
+
+### TLS and SASL
+
+`kafka.sources.<key>.net` renders the upstream Knative KafkaSource `spec.net` block. Only enabled sections render; an empty `net` block is never emitted.
+
+*   **TLS + SASL (SASL_SSL):** set `net.tls.enabled` and `net.sasl.enabled`, provide `net.tls.caCertSecret` and the SASL user/password Secrets. Client certificate and key are optional.
+*   **TLS only:** Knative treats this as mTLS. `net.tls.certSecret` and `net.tls.keySecret` are required.
+*   **SASL only:** set `net.sasl.enabled` and provide `userSecret` / `passwordSecret`; no TLS block renders.
+*   The chart creates `<release>-<key>-kafka-sasl-type` with `saslType: <mechanism>` and references it from `spec.net.sasl.type`. Managed clusters also add the managed username to that Secret.
+*   `net.sasl.mechanism` defaults to `SCRAM-SHA-512`; upstream defaults to `PLAIN` when the type is omitted.
+
+### Kafka Broker and Triggers (Opt-In)
+
+`kafka.broker.enabled: true` renders a `Broker` (`eventing.knative.dev/v1`, Kafka class) and a per-release `ConfigMap` containing `bootstrap.servers`, `default.topic.partitions`, and `default.topic.replication.factor`. Sources with no `sink` deliver to the Broker; setting `sink` while the broker is enabled fails rendering.
+
+`kafka.triggers` maps trigger names to subscribers. Each entry requires `subscriber` (a key in `services`) and supports legacy `filter` attributes or modern `filters`, delivery settings, annotations, and an optional DLQ. The generated values table lists the `kafka.broker` surface; per-entry trigger fields are documented here because `kafka.triggers` ships empty.
+
+When the Broker connects to an authenticated Kafka cluster, set `kafka.broker.config.authSecretName` to a Secret containing the keys expected by the Knative Kafka Broker: `sasl.mechanism`, `user`, `password`, `security.protocol`, and `ca.crt` when TLS is enabled.
+
+### Managed Kafka (Opt-In)
+
+Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: redpanda` to render a managed Kafka cluster and derive the KafkaSource/Broker bootstrap endpoint. The chart renders CRs only; install the operator and CRDs separately.
+
+*   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32. `kafka.cluster.name` must be a DNS-1123 label of at most 47 characters so derived Service names stay within 63.
+*   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
+*   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.cluster.local:9092|9093`; Redpanda `<cluster>.<namespace>.svc.cluster.local:9093`.
+*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`). Redpanda TLS requires cert-manager. Every source must set `net.tls.enabled: true` when `kafka.cluster.tls.enabled` is true; otherwise rendering fails.
+*   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret. Enabling SASL while `auth.type: none` fails rendering rather than producing dangling references.
+*   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
+*   **Replication:** topic/broker replication factors clamp to `min(replicas, 3)` for Strimzi and `1`/`3` for Redpanda.
+*   **Operators:** the chart never installs Strimzi, Redpanda, Knative, or their CRDs. `make install-strimzi-crds` and `make install-redpanda-crds` install CRDs only; `hack/install-strimzi-operator.sh` and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
 
 ## PingSource Event Sources (Map)
 
@@ -643,6 +737,10 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **full-stack** — Multi-service deployment with PostgreSQL, Kafka, DragonflyDB, and Flagger.
 *   **postgres-only** — API service with CloudNativePG integration.
 *   **kafka-consumer** — Consumer service with KafkaSource and DLQ.
+*   **kafka-broker** — Kafka Broker with filtered Triggers and a broker-sink KafkaSource.
+*   **kafka-source-net** — KafkaSource with TLS and SASL against an external Kafka cluster.
+*   **kafka-strimzi** — Managed Strimzi cluster with TLS, SCRAM, topics, users, and a shared project topic.
+*   **kafka-redpanda** — Managed Redpanda cluster with managed topics and a shared project topic.
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
 *   **longrunning-websocket** — Websocket gateway as a standard Deployment workload with a ClientIP core Service, a PodDisruptionBudget, and a preStop drain delay.
 
@@ -651,7 +749,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 The repository uses GitHub Actions for automated quality assurance:
 
 *   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
-*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.9.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
+*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.10.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing

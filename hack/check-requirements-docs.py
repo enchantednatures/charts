@@ -117,7 +117,9 @@ def check_install_targets(readme: str, makefile: str) -> None:
     if "helm upgrade --install" not in kyverno:
         error("Makefile target install-kyverno no longer installs Kyverno via Helm")
 
-    referenced = set(re.findall(r"\binstall-[a-z0-9-]+\b", readme))
+    # Only explicit `make install-*` references are Makefile targets; script
+    # paths such as hack/install-strimzi-operator.sh are not.
+    referenced = set(re.findall(r"\bmake\s+(install-[a-z0-9-]+)\b", readme))
     for target in sorted(referenced):
         if target not in targets:
             error(f"README references `make {target}`, but the Makefile has no such target")
