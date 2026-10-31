@@ -119,26 +119,28 @@ spec:
     type: scram-sha-512
   authorization:
     type: simple
-  {{- if or $topics $groups }}
-  acls:
-    {{- range $topic, $_ := $topics }}
-    - resource:
-        type: topic
-        name: {{ $topic }}
-        patternType: literal
-      operations:
-        - Read
-        - Describe
-      host: "*"
+    acls:
+    {{- if or $topics $groups }}
+      {{- range $topic, $_ := $topics }}
+      - resource:
+          type: topic
+          name: {{ $topic }}
+          patternType: literal
+        operations:
+          - Read
+          - Describe
+        host: "*"
+      {{- end }}
+      {{- range $group, $_ := $groups }}
+      - resource:
+          type: group
+          name: {{ $group }}
+          patternType: literal
+        operations:
+          - Read
+        host: "*"
+      {{- end }}
+    {{- else }}
+      []
     {{- end }}
-    {{- range $group, $_ := $groups }}
-    - resource:
-        type: group
-        name: {{ $group }}
-        patternType: literal
-      operations:
-        - Read
-      host: "*"
-    {{- end }}
-  {{- end }}
 {{- end }}

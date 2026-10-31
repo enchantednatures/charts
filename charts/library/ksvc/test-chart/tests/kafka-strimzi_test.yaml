@@ -368,35 +368,37 @@ tests:
           path: spec.authorization.type
           value: simple
       - lengthEqual:
-          path: spec.acls
+          path: spec.authorization.acls
           count: 3
       - equal:
-          path: spec.acls[0].resource.type
+          path: spec.authorization.acls[0].resource.type
           value: topic
       - equal:
-          path: spec.acls[0].resource.name
+          path: spec.authorization.acls[0].resource.name
           value: commands
       - equal:
-          path: spec.acls[0].resource.patternType
+          path: spec.authorization.acls[0].resource.patternType
           value: literal
       - equal:
-          path: spec.acls[0].operations
+          path: spec.authorization.acls[0].operations
           value: [Read, Describe]
       - equal:
-          path: spec.acls[0].host
+          path: spec.authorization.acls[0].host
           value: "*"
       - equal:
-          path: spec.acls[1].resource.name
+          path: spec.authorization.acls[1].resource.name
           value: events
       - equal:
-          path: spec.acls[2].resource.type
+          path: spec.authorization.acls[2].resource.type
           value: group
       - equal:
-          path: spec.acls[2].resource.name
+          path: spec.authorization.acls[2].resource.name
           value: shared-group
       - equal:
-          path: spec.acls[2].operations
+          path: spec.authorization.acls[2].operations
           value: [Read]
+      - notExists:
+          path: spec.acls
 
   - it: should not render a KafkaUser when auth is none
     set:
