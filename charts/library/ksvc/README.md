@@ -204,7 +204,7 @@ sections following the table.
 | kafka.cluster.auth.type | string | `"none"` | Managed authentication type (`none` or `scram`). |
 | kafka.cluster.auth.username | string | `""` | Managed username. Defaults to `<fullname>-kafka-user`. |
 | kafka.cluster.enabled | bool | `false` | Enable a chart-managed Kafka cluster. |
-| kafka.cluster.name | string | `""` | Cluster name. Defaults to `<fullname>-kafka`; max 48 characters. |
+| kafka.cluster.name | string | `""` | Cluster name. Defaults to `<fullname>-kafka`; max 47 characters. |
 | kafka.cluster.provider | string | `"strimzi"` | Managed Kafka provider (`strimzi` or `redpanda`). |
 | kafka.cluster.redpanda.extraClusterSpec | object | `{}` | Extra fields merged into the Redpanda `spec.clusterSpec`. |
 | kafka.cluster.redpanda.sasl.secretRef | string | `""` | Superuser Secret for managed Redpanda SCRAM. |
@@ -444,11 +444,11 @@ When the Broker connects to an authenticated Kafka cluster, set `kafka.broker.co
 
 Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: redpanda` to render a managed Kafka cluster and derive the KafkaSource/Broker bootstrap endpoint. The chart renders CRs only; install the operator and CRDs separately.
 
-*   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32.
+*   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32. `kafka.cluster.name` must be a DNS-1123 label of at most 47 characters so derived Service names stay within 63.
 *   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
 *   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.cluster.local:9092|9093`; Redpanda `<cluster>.<namespace>.svc.cluster.local:9093`.
-*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`). Redpanda TLS requires cert-manager.
-*   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret.
+*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`). Redpanda TLS requires cert-manager. Every source must set `net.tls.enabled: true` when `kafka.cluster.tls.enabled` is true; otherwise rendering fails.
+*   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret. Enabling SASL while `auth.type: none` fails rendering rather than producing dangling references.
 *   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
 *   **Replication:** topic/broker replication factors clamp to `min(replicas, 3)` for Strimzi and `1`/`3` for Redpanda.
 *   **Operators:** the chart never installs Strimzi, Redpanda, Knative, or their CRDs. `make install-strimzi-crds` and `make install-redpanda-crds` install CRDs only; `hack/install-strimzi-operator.sh` and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
