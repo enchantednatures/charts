@@ -48,7 +48,7 @@ chart-level `kafka.cluster.redpanda.extraClusterSpec` is merged into
 {{- $_ := set $clusterSpec "auth" (dict "sasl" $sasl) -}}
 {{- end -}}
 {{- if ge $replicas 3 -}}
-{{- $_ := set $clusterSpec "config" (dict "redpanda" (dict "default_topic_replications" 3)) -}}
+{{- $_ := set $clusterSpec "config" (dict "cluster" (dict "default_topic_replications" 3)) -}}
 {{- end -}}
 {{- $_ := set $clusterSpec "external" (dict "enabled" false) -}}
 

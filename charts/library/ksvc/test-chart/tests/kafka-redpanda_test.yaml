@@ -165,8 +165,10 @@ tests:
       value: Redpanda
     asserts:
       - equal:
-          path: spec.clusterSpec.config.redpanda.default_topic_replications
+          path: spec.clusterSpec.config.cluster.default_topic_replications
           value: 3
+      - notExists:
+          path: spec.clusterSpec.config.redpanda
 
   - it: omits the default replication factor for two replicas
     set:
@@ -176,12 +178,12 @@ tests:
       value: Redpanda
     asserts:
       - notExists:
-          path: spec.clusterSpec.config.redpanda.default_topic_replications
+          path: spec.clusterSpec.config.cluster.default_topic_replications
 
   - it: merges extraClusterSpec into clusterSpec with user values winning
     set:
       kafka.cluster.redpanda.extraClusterSpec.statefulset.replicas: 5
-      kafka.cluster.redpanda.extraClusterSpec.config.redpanda.default_topic_replications: 5
+      kafka.cluster.redpanda.extraClusterSpec.config.cluster.default_topic_replications: 5
       kafka.cluster.redpanda.extraClusterSpec.extraField: merged
     documentSelector:
       path: kind
@@ -191,7 +193,7 @@ tests:
           path: spec.clusterSpec.statefulset.replicas
           value: 5
       - equal:
-          path: spec.clusterSpec.config.redpanda.default_topic_replications
+          path: spec.clusterSpec.config.cluster.default_topic_replications
           value: 5
       - equal:
           path: spec.clusterSpec.extraField
