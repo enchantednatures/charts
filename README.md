@@ -17,6 +17,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. See its [README](charts/app/ksvc/README.md). |
 | [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 1.0.0, with before/after values for every breaking change. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Curated release history; the `1.0.0` section summarizes the features, breaking changes, and migration links. |
 | `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
@@ -231,6 +232,8 @@ make test-schema          # values.schema.json positive + negative cases
 make test-kube-version    # examples/app reject Kubernetes < 1.28
 make check-docs           # README requirements drift check
 make check-markdown-links # local Markdown link check
+make check-artifacthub    # Artifact Hub metadata check for both charts
+make check-changelog      # CHANGELOG product-line coverage check
 make check-locks          # committed Chart.lock files match Chart.yaml
 make test-release-logic   # release gate, reconciliation, and lock tests
 make docs                 # regenerate charts/library/ksvc/README.md (helm-docs, docker)
@@ -254,8 +257,12 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
     workflow runs the Chart Lock Consistency job and the Release Logic Tests
     (release gate, reconciliation, and stale-lock fixtures). Every GitHub
     Action is pinned to a full commit SHA; the Action Pin Guard job
-    (`hack/check-action-pins.sh`) fails on floating `@vN` refs. Python
-    dependencies come from the pinned [`requirements-ci.txt`](requirements-ci.txt).
+    (`hack/check-action-pins.sh`) fails on floating `@vN` refs. The GitHub
+    Actions Lint job runs `actionlint` over every workflow, the Repository YAML
+    Lint job runs `yamllint -c .yamllint` over the workflows, charts, examples,
+    and Flux manifests, and the Changelog and Artifact Hub Metadata job validates
+    both `Chart.yaml` files and the changelog. Python dependencies come from the
+    pinned [`requirements-ci.txt`](requirements-ci.txt).
 *   **Docs** (`.github/workflows/docs.yaml`) — helm-docs sync, README
     requirements drift checks, Markdown lint, local link checks, and external
     link checks (also run weekly).
