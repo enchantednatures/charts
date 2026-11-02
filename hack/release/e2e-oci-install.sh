@@ -120,8 +120,8 @@ release_revision() {
 }
 
 release_chart_version() {
-  helm status "$release_name" --namespace "$namespace" --output json \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["chart"]["metadata"]["version"])'
+  helm get metadata "$release_name" --namespace "$namespace" --output json \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])'
 }
 
 kservice_image() {
