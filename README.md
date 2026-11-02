@@ -142,6 +142,21 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
 *   **Release** (`.github/workflows/release.yaml`) — the OCI release pipeline
     described above.
 
+## Contributing and support
+
+*   **Contributing:** read [CONTRIBUTING.md](CONTRIBUTING.md) for local test
+    commands, pull request expectations, and conventional commit style.
+*   **Versioning and deprecation:** the public values API follows SemVer. See
+    [the versioning and deprecation policy](CONTRIBUTING.md#versioning-and-deprecation)
+    for major, minor, and patch rules, experimental features, and the required
+    breaking-change release-note format.
+*   **Support:** open a GitHub issue using the bug report or feature request
+    template. Security reports go through [SECURITY.md](SECURITY.md).
+*   **Security:** report vulnerabilities privately through GitHub Security
+    Advisories as described in [SECURITY.md](SECURITY.md).
+*   **Code of conduct:** participation is covered by
+    [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
 ## License
 
 See the [LICENSE](LICENSE) file for the license governing this repository.

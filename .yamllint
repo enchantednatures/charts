@@ -1,0 +1,52 @@
+---
+# yamllint configuration for Helm, Flux, and GitHub Actions YAML.
+#
+# Run locally with:
+#   yamllint -c .yamllint .github/workflows/*.yaml charts examples flux
+extends: default
+
+# Helm templates contain Go template actions, so they are not valid YAML until
+# rendered. CI lints the rendered output instead.
+ignore: |
+  **/templates/**
+  **/charts/*.tgz
+
+rules:
+  # Long lines are common in comments, Helm values, and workflow shell blocks.
+  line-length: disable
+
+  # GitHub Actions uses `on:` as a key. `check-keys: false` keeps the YAML 1.1
+  # truthy rule from rejecting it, while explicit true/false values are still
+  # required elsewhere.
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+
+  # `---` is optional in this repository; do not force it on every file.
+  document-start: disable
+
+  # Two-space indentation matches the existing YAML. Sequences may be indented
+  # under their parent key or aligned with it; `consistent` accepts both styles
+  # already used in the charts and examples.
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+    check-multi-line-strings: false
+
+  # Workflows keep short trailing comments such as `# v7.0.1` next to an
+  # action pin. Require at least one space, not the default two.
+  comments:
+    require-starting-space: true
+    min-spaces-from-content: 1
+
+  # Comment indentation is stylistic and noisy in generated or copied YAML.
+  comments-indentation: false
+
+  # Do not fail on bracketed lists or flow mappings that use a few inner
+  # spaces; the repository has no strict preference.
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1

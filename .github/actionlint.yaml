@@ -1,0 +1,11 @@
+---
+# actionlint configuration for this repository.
+#
+# The workflows run on GitHub-hosted runners, so no self-hosted runner labels
+# are declared. `config-variables` is null because the repository does not
+# define custom configuration variables; actionlint should not infer any.
+
+self-hosted-runner:
+  labels: []
+
+config-variables: null
