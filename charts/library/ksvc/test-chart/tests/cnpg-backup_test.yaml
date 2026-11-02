@@ -1,0 +1,83 @@
+suite: cnpg backup tests
+templates:
+  - templates/common.yaml
+
+# Render order with postgres enabled, pooler/monitoring disabled, backup enabled:
+#   doc0 = Knative Service   test-release-api
+#   doc1 = CNPG Cluster      test-release-postgres
+#   doc2 = ObjectStore       test-release-postgres-backup-store
+#   doc3 = ScheduledBackup   test-release-postgres-daily-backup
+set:
+  services.api.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: false
+  postgres.monitoring.enabled: false
+  postgres.backup.enabled: true
+  postgres.backup.objectStore.destinationPath: s3://backups/postgres
+  postgres.backup.objectStore.endpointURL: http://rgw.example:80
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: renders a ScheduledBackup with the default schedule and target
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: ScheduledBackup
+      - equal:
+          path: apiVersion
+          value: postgresql.cnpg.io/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-daily-backup
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: backup
+      - equal:
+          path: spec.schedule
+          value: "0 2 * * *"
+      - equal:
+          path: spec.target
+          value: prefer-standby
+
+  - it: renders custom schedule and target values
+    set:
+      postgres.backup.schedule: "0 3 * * *"
+      postgres.backup.target: primary
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.schedule
+          value: "0 3 * * *"
+      - equal:
+          path: spec.target
+          value: primary
+
+  - it: targets the CNPG cluster and uses the barman-cloud plugin
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.cluster.name
+          value: test-release-postgres
+      - equal:
+          path: spec.method
+          value: plugin
+      - equal:
+          path: spec.pluginConfiguration.name
+          value: barman-cloud.cloudnative-pg.io
+      - equal:
+          path: spec.pluginConfiguration.parameters.barmanObjectName
+          value: test-release-postgres-backup-store
+
+  - it: renders no backup resources when backup is disabled
+    set:
+      postgres.backup.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: Cluster
+        documentIndex: 1
