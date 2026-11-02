@@ -1,6 +1,6 @@
 dependencies:
 - name: ksvc
   repository: oci://ghcr.io/enchantednatures/charts
-  version: 1.0.0-rc.1.4
-digest: sha256:7e4adcb5231c9e860cbcce8251b9968db1ba1b78493171306f6261e6df1ec02f
-generated: "2026-11-02T07:28:57.458435789Z"
+  version: 1.0.0
+digest: sha256:66a81ece45c9ee058981d65862b20ff955e40ea2e66f52800fb8efc1aceeb166
+generated: "2026-11-02T07:50:46.071124502Z"
