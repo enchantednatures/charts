@@ -15,6 +15,12 @@
 #
 # --repair requires the OCI artifact to already exist and is intended for
 # workflow_dispatch runs that only repair a missing tag or GitHub Release.
+#
+# Application charts wait for their ksvc dependency to exist in OCI before
+# packaging, then assert the packaged chart pins that same version. Tune the
+# wait with:
+#   DEPENDENCY_WAIT_ATTEMPTS          (default 60)
+#   DEPENDENCY_WAIT_INTERVAL_SECONDS  (default 10)
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -26,6 +32,8 @@ tag=""
 commit=""
 repair=false
 workdir="${RUNNER_TEMP:-/tmp}/release-charts"
+dep_wait_attempts="${DEPENDENCY_WAIT_ATTEMPTS:-60}"
+dep_wait_interval="${DEPENDENCY_WAIT_INTERVAL_SECONDS:-10}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -39,7 +47,7 @@ while [ "$#" -gt 0 ]; do
     --workdir) workdir="${2:?--workdir requires a value}"; shift 2 ;;
     --repair) repair=true; shift ;;
     -h|--help)
-      sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -55,6 +63,23 @@ for value in chart version chart_path chart_type tag commit; do
     exit 2
   fi
 done
+
+case "$dep_wait_attempts" in
+  ''|*[!0-9]*)
+    echo "::error::DEPENDENCY_WAIT_ATTEMPTS must be a non-negative integer (got '$dep_wait_attempts')" >&2
+    exit 2
+    ;;
+esac
+case "$dep_wait_interval" in
+  ''|*[!0-9]*)
+    echo "::error::DEPENDENCY_WAIT_INTERVAL_SECONDS must be a non-negative integer (got '$dep_wait_interval')" >&2
+    exit 2
+    ;;
+esac
+if [ "$dep_wait_attempts" -lt 1 ]; then
+  echo "::error::DEPENDENCY_WAIT_ATTEMPTS must be at least 1" >&2
+  exit 2
+fi
 
 if [ -z "${GITHUB_REPOSITORY:-}" ]; then
   echo "::error::GITHUB_REPOSITORY is required for GitHub Release reconciliation" >&2
@@ -106,6 +131,80 @@ repository_owner="${GITHUB_REPOSITORY%%/*}"
 oci_repository="oci://${registry}/${repository_owner}/charts"
 oci_ref="${oci_repository}/${chart}"
 
+read_dependency_version() {
+  local chart_file="$1"
+  local dependency_name="$2"
+  awk -v dependency="$dependency_name" '
+    BEGIN { in_dependencies = 0; in_item = 0 }
+    /^dependencies:[[:space:]]*$/ { in_dependencies = 1; in_item = 0; next }
+    in_dependencies && /^[^[:space:]-]/ { in_dependencies = 0; in_item = 0 }
+    in_dependencies && /^[[:space:]]+-[[:space:]]*name:[[:space:]]*/ {
+      name = $0
+      sub(/^[[:space:]]+-[[:space:]]*name:[[:space:]]*/, "", name)
+      gsub(/["\047]/, "", name)
+      in_item = (name == dependency)
+      next
+    }
+    in_item && /^[[:space:]]+version:[[:space:]]*/ {
+      version = $0
+      sub(/^[[:space:]]+version:[[:space:]]*/, "", version)
+      gsub(/["\047]/, "", version)
+      sub(/[[:space:]]+#.*$/, "", version)
+      print version
+      exit
+    }
+  ' "$chart_file"
+}
+
+wait_for_oci_dependency() {
+  local app_chart="$1"
+  local dependency_name="$2"
+  local dependency_version="$3"
+  local dependency_ref="${oci_repository}/${dependency_name}"
+  local attempt=1
+  local max_seconds=$((dep_wait_attempts * dep_wait_interval))
+
+  while [ "$attempt" -le "$dep_wait_attempts" ]; do
+    if helm show chart "$dependency_ref" --version "$dependency_version" >/dev/null 2>&1; then
+      echo "Dependency ${dependency_name} v${dependency_version} is available in OCI for ${app_chart}."
+      return 0
+    fi
+    if [ "$attempt" -lt "$dep_wait_attempts" ]; then
+      sleep "$dep_wait_interval"
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  echo "::error::Application chart ${app_chart} requires ${dependency_name} v${dependency_version}, but it was not published at ${dependency_ref}:${dependency_version} after ${dep_wait_attempts} attempts (~${max_seconds}s). Ensure the ${dependency_name} release finishes before the application chart packages." >&2
+  return 1
+}
+
+assert_packaged_dependency_version() {
+  local asset="$1"
+  local app_chart="$2"
+  local dependency_name="$3"
+  local expected_version="$4"
+  local packaged_manifest packaged_version
+
+  if ! packaged_manifest="$(tar -xOzf "$asset" "${app_chart}/Chart.yaml" 2>/dev/null)"; then
+    echo "::error::Could not read ${app_chart}/Chart.yaml from packaged asset ${asset}" >&2
+    return 1
+  fi
+
+  packaged_version="$(printf '%s\n' "$packaged_manifest" | read_dependency_version /dev/stdin "$dependency_name")"
+  if [ -z "$packaged_version" ]; then
+    echo "::error::Packaged ${app_chart} asset does not declare a ${dependency_name} dependency; expected v${expected_version}." >&2
+    return 1
+  fi
+
+  if [ "$packaged_version" != "$expected_version" ]; then
+    echo "::error::Packaged ${app_chart} asset pins ${dependency_name} v${packaged_version} but the release expects v${expected_version}. Refusing to publish a package built against the wrong dependency version." >&2
+    return 1
+  fi
+
+  echo "Packaged ${app_chart} pins ${dependency_name} v${expected_version} as expected."
+}
+
 oci_exists=false
 if helm show chart "$oci_ref" --version "$version" >/dev/null 2>&1; then
   oci_exists=true
@@ -136,7 +235,15 @@ if [ "$need_package" = true ]; then
   mkdir -p "$workdir"
   rm -f "$asset"
 
+  dependency_version=""
   if [ "$chart_type" = "application" ]; then
+    dependency_version="$(read_dependency_version "$chart_yaml" ksvc)"
+    if [ -z "$dependency_version" ]; then
+      echo "::error::Application chart ${chart} does not declare a ksvc dependency in ${chart_yaml}" >&2
+      exit 1
+    fi
+
+    wait_for_oci_dependency "$chart" ksvc "$dependency_version"
     helm dependency build "$chart_path"
   fi
 
@@ -145,6 +252,10 @@ if [ "$need_package" = true ]; then
   if [ ! -f "$asset" ]; then
     echo "::error::helm package did not produce the expected asset: $asset" >&2
     exit 1
+  fi
+
+  if [ "$chart_type" = "application" ]; then
+    assert_packaged_dependency_version "$asset" "$chart" ksvc "$dependency_version"
   fi
 fi
 
