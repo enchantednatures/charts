@@ -116,6 +116,7 @@ jobs:
       contents: write
       packages: write
       id-token: write
+    environment: release
     if: needs.detect.outputs.matrix != '' && toJSON(fromJSON(needs.detect.outputs.matrix).include) != '[]'
     strategy:
       fail-fast: false

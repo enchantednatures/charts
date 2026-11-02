@@ -25,6 +25,7 @@ jobs:
       contents: read
       packages: write
       pull-requests: write
+    environment: prerelease
     # Skip fork PRs: GITHUB_TOKEN is read-only for workflows triggered from a
     # fork, so the registry login/push and the PR comment would all fail. The
     # same guard is mirrored on the cleanup job so both stay symmetric.
