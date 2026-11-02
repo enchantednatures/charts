@@ -147,9 +147,9 @@ read_dependency_version() {
     BEGIN { in_dependencies = 0; in_item = 0 }
     /^dependencies:[[:space:]]*$/ { in_dependencies = 1; in_item = 0; next }
     in_dependencies && /^[^[:space:]-]/ { in_dependencies = 0; in_item = 0 }
-    in_dependencies && /^[[:space:]]+-[[:space:]]*name:[[:space:]]*/ {
+    in_dependencies && /^[[:space:]]*-[[:space:]]*name:[[:space:]]*/ {
       name = $0
-      sub(/^[[:space:]]+-[[:space:]]*name:[[:space:]]*/, "", name)
+      sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/, "", name)
       gsub(/["\047]/, "", name)
       in_item = (name == dependency)
       next

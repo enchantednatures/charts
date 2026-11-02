@@ -91,6 +91,9 @@ case "${1:-}" in
     rm -rf "$staging"
     mkdir -p "$staging/$name" "$dest"
     cp "$chart_dir/Chart.yaml" "$staging/$name/Chart.yaml"
+    if [ -f "$FAKE_STATE/packaged-zero-indent-deps" ]; then
+      sed -i '/^dependencies:/,/^[^[:space:]]/ s/^  //' "$staging/$name/Chart.yaml"
+    fi
     if [ -f "$FAKE_STATE/packaged-dependency-version" ]; then
       pinned="$(cat "$FAKE_STATE/packaged-dependency-version")"
       sed -i "s/^\\([[:space:]]*version:\\).*/\\1 ${pinned}/" "$staging/$name/Chart.yaml"
@@ -341,6 +344,7 @@ echo "OK: fully reconciled release is a no-op"
 # ---------------------------------------------------------------------------
 new_repo app-dependency-available
 : > "$NEW_STATE/dep-oci"
+: > "$NEW_STATE/packaged-zero-indent-deps"
 run_reconcile_app
 [ "$RC" -eq 0 ] || fail "app dependency-available scenario exited $RC: $(cat "$NEW_STATE/run.log")"
 assert_file "$NEW_STATE/oci"
@@ -354,6 +358,7 @@ echo "OK: application chart packages when its ksvc dependency is already publish
 # 8. Application chart dependency appears after a retry: still packages.
 # ---------------------------------------------------------------------------
 new_repo app-dependency-retry
+: > "$NEW_STATE/packaged-zero-indent-deps"
 FAKE_DEP_APPEAR_AFTER=3 DEPENDENCY_WAIT_ATTEMPTS=5 DEPENDENCY_WAIT_INTERVAL_SECONDS=0 run_reconcile_app
 [ "$RC" -eq 0 ] || fail "app dependency-retry scenario exited $RC: $(cat "$NEW_STATE/run.log")"
 assert_file "$NEW_STATE/dep-oci"
@@ -367,6 +372,7 @@ echo "OK: application chart wait retries until the ksvc dependency is published"
 # ---------------------------------------------------------------------------
 new_repo app-dependency-mismatch
 : > "$NEW_STATE/dep-oci"
+: > "$NEW_STATE/packaged-zero-indent-deps"
 echo "9.9.9" > "$NEW_STATE/packaged-dependency-version"
 run_reconcile_app
 [ "$RC" -ne 0 ] || fail "packaged dependency mismatch unexpectedly succeeded"
