@@ -91,3 +91,19 @@ tests:
     asserts:
       - hasDocuments:
           count: 1
+
+  - it: should sink to the kafka broker when the broker is enabled
+    set:
+      kafka.broker.enabled: true
+      kafka.sources.events.sink: ""
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.sink.ref.apiVersion
+          value: eventing.knative.dev/v1
+      - equal:
+          path: spec.sink.ref.kind
+          value: Broker
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-kafka-broker

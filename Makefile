@@ -34,6 +34,8 @@ FLAGGER_BRANCH        ?= main
 KAFKA_EVENTING_VERSION ?= v1.17.0
 DRAGONFLY_BRANCH      ?= main
 KYVERNO_CHART_VERSION ?= 3.9.1
+STRIMZI_VERSION       ?= 1.3.0
+REDPANDA_OPERATOR_VERSION ?= 26.2.5
 HELM_VERSION          ?= v3.17.0
 HELM_DOCS_VERSION     ?= v1.14.2
 KIND_CLUSTER_NAME     ?= test-cluster
@@ -61,6 +63,8 @@ MONITORING_CRDS := \
 FLAGGER_CRDS := https://raw.githubusercontent.com/fluxcd/flagger/$(FLAGGER_BRANCH)/artifacts/flagger/crd.yaml
 
 KAFKA_SOURCE_CRDS := https://raw.githubusercontent.com/knative-extensions/eventing-kafka-broker/knative-$(KAFKA_EVENTING_VERSION)/control-plane/config/eventing-kafka-broker/100-source/100-kafka-source.yaml
+
+STRIMZI_CRDS := https://github.com/strimzi/strimzi-kafka-operator/releases/download/$(STRIMZI_VERSION)/strimzi-crds-$(STRIMZI_VERSION).yaml
 
 EVENTING_CRDS := https://github.com/knative/eventing/releases/download/knative-$(KNATIVE_VERSION)/eventing-crds.yaml
 
@@ -167,6 +171,16 @@ install-flagger: ## Install Flagger CRDs
 install-kafka: ## Install Kafka (KafkaSource) CRDs
 	$(call apply-with-retry,$(KAFKA_SOURCE_CRDS))
 
+.PHONY: install-strimzi-crds
+install-strimzi-crds: ## Install Strimzi Kafka CRDs
+	$(call apply-with-retry,$(STRIMZI_CRDS))
+	$(call wait-established,kafkas.kafka.strimzi.io kafkanodepools.kafka.strimzi.io kafkatopics.kafka.strimzi.io kafkausers.kafka.strimzi.io)
+
+.PHONY: install-redpanda-crds
+install-redpanda-crds: ## Install Redpanda CRDs
+	@hack/install-redpanda-crds.sh
+	$(call wait-established,redpandas.cluster.redpanda.com topics.cluster.redpanda.com users.cluster.redpanda.com)
+
 .PHONY: install-eventing
 install-eventing: ## Install Knative Eventing CRDs (Broker, Trigger)
 	$(call apply-with-retry,$(EVENTING_CRDS))
@@ -193,7 +207,7 @@ install-kyverno: ## Install Kyverno (CRDs + admission/background/cleanup/reports
 	$(call wait-kyverno-webhook)
 
 .PHONY: install-all-crds
-install-all-crds: install-knative install-cnpg install-monitoring install-flagger install-kafka install-eventing install-dragonfly install-object-bucket ## Install all CRDs
+install-all-crds: install-knative install-cnpg install-monitoring install-flagger install-kafka install-strimzi-crds install-redpanda-crds install-eventing install-dragonfly install-object-bucket ## Install all CRDs
 
 # ---------------------------------------------------------------------------
 # Kind cluster management

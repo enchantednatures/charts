@@ -1,0 +1,68 @@
+# Managed Redpanda cluster (no cert-manager and no external operator values).
+# Two sources intentionally share `incoming-events` to show that the chart
+# renders exactly one Topic per distinct topic.
+services:
+  processor:
+    image:
+      repository: ghcr.io/example-org/event-processor
+      tag: "v1.0.0"
+    scaling:
+      minScale: 0
+      maxScale: 10
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+  audit:
+    image:
+      repository: ghcr.io/example-org/audit-logger
+      tag: "v1.0.0"
+    scaling:
+      minScale: 0
+      maxScale: 5
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+kafka:
+  cluster:
+    enabled: true
+    provider: redpanda
+    replicas: 3
+    storage:
+      size: "20Gi"
+    tls:
+      enabled: false
+    auth:
+      type: none
+    topics:
+      create: true
+      partitions: 3
+
+  sources:
+    events:
+      topic: "incoming-events"
+      consumerGroup: "event-processor-group"
+      sink: processor
+      consumers: 2
+      initialOffset: earliest
+      dlq:
+        enabled: false
+
+    audit:
+      # Same topic as `events`: validates topic deduplication.
+      topic: "incoming-events"
+      consumerGroup: "audit-logger-group"
+      sink: audit
+      consumers: 1
+      initialOffset: earliest
+      dlq:
+        enabled: false

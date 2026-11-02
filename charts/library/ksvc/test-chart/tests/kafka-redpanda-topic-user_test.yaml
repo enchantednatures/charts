@@ -1,0 +1,206 @@
+suite: kafka redpanda topic and user tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.cluster.enabled: true
+  kafka.cluster.provider: redpanda
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # -------------------------------------------------------------------------
+  # Topics
+  # -------------------------------------------------------------------------
+  - it: renders one Topic per distinct source topic and maps cluster/partitions/RF
+    set:
+      kafka.sources.a.topic: shared-topic
+      kafka.sources.a.sink: api
+      kafka.sources.a.dlq.enabled: false
+      kafka.sources.b.topic: shared-topic
+      kafka.sources.b.sink: api
+      kafka.sources.b.dlq.enabled: false
+    # service + Redpanda + one deduplicated Topic + two KafkaSources
+    asserts:
+      - hasDocuments:
+          count: 5
+
+  - it: renders Topic fields for a three-replica cluster
+    set:
+      kafka.cluster.topics.partitions: 6
+      kafka.sources.a.topic: orders
+      kafka.sources.a.sink: api
+    documentSelector:
+      path: kind
+      value: Topic
+    asserts:
+      - equal:
+          path: apiVersion
+          value: cluster.redpanda.com/v1alpha2
+      - equal:
+          path: metadata.name
+          value: orders
+      - equal:
+          path: spec.cluster.clusterRef.name
+          value: test-release-kafka
+      - equal:
+          path: spec.partitions
+          value: 6
+      - equal:
+          path: spec.replicationFactor
+          value: 3
+
+  - it: uses replication factor one for two replicas
+    set:
+      kafka.cluster.replicas: 2
+      kafka.sources.a.topic: orders
+      kafka.sources.a.sink: api
+    documentSelector:
+      path: kind
+      value: Topic
+    asserts:
+      - equal:
+          path: spec.replicationFactor
+          value: 1
+
+  - it: uses replication factor one for a single replica
+    set:
+      kafka.cluster.replicas: 1
+      kafka.sources.a.topic: orders
+      kafka.sources.a.sink: api
+    documentSelector:
+      path: kind
+      value: Topic
+    asserts:
+      - equal:
+          path: spec.replicationFactor
+          value: 1
+
+  - it: does not render topics when topics.create is false
+    set:
+      kafka.cluster.topics.create: false
+      kafka.sources.a.topic: orders
+      kafka.sources.a.sink: api
+      kafka.sources.a.dlq.enabled: false
+      kafka.sources.b.topic: invoices
+      kafka.sources.b.sink: api
+      kafka.sources.b.dlq.enabled: false
+    # service + Redpanda + two KafkaSources, no Topic documents
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  # -------------------------------------------------------------------------
+  # Users
+  # -------------------------------------------------------------------------
+  - it: does not render a User when managed auth is none
+    set:
+      kafka.sources.a.topic: orders
+      kafka.sources.a.sink: api
+      kafka.sources.a.dlq.enabled: false
+    # service + Redpanda + Topic + KafkaSource, no User document
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  - it: renders the managed SCRAM user and password reference
+    set:
+      kafka.cluster.auth.type: scram
+      kafka.cluster.redpanda.sasl.secretRef: redpanda-superusers
+      kafka.sources.a.topic: orders
+      kafka.sources.a.sink: api
+      kafka.sources.a.net.sasl.enabled: true
+    documentSelector:
+      path: kind
+      value: User
+    asserts:
+      - equal:
+          path: apiVersion
+          value: cluster.redpanda.com/v1alpha2
+      - equal:
+          path: metadata.name
+          value: test-release-kafka-user
+      - equal:
+          path: spec.cluster.clusterRef.name
+          value: test-release-kafka
+      - equal:
+          path: spec.authentication.type
+          value: scram-sha-512
+      - equal:
+          path: spec.authentication.password.valueFrom.secretKeyRef.name
+          value: test-release-kafka-user
+      - equal:
+          path: spec.authentication.password.valueFrom.secretKeyRef.key
+          value: password
+
+  - it: deduplicates topic and group ACLs
+    set:
+      kafka.cluster.auth.type: scram
+      kafka.cluster.redpanda.sasl.secretRef: redpanda-superusers
+      kafka.sources.a.topic: orders
+      kafka.sources.a.sink: api
+      kafka.sources.a.consumerGroup: shared-group
+      kafka.sources.a.net.sasl.enabled: true
+      kafka.sources.b.topic: invoices
+      kafka.sources.b.sink: api
+      kafka.sources.b.consumerGroup: shared-group
+      kafka.sources.b.net.sasl.enabled: true
+      kafka.sources.c.topic: orders
+      kafka.sources.c.sink: api
+      kafka.sources.c.consumerGroup: orders-group
+      kafka.sources.c.net.sasl.enabled: true
+    documentSelector:
+      path: kind
+      value: User
+    asserts:
+      - equal:
+          path: spec.authorization.type
+          value: simple
+      - lengthEqual:
+          path: spec.authorization.acls
+          count: 4
+      # topics are sorted: invoices, orders
+      - equal:
+          path: spec.authorization.acls[0].type
+          value: allow
+      - equal:
+          path: spec.authorization.acls[0].resource.type
+          value: topic
+      - equal:
+          path: spec.authorization.acls[0].resource.name
+          value: invoices
+      - equal:
+          path: spec.authorization.acls[0].resource.patternType
+          value: literal
+      - equal:
+          path: spec.authorization.acls[0].host
+          value: "*"
+      - equal:
+          path: spec.authorization.acls[0].operations
+          value:
+            - Read
+            - Describe
+            - Write
+      - equal:
+          path: spec.authorization.acls[1].resource.type
+          value: topic
+      - equal:
+          path: spec.authorization.acls[1].resource.name
+          value: orders
+      # groups are sorted: orders-group, shared-group
+      - equal:
+          path: spec.authorization.acls[2].resource.type
+          value: group
+      - equal:
+          path: spec.authorization.acls[2].resource.name
+          value: orders-group
+      - equal:
+          path: spec.authorization.acls[2].operations
+          value:
+            - Read
+      - equal:
+          path: spec.authorization.acls[3].resource.type
+          value: group
+      - equal:
+          path: spec.authorization.acls[3].resource.name
+          value: shared-group

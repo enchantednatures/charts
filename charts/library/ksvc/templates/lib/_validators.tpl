@@ -172,18 +172,90 @@ Call this from the loader to catch misconfigurations early.
     {{- end -}}
   {{- end -}}
 
-  {{/* kafka source sink validation: each source's sink must reference a valid services key */}}
+  {{- /* kafka broker, source, and trigger validation */ -}}
+  {{- $hasBroker := and .Values.kafka .Values.kafka.broker .Values.kafka.broker.enabled -}}
+  {{- $cluster := .Values.kafka.cluster | default dict -}}
+  {{- if $cluster.enabled -}}
+    {{- if not (has $cluster.provider (list "strimzi" "redpanda")) -}}
+      {{- fail (printf "kafka.cluster.provider must be one of strimzi, redpanda (got %v)" $cluster.provider) -}}
+    {{- end -}}
+    {{- include "ksvc.validate.requireInteger" (dict "value" $cluster.replicas "path" "kafka.cluster.replicas") -}}
+    {{- $clusterReplicas := int $cluster.replicas -}}
+    {{- if or (lt $clusterReplicas 1) (gt $clusterReplicas 16) -}}
+      {{- fail (printf "kafka.cluster.replicas must be >= 1 and <= 16 (got %d)" $clusterReplicas) -}}
+    {{- end -}}
+    {{- if and $cluster.name (gt (len $cluster.name) 47) -}}
+      {{- fail (printf "kafka.cluster.name must be <= 47 characters so derived Service names stay <= 63 (got %d)" (len $cluster.name)) -}}
+    {{- end -}}
+    {{- if and $cluster.name (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $cluster.name)) -}}
+      {{- fail (printf "kafka.cluster.name must be a DNS-1123 label (got %v)" $cluster.name) -}}
+    {{- end -}}
+    {{- if not (has $cluster.auth.type (list "none" "scram")) -}}
+      {{- fail (printf "kafka.cluster.auth.type must be one of none, scram (got %v)" $cluster.auth.type) -}}
+    {{- end -}}
+    {{- if and $cluster.auth.username (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $cluster.auth.username)) -}}
+      {{- fail (printf "kafka.cluster.auth.username must be a DNS-1123 label (got %v)" $cluster.auth.username) -}}
+    {{- end -}}
+    {{- include "ksvc.validate.requireInteger" (dict "value" $cluster.topics.partitions "path" "kafka.cluster.topics.partitions") -}}
+    {{- if lt (int $cluster.topics.partitions) 1 -}}
+      {{- fail (printf "kafka.cluster.topics.partitions must be >= 1 (got %d)" (int $cluster.topics.partitions)) -}}
+    {{- end -}}
+    {{- if and (eq $cluster.provider "redpanda") (eq $cluster.auth.type "scram") (not $cluster.redpanda.sasl.secretRef) -}}
+      {{- fail "kafka.cluster.redpanda.sasl.secretRef is required when kafka.cluster.auth.type=scram for Redpanda — provide a superuser Secret in users.txt format" -}}
+    {{- end -}}
+    {{- if and $hasBroker (or (eq $cluster.auth.type "scram") $cluster.tls.enabled) (not .Values.kafka.broker.config.authSecretName) -}}
+      {{- fail "kafka.broker.config.authSecretName is required when kafka.broker.enabled=true and the managed cluster uses SCRAM or TLS — the Broker needs a Secret with sasl.mechanism, user, password, security.protocol (and ca.crt for TLS)" -}}
+    {{- end -}}
+    {{- $topicNames := dict -}}
+    {{- range $key, $source := .Values.kafka.sources -}}
+      {{- if eq $cluster.provider "redpanda" -}}
+        {{- if not (regexMatch "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" $source.topic) -}}
+          {{- fail (printf "kafka.sources.%s.topic must be a DNS-1123 subdomain for Redpanda (got %v)" $key $source.topic) -}}
+        {{- end -}}
+      {{- else -}}
+        {{- $sanitized := include "ksvc.kafkaTopicName" $source.topic -}}
+        {{- if hasKey $topicNames $sanitized -}}
+          {{- if ne (index $topicNames $sanitized) $source.topic -}}
+            {{- fail (printf "kafka.sources.%s.topic sanitizes to '%s', which collides with topic '%s'" $key $sanitized (index $topicNames $sanitized)) -}}
+          {{- end -}}
+        {{- else -}}
+          {{- $_ := set $topicNames $sanitized $source.topic -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if $hasBroker -}}
+    {{- if not (kindIs "map" .Values.kafka.broker.config) -}}
+      {{- fail "kafka.broker.config must be a map" -}}
+    {{- end -}}
+    {{- if not .Values.kafka.broker.config.bootstrapServers -}}
+      {{- fail "kafka.broker.config.bootstrapServers must contain at least one server when kafka.broker.enabled=true" -}}
+    {{- end -}}
+    {{- if .Values.kafka.broker.delivery.deadLetterSink.enabled -}}
+      {{- if and (not .Values.kafka.broker.delivery.deadLetterSink.uri) (not .Values.kafka.broker.delivery.deadLetterSink.ref.name) -}}
+        {{- fail "kafka.broker.delivery.deadLetterSink requires either uri or ref.name when enabled" -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- /* kafka source sink validation */ -}}
   {{- if and .Values.kafka .Values.kafka.sources -}}
     {{- range $key, $source := .Values.kafka.sources -}}
-      {{- if not $source.sink -}}
-        {{- fail (printf "kafka.sources.%s.sink is required and must reference a key in the services map" $key) -}}
-      {{- end -}}
-      {{- if not (hasKey $.Values.services $source.sink) -}}
-        {{- fail (printf "kafka.sources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
-      {{- end -}}
-      {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a Kafka sink */}}
-      {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
-        {{- fail (printf "kafka.sources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
+      {{- if $hasBroker -}}
+        {{- if $source.sink -}}
+          {{- fail (printf "kafka.sources.%s.sink must not be set when kafka.broker.enabled=true — sources sink to the broker; remove sink or disable the broker" $key) -}}
+        {{- end -}}
+      {{- else -}}
+        {{- if not $source.sink -}}
+          {{- fail (printf "kafka.sources.%s.sink is required and must reference a key in the services map" $key) -}}
+        {{- end -}}
+        {{- if not (hasKey $.Values.services $source.sink) -}}
+          {{- fail (printf "kafka.sources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
+        {{- end -}}
+        {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a Kafka sink */}}
+        {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
+          {{- fail (printf "kafka.sources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
+        {{- end -}}
       {{- end -}}
       {{/* DLQ scaling validation (only when the DLQ is enabled) */}}
       {{- if and $source.dlq $source.dlq.enabled -}}
@@ -202,6 +274,85 @@ Call this from the loader to catch misconfigurations early.
         {{- end -}}
         {{- if gt $dlqMinScale $dlqMaxScale -}}
           {{- fail (printf "kafka.sources.%s.dlq.scaling: minScale (%d) must be <= maxScale (%d)" $key $dlqMinScale $dlqMaxScale) -}}
+        {{- end -}}
+      {{- end -}}
+      {{/* KafkaSource TLS/SASL validation */}}
+      {{- $net := $source.net | default dict -}}
+      {{- $tls := $net.tls | default dict -}}
+      {{- $sasl := $net.sasl | default dict -}}
+      {{- $managed := and $.Values.kafka $.Values.kafka.cluster $.Values.kafka.cluster.enabled -}}
+      {{- if $managed -}}
+        {{- if and (eq $cluster.auth.type "scram") (not $sasl.enabled) -}}
+          {{- fail (printf "kafka.sources.%s.net.sasl.enabled must be true when kafka.cluster.auth.type=scram" $key) -}}
+        {{- end -}}
+        {{- if and $cluster.tls.enabled (not $tls.enabled) -}}
+          {{- fail (printf "kafka.sources.%s.net.tls.enabled must be true when kafka.cluster.tls.enabled=true" $key) -}}
+        {{- end -}}
+        {{- if and $sasl.enabled (ne $cluster.auth.type "scram") -}}
+          {{- fail (printf "kafka.sources.%s.net.sasl.enabled requires kafka.cluster.auth.type=scram" $key) -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if $tls.enabled -}}
+        {{- if and (not $tls.caCertSecret) (not $managed) -}}
+          {{- fail (printf "kafka.sources.%s.net.tls.caCertSecret is required when net.tls.enabled=true and kafka.cluster is not enabled" $key) -}}
+        {{- end -}}
+        {{- if not $sasl.enabled -}}
+          {{- if not $tls.certSecret -}}
+            {{- fail (printf "kafka.sources.%s.net.tls.certSecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret" $key) -}}
+          {{- end -}}
+          {{- if not $tls.keySecret -}}
+            {{- fail (printf "kafka.sources.%s.net.tls.keySecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret" $key) -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if $sasl.enabled -}}
+        {{- $mechanisms := list "PLAIN" "SCRAM-SHA-256" "SCRAM-SHA-512" -}}
+        {{- if not (has $sasl.mechanism $mechanisms) -}}
+          {{- fail (printf "kafka.sources.%s.net.sasl.mechanism must be one of PLAIN, SCRAM-SHA-256, SCRAM-SHA-512 (got %v)" $key $sasl.mechanism) -}}
+        {{- end -}}
+        {{- if not $managed -}}
+          {{- if not $sasl.userSecret -}}
+            {{- fail (printf "kafka.sources.%s.net.sasl.userSecret is required for external SASL; set kafka.cluster.enabled=true for managed credentials" $key) -}}
+          {{- end -}}
+          {{- if not $sasl.passwordSecret -}}
+            {{- fail (printf "kafka.sources.%s.net.sasl.passwordSecret is required for external SASL; set kafka.cluster.enabled=true for managed credentials" $key) -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- /* kafka trigger validation */ -}}
+  {{- if and .Values.kafka .Values.kafka.triggers -}}
+    {{- if not $hasBroker -}}
+      {{- fail "kafka.triggers requires kafka.broker.enabled=true — triggers route events from the broker to services" -}}
+    {{- end -}}
+    {{- range $key, $trigger := .Values.kafka.triggers -}}
+      {{- if not $trigger.subscriber -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber is required and must reference a key in the services map" $key) -}}
+      {{- end -}}
+      {{- if not (hasKey $.Values.services $trigger.subscriber) -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber references '%s' which does not exist in the services map" $key $trigger.subscriber) -}}
+      {{- end -}}
+      {{- if eq (index $.Values.services $trigger.subscriber).workload.type "Deployment" -}}
+        {{- fail (printf "kafka.triggers.%s.subscriber references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable subscriber; point the subscriber at a Knative service" $key $trigger.subscriber) -}}
+      {{- end -}}
+      {{- if and $trigger.dlq $trigger.dlq.enabled -}}
+        {{- if not (kindIs "map" $trigger.dlq.scaling) -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling must be a map (got %v)" $key $trigger.dlq.scaling) -}}
+        {{- end -}}
+        {{- include "ksvc.validate.requireInteger" (dict "value" $trigger.dlq.scaling.minScale "path" (printf "kafka.triggers.%s.dlq.scaling.minScale" $key)) -}}
+        {{- $dlqMinScale := int $trigger.dlq.scaling.minScale -}}
+        {{- include "ksvc.validate.requireInteger" (dict "value" $trigger.dlq.scaling.maxScale "path" (printf "kafka.triggers.%s.dlq.scaling.maxScale" $key)) -}}
+        {{- $dlqMaxScale := int $trigger.dlq.scaling.maxScale -}}
+        {{- if lt $dlqMinScale 0 -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling.minScale must be >= 0 (got %d)" $key $dlqMinScale) -}}
+        {{- end -}}
+        {{- if lt $dlqMaxScale 1 -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling.maxScale must be >= 1 (got %d)" $key $dlqMaxScale) -}}
+        {{- end -}}
+        {{- if gt $dlqMinScale $dlqMaxScale -}}
+          {{- fail (printf "kafka.triggers.%s.dlq.scaling: minScale (%d) must be <= maxScale (%d)" $key $dlqMinScale $dlqMaxScale) -}}
         {{- end -}}
       {{- end -}}
     {{- end -}}

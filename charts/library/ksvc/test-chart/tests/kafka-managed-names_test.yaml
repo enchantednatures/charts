@@ -1,0 +1,20 @@
+suite: kafka managed name boundary tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.cluster.enabled: true
+  kafka.sources.events.topic: events
+  kafka.sources.events.sink: api
+release:
+  name: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  namespace: test-ns
+tests:
+  - it: should truncate a long release's default cluster name to 47 characters
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - matchRegex:
+          path: "spec.bootstrapServers[0]"
+          pattern: "^a{47}-kafka-bootstrap\\.test-ns\\.svc\\.cluster\\.local:9092$"

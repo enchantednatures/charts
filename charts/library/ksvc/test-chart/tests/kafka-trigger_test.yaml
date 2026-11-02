@@ -1,0 +1,165 @@
+suite: kafka trigger tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.broker.enabled: true
+  kafka.triggers.order-events.subscriber: api
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # Document order with broker enabled and no sources:
+  # doc 0 = Knative Service (api), doc 1 = Broker ConfigMap, doc 2 = Broker,
+  # doc 3 = Trigger. With dlq.enabled: true, doc 4 = Trigger DLQ Service.
+  - it: should render the Trigger
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: Trigger
+      - equal:
+          path: apiVersion
+          value: eventing.knative.dev/v1
+      - equal:
+          path: metadata.name
+          value: test-release-order-events-trigger
+
+  - it: should reference the broker
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.broker
+          value: test-release-kafka-broker
+
+  - it: should reference the subscriber
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.subscriber.ref.name
+          value: test-release-api
+      - equal:
+          path: spec.subscriber.ref.kind
+          value: Service
+
+  - it: should honor the subscriber nameOverride
+    set:
+      services.api.nameOverride: prod-api
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.subscriber.ref.name
+          value: test-release-prod-api
+
+  - it: should render legacy filter attributes
+    set:
+      kafka.triggers.order-events.filter:
+        type: com.example.order.created
+        source: /orders
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.filter.attributes.type
+          value: com.example.order.created
+      - equal:
+          path: spec.filter.attributes.source
+          value: /orders
+
+  - it: should render modern filters
+    set:
+      kafka.triggers.order-events.filters:
+        - exact:
+            type: com.example.order.created
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: "spec.filters[0].exact.type"
+          value: com.example.order.created
+
+  - it: should render trigger delivery
+    set:
+      kafka.triggers.order-events.delivery.retry: 10
+      kafka.triggers.order-events.delivery.backoffPolicy: linear
+      kafka.triggers.order-events.delivery.backoffDelay: PT5S
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.delivery.retry
+          value: 10
+      - equal:
+          path: spec.delivery.backoffPolicy
+          value: linear
+      - equal:
+          path: spec.delivery.backoffDelay
+          value: PT5S
+
+  - it: should render trigger annotations
+    set:
+      kafka.triggers.order-events.annotations:
+        kafka.eventing.knative.dev/delivery.order: ordered
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: metadata.annotations["kafka.eventing.knative.dev/delivery.order"]
+          value: ordered
+
+  - it: should render the trigger DLQ service
+    set:
+      kafka.triggers.order-events.dlq.enabled: true
+    documentIndex: 4
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: test-release-order-events-trigger-dlq
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+
+  - it: should set the trigger dead letter sink
+    set:
+      kafka.triggers.order-events.dlq.enabled: true
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.delivery.deadLetterSink.ref.name
+          value: test-release-order-events-trigger-dlq
+
+  - it: should render the subscriber URI
+    set:
+      kafka.triggers.order-events.subscriberUri: /v1/events
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.subscriber.uri
+          value: /v1/events
+
+  - it: should fail when the subscriber references a missing service
+    set:
+      kafka.triggers.order-events.subscriber: nonexistent
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.triggers.order-events.subscriber references 'nonexistent' which does not exist in the services map"
+
+  - it: should fail when triggers are defined without the broker
+    set:
+      kafka.broker.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.triggers requires kafka.broker.enabled=true — triggers route events from the broker to services"
+
+  - it: should fail when the subscriber is Deployment-backed
+    set:
+      services.api.workload.type: Deployment
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.triggers.order-events.subscriber references 'api' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable subscriber; point the subscriber at a Knative service"
+
+  - it: should fail when trigger DLQ scaling is invalid
+    set:
+      kafka.triggers.order-events.dlq.enabled: true
+      kafka.triggers.order-events.dlq.scaling.minScale: 5
+      kafka.triggers.order-events.dlq.scaling.maxScale: 2
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.triggers.order-events.dlq.scaling: minScale (5) must be <= maxScale (2)"
