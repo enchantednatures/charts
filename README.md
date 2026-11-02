@@ -19,7 +19,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 | `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
-| `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
+| `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, release gating and reconciliation, lock consistency, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
 | `.github/workflows/` | CI/CD workflows (see [CI](#ci--cd)). |
 
 ## The charts
@@ -85,12 +85,45 @@ Charts are published to **GHCR as OCI artifacts** at
     job (`hack/check-version-bump.sh`) **fails the PR** if a chart changed
     without a version bump.
 2.  **Merge to `main`** — `release.yaml` diff-detects charts whose `Chart.yaml`
-    `version:` changed on the push, packages them, pushes them to GHCR, tags the
-    commit, and creates a GitHub Release. Pushing a tag of the form
-    **`<chart>-v<version>`** (for example `ksvc-v0.10.0`) also triggers a release.
-3.  **Dependent bump** — when a **library** chart is released, the
+    `version:` changed on the push. Before packaging, a `gate` job waits for the
+    release commit's required checks and fails closed if any are missing, failed,
+    or still pending after its bounded poll. The gate covers `Helm Lint`,
+    `Schema Validation`, `Template Rendering`, `Helm Unit Tests`,
+    `Kubernetes Schema Validation`, every `Kind Cluster Deploy (…)` matrix lane,
+    `App Chart Dry-Run`, `Kyverno Guardrails E2E`, and `Kafka Strimzi E2E`.
+    Pushing a tag of the form **`<chart>-v<version>`** (for example
+    `ksvc-v0.10.0`) also triggers a release and is gated against that tag's
+    commit.
+3.  **Independent reconciliation** — the release job checks the OCI artifact,
+    the git tag, and the GitHub Release separately. Existing artifacts are never
+    overwritten; a missing OCI artifact, tag, or Release is created. If the tag
+    already exists it must point at the expected release commit (the commit that
+    produced the chart version); a tag at any other commit fails with a clear
+    error instead of being moved or reused.
+4.  **Dependent bump** — when a **library** chart is released, the
     `update-dependents` job opens a PR that bumps the library dependency (and the
     dependent app chart's patch version) and refreshes its `Chart.lock`.
+
+### Release repair and dispatch
+
+`release.yaml` also accepts `workflow_dispatch` for an explicit chart/version and
+repair runs:
+
+| Input | Description |
+|-------|-------------|
+| `chart` | Chart name to release, for example `ksvc` or `ksvc-app` (required). |
+| `version` | Version to release; must match that chart's `Chart.yaml` (required). |
+| `repair` | When `true`, only repair a missing tag or GitHub Release for a version whose OCI artifact already exists. Repair never publishes a new chart version. |
+| `commit` | Commit that produced the chart version. When omitted, the workflow derives the commit that introduced that `Chart.yaml` version from git history. |
+
+A dispatch never falls back to `HEAD~1`: the expected release commit is either
+the explicit `commit` input or a commit derived from the chart's version history,
+and the workflow fails if neither can be established.
+
+The publish job declares `environment: release`. Required reviewers, wait timers,
+and deployment branch rules for that environment are repository settings, not
+workflow code; they must be configured externally for the environment reference
+to enforce them.
 
 Consumers reference a published chart by OCI repository and version:
 
@@ -103,11 +136,18 @@ dependencies:
 
 ### Version and lock hygiene
 
-*   The committed `Chart.lock` files for `charts/library/ksvc/test-chart` and
-    each `examples/*/` pin the local library (`file://`) version, so a library
-    version bump requires refreshing them — run `make update-locks`.
-*   `hack/lint-app.sh` resolves `charts/app/ksvc` against the **local** library
-    chart for lint/render without touching the committed OCI lock.
+*   The committed `Chart.lock` files for `charts/app/ksvc`,
+    `charts/library/ksvc/test-chart`, and each `examples/*/` chart pin their
+    dependencies, so a dependency version bump requires refreshing them — run
+    `make update-locks`.
+*   The **Chart Lock Consistency** CI job runs `helm dependency build` for the
+    app chart, the test-chart, and every example against the committed lock. It
+    fails if a lock is stale or if a build rewrites it. Run `make check-locks`
+    locally.
+*   `hack/lint-app.sh` verifies the committed app lock against `Chart.yaml`
+    before rewriting it to the local library for lint/render, so the local
+    rewrite cannot mask lock drift. `hack/lint-app.sh --check-lock` runs only
+    that verification.
 
 ## Local development
 
@@ -122,6 +162,8 @@ make test-schema          # values.schema.json positive + negative cases
 make test-kube-version    # examples/app reject Kubernetes < 1.28
 make check-docs           # README requirements drift check
 make check-markdown-links # local Markdown link check
+make check-locks          # committed Chart.lock files match Chart.yaml
+make test-release-logic   # release gate, reconciliation, and lock tests
 make docs                 # regenerate charts/library/ksvc/README.md (helm-docs, docker)
 make update-locks         # refresh committed Chart.lock files
 make template EXAMPLE=minimal
@@ -139,7 +181,9 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
     enforcement, Kyverno policy tests, and the PR chart-version gate. Helm
     unit tests use helm-unittest 0.8.2 on Helm 3.17 and 1.0.3 on Helm 4.
     kubeconform is fail-closed against Kubernetes 1.28, 1.30, and 1.32 using
-    the Datree CRD catalog plus a vendored KafkaSource schema.
+    the Datree CRD catalog plus a vendored KafkaSource schema. The same
+    workflow runs the Chart Lock Consistency job and the Release Logic Tests
+    (release gate, reconciliation, and stale-lock fixtures).
 *   **Docs** (`.github/workflows/docs.yaml`) — helm-docs sync, README
     requirements drift checks, Markdown lint, local link checks, and external
     link checks (also run weekly).
@@ -147,8 +191,8 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
     and PR Kind-cluster dry-runs for every example, a real Helm 4 install
     smoke test, a Kyverno guardrails end-to-end test, and a Strimzi Kafka
     end-to-end test.
-*   **Release** (`.github/workflows/release.yaml`) — the OCI release pipeline
-    described above.
+*   **Release** (`.github/workflows/release.yaml`) — the gated, independently
+    reconciled OCI release pipeline described above.
 
 ## Contributing and support
 
