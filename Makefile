@@ -41,6 +41,7 @@ STRIMZI_VERSION       ?= 1.3.0
 REDPANDA_OPERATOR_VERSION ?= 26.2.5
 HELM_VERSION          ?= v3.17.0
 HELM_DOCS_VERSION     ?= v1.14.2
+HELM_DOCS_IMAGE       ?= jnorwood/helm-docs:$(HELM_DOCS_VERSION)@sha256:7e562b49ab6b1dbc50c3da8f2dd6ffa8a5c6bba327b1c6335cc15ce29267979c
 # lib-bucket-provisioner has no release tag whose CRDs are usable on
 # Kubernetes >= 1.22 (the only tag ships apiextensions.k8s.io/v1beta1), so pin
 # the master commit that publishes the apiextensions.k8s.io/v1 CRDs.
@@ -321,7 +322,7 @@ docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-doc
 		--volume "$(CURDIR):/helm-docs" \
 		--workdir /helm-docs \
 		--user "$(shell id -u):$(shell id -g)" \
-		jnorwood/helm-docs:$(HELM_DOCS_VERSION) \
+		$(HELM_DOCS_IMAGE) \
 		--chart-search-root=charts/library \
 		--template-files=README.md.gotmpl
 
@@ -330,9 +331,10 @@ check-locks: ## Verify every committed Chart.lock matches its Chart.yaml
 	hack/check-lock-consistency.sh
 
 .PHONY: test-release-logic
-test-release-logic: ## Run release gate, reconciliation, and lock-consistency tests
+test-release-logic: ## Run release gate, reconciliation, signing, and lock-consistency tests
 	hack/release/test-release-gate.sh
 	hack/release/test-reconcile-release.sh
+	hack/release/test-sign-release.sh
 	hack/test-lock-consistency.sh
 
 .PHONY: update-locks

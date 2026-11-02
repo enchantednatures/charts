@@ -125,6 +125,7 @@ jobs:
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           cluster_name: test-cluster
+          node_image: kindest/node:v1.32.0
 
       - name: Install Knative Serving CRDs
         run: make install-knative
@@ -198,6 +199,7 @@ jobs:
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           cluster_name: test-cluster
+          node_image: kindest/node:v1.32.0
 
       - name: Install Knative Serving CRDs
         run: make install-knative
@@ -230,6 +232,7 @@ jobs:
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           cluster_name: test-cluster
+          node_image: kindest/node:v1.32.0
 
       - name: Install Knative Serving CRDs
         run: make install-knative
@@ -271,6 +274,7 @@ jobs:
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           cluster_name: test-cluster
+          node_image: kindest/node:v1.32.0
 
       - name: Install Knative Serving CRDs
         run: make install-knative

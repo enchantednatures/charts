@@ -5,8 +5,9 @@
 # The real reconcile-release.sh runs against a temporary git repository with
 # fake helm and gh executables, so no registry, network, or GitHub API access is
 # used. Covered states: missing OCI, missing tag, missing GitHub Release, a tag
-# at the wrong commit, repair mode refusing to publish a new OCI artifact, and
-# application charts waiting for and validating their ksvc dependency.
+# at the wrong commit, repair mode refusing to publish a new OCI artifact,
+# application charts waiting for and validating their ksvc dependency, and
+# prerelease versus stable GitHub Release creation flags.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -29,7 +30,7 @@ assert_no_file() {
 }
 
 assert_contains() {
-  grep -qF "$2" "$1" || {
+  grep -qF -- "$2" "$1" || {
     echo "--- $1 ---" >&2
     cat "$1" >&2
     fail "expected '$2' in $1"
@@ -37,7 +38,7 @@ assert_contains() {
 }
 
 assert_not_contains() {
-  if grep -qF "$2" "$1"; then
+  if grep -qF -- "$2" "$1"; then
     echo "--- $1 ---" >&2
     cat "$1" >&2
     fail "did not expect '$2' in $1"
@@ -213,9 +214,30 @@ run_reconcile_app() {
   set -e
 }
 
+run_reconcile_prerelease() {
+  set +e
+  PATH="$NEW_BIN:$PATH" \
+    FAKE_STATE="$NEW_STATE" \
+    GITHUB_REPOSITORY="test-org/test-repo" \
+    REGISTRY="ghcr.io" \
+    bash "$repo_root/hack/release/reconcile-release.sh" \
+      --repo-root "$NEW_REPO" \
+      --workdir "$NEW_BASE/work" \
+      --chart ksvc \
+      --version 1.0.0-rc.1 \
+      --path charts/library/ksvc \
+      --type library \
+      --tag ksvc-v1.0.0-rc.1 \
+      --commit "$NEW_COMMIT" \
+      "$@" > "$NEW_STATE/run.log" 2>&1
+  RC=$?
+  set -e
+}
+
 push_tag() {
-  git -C "$NEW_REPO" tag ksvc-v1.0.0 "$1"
-  git -C "$NEW_REPO" push -q origin refs/tags/ksvc-v1.0.0
+  local tag="${2:-ksvc-v1.0.0}"
+  git -C "$NEW_REPO" tag "$tag" "$1"
+  git -C "$NEW_REPO" push -q origin "refs/tags/$tag"
 }
 
 # ---------------------------------------------------------------------------
@@ -253,7 +275,9 @@ run_reconcile
 [ "$RC" -eq 0 ] || fail "missing Release scenario exited $RC: $(cat "$NEW_STATE/run.log")"
 assert_file "$NEW_STATE/release"
 assert_not_contains "$NEW_STATE/tools.log" "helm push"
-echo "OK: missing GitHub Release is created from the expected commit"
+assert_not_contains "$NEW_STATE/tools.log" "--prerelease"
+assert_not_contains "$NEW_STATE/tools.log" "--latest=false"
+echo "OK: missing GitHub Release is created from the expected commit as a stable release"
 
 # ---------------------------------------------------------------------------
 # 4. Tag exists at the wrong commit. Nothing may be mutated.
@@ -363,3 +387,29 @@ assert_contains "$NEW_STATE/run.log" "after 2 attempts"
 assert_no_file "$NEW_STATE/oci"
 assert_not_contains "$NEW_STATE/tools.log" "helm package"
 echo "OK: application chart fails clearly when the ksvc dependency never appears"
+
+# ---------------------------------------------------------------------------
+# 11. Semver prerelease versions create a prerelease GitHub Release.
+# ---------------------------------------------------------------------------
+new_repo prerelease-release
+cat > "$NEW_REPO/charts/library/ksvc/Chart.yaml" <<'CHART'
+apiVersion: v2
+name: ksvc
+type: library
+version: 1.0.0-rc.1
+CHART
+git -C "$NEW_REPO" add charts/library/ksvc/Chart.yaml
+git -C "$NEW_REPO" commit -q -m "test: prerelease version"
+git -C "$NEW_REPO" push -q origin main
+NEW_COMMIT="$(git -C "$NEW_REPO" rev-parse HEAD)"
+
+: > "$NEW_STATE/oci"
+run_reconcile_prerelease
+[ "$RC" -eq 0 ] || fail "prerelease scenario exited $RC: $(cat "$NEW_STATE/run.log")"
+assert_file "$NEW_STATE/release"
+assert_contains "$NEW_STATE/tools.log" "gh release create ksvc-v1.0.0-rc.1"
+assert_contains "$NEW_STATE/tools.log" "--prerelease"
+assert_contains "$NEW_STATE/tools.log" "--latest=false"
+remote_tag="$(git --git-dir="$NEW_REMOTE" rev-parse 'refs/tags/ksvc-v1.0.0-rc.1^{commit}')"
+[ "$remote_tag" = "$NEW_COMMIT" ] || fail "prerelease tag was created at $remote_tag, expected $NEW_COMMIT"
+echo "OK: prerelease version creates a prerelease GitHub Release with --latest=false"

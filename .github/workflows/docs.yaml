@@ -8,6 +8,7 @@ on:
       - '**/*.md'
       - 'charts/**'
       - 'Makefile'
+      - 'requirements-ci.txt'
       - 'hack/**'
       - 'flux/**'
       - '.helmdocsignore'
@@ -19,6 +20,7 @@ on:
       - '**/*.md'
       - 'charts/**'
       - 'Makefile'
+      - 'requirements-ci.txt'
       - 'hack/**'
       - 'flux/**'
       - '.helmdocsignore'
@@ -65,7 +67,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements-ci.txt
 
       - name: Check README requirements against chart sources
         run: python3 hack/check-requirements-docs.py

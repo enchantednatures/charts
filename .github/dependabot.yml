@@ -12,3 +12,14 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # Keep the pinned Python CI dependencies current. requirements-ci.txt is the
+  # single install source for every workflow that needs Python packages.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-ci:
+        patterns:
+          - "*"

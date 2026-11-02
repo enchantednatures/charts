@@ -21,6 +21,10 @@
 # wait with:
 #   DEPENDENCY_WAIT_ATTEMPTS          (default 60)
 #   DEPENDENCY_WAIT_INTERVAL_SECONDS  (default 10)
+#
+# Semver prerelease versions (for example 1.0.0-rc.1) create the GitHub
+# Release with --prerelease --latest=false. Stable versions are never marked
+# prerelease and keep GitHub's default latest-release selection.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -104,6 +108,11 @@ expected_tag="${chart}-v${version}"
 if [ "$tag" != "$expected_tag" ]; then
   echo "::error::Release tag '$tag' does not match chart '$chart' version '$version' (expected '$expected_tag')" >&2
   exit 1
+fi
+
+is_prerelease=false
+if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+- ]]; then
+  is_prerelease=true
 fi
 
 if ! commit="$(git rev-parse --verify "${commit}^{commit}" 2>/dev/null)"; then
@@ -271,11 +280,16 @@ if [ "$tag_exists" = false ]; then
 fi
 
 if [ "$release_exists" = false ]; then
-  echo "GitHub Release missing; creating $tag"
-  gh release create "$tag" "$asset" \
-    --repo "$GITHUB_REPOSITORY" \
-    --title "$chart v$version" \
+  echo "GitHub Release missing; creating $tag (prerelease=$is_prerelease)"
+  release_args=(
+    --repo "$GITHUB_REPOSITORY"
+    --title "$chart v$version"
     --generate-notes
+  )
+  if [ "$is_prerelease" = true ]; then
+    release_args+=(--prerelease --latest=false)
+  fi
+  gh release create "$tag" "$asset" "${release_args[@]}"
 fi
 
 echo "Reconciled $chart v$version:"
