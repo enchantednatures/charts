@@ -154,9 +154,24 @@ Charts are published to **GHCR as OCI artifacts** at
     the GitHub Release, and attests the provenance in the registry. Signing,
     SBOM, attestation, or upload failures fail the release job. Verification
     commands are in [RELEASING.md](RELEASING.md).
-5.  **Dependent bump** — when a **library** chart is released, the
-    `update-dependents` job opens a PR that bumps the library dependency (and the
-    dependent app chart's patch version) and refreshes its `Chart.lock`.
+5.  **Post-publish OCI e2e** — after the release job succeeds, the `e2e` job
+    pulls the exact published version from GHCR into a Kind cluster pinned to
+    `kindest/node:v1.32.0` with Knative Serving CRDs installed. Library releases
+    install a temporary consumer chart whose OCI dependency is the released
+    library version; application releases install the published app chart. Both
+    paths install the previous published version when one exists, upgrade,
+    roll back, uninstall, and assert the Knative Service is removed. A
+    first-ever release logs an annotation and skips only the upgrade/rollback
+    step. See [RELEASING.md](RELEASING.md#post-publish-oci-end-to-end).
+6.  **Dependent bump** — when a **library** chart is released from `main` or a
+    `<chart>-v<version>` tag, the `update-dependents` job opens one PR from the
+    release commit that bumps the dependent app chart (dependency and patch
+    version) and refreshes the app, test-chart, and every example `Chart.lock`.
+    Set the **`RELEASE_BOT_TOKEN`** secret (GitHub App or PAT with `contents:
+    write` and `pull-requests: write`) so the PR triggers CI. When the secret is
+    absent the job falls back to `GITHUB_TOKEN`; the PR is still created, but
+    GitHub may not start `pull_request` workflows for it. See
+    [RELEASING.md](RELEASING.md#dependent-bump-pr).
 
 ### Release repair and dispatch
 

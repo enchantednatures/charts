@@ -331,10 +331,13 @@ check-locks: ## Verify every committed Chart.lock matches its Chart.yaml
 	hack/check-lock-consistency.sh
 
 .PHONY: test-release-logic
-test-release-logic: ## Run release gate, reconciliation, signing, and lock-consistency tests
+test-release-logic: ## Run release gate, reconciliation, signing, dependents, e2e, and lock-consistency tests
 	hack/release/test-release-gate.sh
 	hack/release/test-reconcile-release.sh
 	hack/release/test-sign-release.sh
+	hack/release/test-find-previous-version.sh
+	hack/release/test-update-dependents.sh
+	hack/release/test-e2e-oci-install.sh
 	hack/test-lock-consistency.sh
 
 .PHONY: update-locks
