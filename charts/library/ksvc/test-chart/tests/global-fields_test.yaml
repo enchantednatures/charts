@@ -229,12 +229,56 @@ tests:
           path: metadata.labels["app.kubernetes.io/name"]
           value: myapp-web
 
-  # ---------- global.nameOverride (INTENTIONAL 1.0 GAP) ----------
-  # global.nameOverride is currently a no-op: "ksvc.name" has no call sites,
-  # so resource names are derived only from fullnameOverride + serviceName.
-  # This test documents the intentional gap for the 1.0 milestone. Do NOT wire
-  # new behavior without a product decision (see #102 B5).
-  - it: "documents that global.nameOverride is intentionally a no-op in 1.0"
+  # ---------- global.nameOverride ----------
+  - it: uses global.nameOverride for the release-wide name label on the CNPG Cluster
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 4
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-postgres
+
+  - it: uses global.nameOverride for the release-wide name label on Dragonfly
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 7
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-dragonfly
+
+  - it: uses global.nameOverride for the release-wide name label on the ObjectBucketClaim
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-backups
+
+  - it: uses global.nameOverride for the release-wide name label on the Broker
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 6
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-kafka-broker
+
+  - it: keeps resource names and service-specific labels fullname-based with global.nameOverride
     set:
       global.nameOverride: custom-name
     documentIndex: 0

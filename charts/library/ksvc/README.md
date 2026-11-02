@@ -205,7 +205,7 @@ sections following the table.
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
 | global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
-| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
+| global.nameOverride | string | `""` | Override the `app.kubernetes.io/name` label for release-wide resources (defaults to the release fullname). Does not change resource names. |
 | kafka.broker.annotations | object | `{}` | Annotations added to the Broker. |
 | kafka.broker.config.authSecretName | string | `""` | Secret containing the broker's Kafka auth credentials. |
 | kafka.broker.config.bootstrapServers | list | `["kafka.kafka.svc.cluster.local:9092"]` | Kafka bootstrap servers used by the broker. |

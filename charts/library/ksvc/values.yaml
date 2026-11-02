@@ -2,7 +2,8 @@
 # Global Settings
 # =============================================================================
 global:
-  # -- Override the chart name (defaults to the chart name).
+  # -- Override the `app.kubernetes.io/name` label for release-wide resources
+  # (defaults to the release fullname). Does not change resource names.
   nameOverride: ""
   # -- Override the fully qualified release name used for resource names
   # (defaults to `<release>-<chart>`).
