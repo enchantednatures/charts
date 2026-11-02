@@ -119,6 +119,26 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
 
+## Feature maturity
+
+Feature maturity follows the [versioning and deprecation policy](../../../CONTRIBUTING.md#versioning-and-deprecation). Stable features follow that policy. Experimental features may change in a minor release.
+
+| Feature | Maturity | Notes |
+|---------|----------|-------|
+| Global settings (`global.*`) | Stable | Follows the versioning policy. |
+| Services (Knative workload) | Stable | Follows the versioning policy. |
+| Deployment workload (`workload.type: Deployment`) | Stable | Follows the versioning policy. |
+| PostgreSQL (CloudNativePG) | Stable | Follows the versioning policy. |
+| Dragonfly | Stable | Follows the versioning policy. |
+| Flagger canary | Stable | Follows the versioning policy. |
+| Object buckets (`objectBuckets`) | Stable | Follows the versioning policy. |
+| PingSource | Stable | Follows the versioning policy. |
+| KafkaSource and DLQ | Stable | Follows the versioning policy. |
+| cert-manager integration | Stable | Follows the versioning policy. |
+| Managed Kafka (Strimzi and Redpanda) | Experimental | May change in a minor release. |
+| Kafka Broker and Trigger | Experimental | May change in a minor release. |
+| Kyverno guardrails | Experimental | May change in a minor release. |
+
 ## Values Reference
 
 > **Schema validation note:** Helm does **not** validate a library chart's `values.schema.json` against consumer values passed through the loader — the schema above `ksvc`'s own install only. Render-time checks enforced by `_validators.tpl` (required fields, cross-references, cert-manager issuers) are the true enforcement; CI validates example values against this schema. If a "required" check matters, also rely on the validator behavior.
