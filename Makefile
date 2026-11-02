@@ -314,6 +314,14 @@ check-docs: ## Verify README requirements match the chart sources
 check-markdown-links: ## Check local links in repository Markdown files
 	python3 hack/check-markdown-links.py
 
+.PHONY: check-artifacthub
+check-artifacthub: ## Validate Artifact Hub metadata in both Chart.yaml files
+	python3 hack/check-artifacthub.py
+
+.PHONY: check-changelog
+check-changelog: ## Verify CHANGELOG.md covers the current chart product line
+	python3 hack/check-changelog.py
+
 .PHONY: docs
 docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-docs
 	@# Runs the pinned helm-docs image; scans only the library chart and skips

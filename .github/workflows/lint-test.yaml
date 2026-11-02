@@ -16,6 +16,8 @@ on:
       - '.markdownlint-cli2.yaml'
       - '.yamllint'
       - '.actionlint.yaml'
+      - 'CHANGELOG.md'
+      - 'docs/**'
   pull_request:
     paths:
       - 'charts/**'
@@ -30,6 +32,8 @@ on:
       - '.markdownlint-cli2.yaml'
       - '.yamllint'
       - '.actionlint.yaml'
+      - 'CHANGELOG.md'
+      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
@@ -371,6 +375,74 @@ jobs:
 
       - name: Verify every action is pinned to a full commit SHA
         run: hack/check-action-pins.sh
+
+  actionlint:
+    name: GitHub Actions Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      ACTIONLINT_VERSION: v1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          install_dir="$RUNNER_TEMP/actionlint-bin"
+          mkdir -p "$install_dir"
+          curl -sSLo "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION#v}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -
+          tar xzf "$archive" -C "$install_dir" actionlint
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Lint every workflow
+        run: actionlint .github/workflows/*.yaml
+
+  yaml-lint:
+    name: Repository YAML Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Lint workflow, chart, example, and Flux YAML
+        run: yamllint -c .yamllint .github/workflows charts examples flux
+
+  metadata-validation:
+    name: Changelog and Artifact Hub Metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Validate Artifact Hub metadata
+        run: python3 hack/check-artifacthub.py
+
+      - name: Validate changelog coverage
+        run: python3 hack/check-changelog.py
 
   release-logic-tests:
     name: Release Logic Tests
