@@ -16,6 +16,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. |
+| [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 1.0.0, with before/after values for every breaking change. |
 | `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
@@ -32,6 +33,10 @@ all supporting infrastructure. A ready-to-use application wrapper
 *   **ksvc-app application chart** (`charts/app/ksvc/`) — wraps `ksvc` so that
     consumers can `helm install` a normal chart. Pins a `ksvc` version via an
     `oci://ghcr.io/enchantednatures/charts` dependency.
+
+Upgrading from `ksvc` 0.5.0? Read the [migration guide](MIGRATION.md) for the
+multi-service move, the 0.7-0.10 feature additions, and the 1.0.0 API freeze,
+including before/after values for every breaking change.
 
 ## Requirements
 
@@ -75,6 +80,51 @@ The versions exercised by CI are pinned at the top of the [`Makefile`](Makefile)
 Kyverno 3.9.1, Strimzi 1.3.0, Redpanda operator 26.2.5). Managed Strimzi
 requires Kubernetes >= 1.32; the Strimzi e2e job pins a Kind 1.32 node image.
 
+### Compatibility matrix
+
+This matrix targets the `ksvc` **1.0.0** line. The library on this branch is
+`1.0.0-rc.1.3`; the `ksvc-app` wrapper is still `0.7.3` and pins `ksvc 0.10.0`
+until the app release batch. The wrapper follows the library version once that
+batch ships.
+
+| Component | CI-tested / pinned | Supported | Notes |
+|-----------|-------------------|-----------|-------|
+| Kubernetes | 1.28.0, 1.30.0, 1.32.0 (kubeconform); 1.32.0 Kind e2e | >= 1.28 | Every chart declares `kubeVersion: ">=1.28.0"`. Managed Strimzi needs >= 1.32. |
+| Helm | 3.17.0 and 4.3.0 | >= 3.17 (3.x) and 4.x | CI runs both lanes; 3.17.0 is the minimum. OCI installs require >= 3.8, but the chart is tested from 3.17. |
+| Knative Serving | v1.17.0 | `serving.knative.dev/v1` | Required for default `workload.type: Knative`; Deployment-mode services do not need it. |
+| Knative Eventing | v1.17.0 | `eventing.knative.dev/v1` | Required for `pingsources`, `kafka.broker`, and `kafka.triggers`. |
+| eventing-kafka | v1.17.0 | `sources.knative.dev/v1beta1` (KafkaSource) | Required for `kafka.sources` and the Kafka Broker implementation. |
+| CloudNativePG | release-1.25 | `postgresql.cnpg.io/v1` | Requires a `ClusterImageCatalog` named `postgresql` (chart default) or an override. |
+| Barman Cloud plugin | v0.15.1 | `barmancloud.cnpg.io/v1` | Only for `postgres.backup.enabled`; renders the `ObjectStore` CR. |
+| Dragonfly operator | v1.7.1 | `dragonflydb.io/v1alpha1` | Renders the `Dragonfly` CR. |
+| Flagger | v1.45.0 | `flagger.app/v1beta1` | Knative provider; Prometheus and the k6 load tester are configured on the Flagger installation. |
+| Kyverno | 3.9.1 chart; 1.19.1 CLI | >= 1.16 | `policies.kyverno.io/v1beta1` on Kyverno 1.16, `policies.kyverno.io/v1` on >= 1.17. |
+| Prometheus Operator | v0.94.2 | `monitoring.coreos.com/v1` | Renders `PodMonitor` and `PrometheusRule`; a Prometheus instance is also required by Flagger. |
+| Strimzi | 1.3.0 | `kafka.strimzi.io/v1` | Managed Kafka only; requires Kubernetes >= 1.32. |
+| Redpanda operator | 26.2.5 | `cluster.redpanda.com/v1alpha2` | Managed Kafka only; TLS requires cert-manager. |
+| lib-bucket-provisioner | commit `be094b8c7ee9aa948aeaaa7ff6ee6e5f359393ad` (master) | `objectbucket.io/v1alpha1` | The only release tag (`kubernetes-v1.14.1`) ships an `apiextensions.k8s.io/v1beta1` CRD, which Kubernetes >= 1.22 no longer serves. The Makefile therefore pins the master commit that renders `apiextensions.k8s.io/v1`. |
+
+### Rendered CRD API versions
+
+| API version | Resources |
+|-------------|-----------|
+| `serving.knative.dev/v1` | Knative Service |
+| `sources.knative.dev/v1beta1` | KafkaSource |
+| `sources.knative.dev/v1` | PingSource |
+| `eventing.knative.dev/v1` | Broker, Trigger |
+| `postgresql.cnpg.io/v1` | Cluster, Pooler, ScheduledBackup |
+| `barmancloud.cnpg.io/v1` | ObjectStore |
+| `monitoring.coreos.com/v1` | PodMonitor, PrometheusRule |
+| `dragonflydb.io/v1alpha1` | Dragonfly |
+| `flagger.app/v1beta1` | Canary |
+| `objectbucket.io/v1alpha1` | ObjectBucketClaim |
+| `kafka.strimzi.io/v1` | Kafka, KafkaNodePool, KafkaTopic, KafkaUser |
+| `cluster.redpanda.com/v1alpha2` | Redpanda, Topic, User |
+| `policies.kyverno.io/v1beta1` or `policies.kyverno.io/v1` | NamespacedValidatingPolicy (configurable via `kyverno.scaling.apiVersion`) |
+| `cert-manager.io/v1` | Certificate |
+| `apps/v1` | Deployment (Deployment workload) |
+| `policy/v1` | PodDisruptionBudget (Deployment workload) |
+
 ## Release process
 
 Charts are published to **GHCR as OCI artifacts** at
@@ -92,7 +142,7 @@ Charts are published to **GHCR as OCI artifacts** at
     `Kubernetes Schema Validation`, every `Kind Cluster Deploy (…)` matrix lane,
     `App Chart Dry-Run`, `Kyverno Guardrails E2E`, and `Kafka Strimzi E2E`.
     Pushing a tag of the form **`<chart>-v<version>`** (for example
-    `ksvc-v0.10.0`) also triggers a release and is gated against that tag's
+    `ksvc-v1.0.0-rc.1.3`) also triggers a release and is gated against that tag's
     commit.
 3.  **Independent reconciliation** — the release job checks the OCI artifact,
     the git tag, and the GitHub Release separately. Existing artifacts are never
@@ -130,7 +180,7 @@ Consumers reference a published chart by OCI repository and version:
 ```yaml
 dependencies:
   - name: ksvc
-    version: 0.10.0
+    version: 1.0.0-rc.1.3
     repository: oci://ghcr.io/enchantednatures/charts
 ```
 

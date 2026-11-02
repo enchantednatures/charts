@@ -30,14 +30,20 @@ SHELL := /bin/bash
 # ---------------------------------------------------------------------------
 KNATIVE_VERSION       ?= v1.17.0
 CNPG_RELEASE          ?= release-1.25
-FLAGGER_BRANCH        ?= main
+FLAGGER_VERSION       ?= v1.45.0
 KAFKA_EVENTING_VERSION ?= v1.17.0
-DRAGONFLY_BRANCH      ?= main
+DRAGONFLY_OPERATOR_VERSION ?= v1.7.1
+BARMAN_PLUGIN_VERSION ?= v0.15.1
+PROMETHEUS_OPERATOR_VERSION ?= v0.94.2
 KYVERNO_CHART_VERSION ?= 3.9.1
 STRIMZI_VERSION       ?= 1.3.0
 REDPANDA_OPERATOR_VERSION ?= 26.2.5
 HELM_VERSION          ?= v3.17.0
 HELM_DOCS_VERSION     ?= v1.14.2
+# lib-bucket-provisioner has no release tag whose CRDs are usable on
+# Kubernetes >= 1.22 (the only tag ships apiextensions.k8s.io/v1beta1), so pin
+# the master commit that publishes the apiextensions.k8s.io/v1 CRDs.
+LIB_BUCKET_PROVISIONER_COMMIT ?= be094b8c7ee9aa948aeaaa7ff6ee6e5f359393ad
 KIND_CLUSTER_NAME     ?= test-cluster
 EXAMPLE               ?= minimal
 NAMESPACE             ?= test-ns
@@ -53,14 +59,14 @@ CNPG_CRDS := \
 	$(CNPG_CRD_BASE)/postgresql.cnpg.io_clusters.yaml \
 	$(CNPG_CRD_BASE)/postgresql.cnpg.io_poolers.yaml \
 	$(CNPG_CRD_BASE)/postgresql.cnpg.io_scheduledbackups.yaml \
-	https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/main/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml
+	https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/$(BARMAN_PLUGIN_VERSION)/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml
 
-PROMETHEUS_CRD_BASE := https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd
+PROMETHEUS_CRD_BASE := https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/$(PROMETHEUS_OPERATOR_VERSION)/example/prometheus-operator-crd
 MONITORING_CRDS := \
 	$(PROMETHEUS_CRD_BASE)/monitoring.coreos.com_podmonitors.yaml \
 	$(PROMETHEUS_CRD_BASE)/monitoring.coreos.com_prometheusrules.yaml
 
-FLAGGER_CRDS := https://raw.githubusercontent.com/fluxcd/flagger/$(FLAGGER_BRANCH)/artifacts/flagger/crd.yaml
+FLAGGER_CRDS := https://raw.githubusercontent.com/fluxcd/flagger/$(FLAGGER_VERSION)/artifacts/flagger/crd.yaml
 
 KAFKA_SOURCE_CRDS := https://raw.githubusercontent.com/knative-extensions/eventing-kafka-broker/knative-$(KAFKA_EVENTING_VERSION)/control-plane/config/eventing-kafka-broker/100-source/100-kafka-source.yaml
 
@@ -68,9 +74,9 @@ STRIMZI_CRDS := https://github.com/strimzi/strimzi-kafka-operator/releases/downl
 
 EVENTING_CRDS := https://github.com/knative/eventing/releases/download/knative-$(KNATIVE_VERSION)/eventing-crds.yaml
 
-DRAGONFLY_CRDS := https://raw.githubusercontent.com/dragonflydb/dragonfly-operator/$(DRAGONFLY_BRANCH)/config/crd/bases/dragonflydb.io_dragonflies.yaml
+DRAGONFLY_CRDS := https://raw.githubusercontent.com/dragonflydb/dragonfly-operator/$(DRAGONFLY_OPERATOR_VERSION)/config/crd/bases/dragonflydb.io_dragonflies.yaml
 
-OBJECT_BUCKET_CRD_BASE := https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds
+OBJECT_BUCKET_CRD_BASE := https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/$(LIB_BUCKET_PROVISIONER_COMMIT)/deploy/crds
 OBJECT_BUCKET_CRDS := \
 	$(OBJECT_BUCKET_CRD_BASE)/objectbucket_v1alpha1_objectbucketclaim_crd.yaml \
 	$(OBJECT_BUCKET_CRD_BASE)/objectbucket_v1alpha1_objectbucket_crd.yaml
