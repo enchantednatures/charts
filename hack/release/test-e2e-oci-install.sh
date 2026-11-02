@@ -90,6 +90,29 @@ LOCK
     cp "$FAKE_STATE/initial-image" "$FAKE_STATE/image"
     cp "$FAKE_STATE/image" "$FAKE_STATE/kservice"
     ;;
+  get)
+    if [ "${2:-}" = "metadata" ]; then
+      if [ ! -f "$FAKE_STATE/release" ]; then
+        echo "release: not found" >&2
+        exit 1
+      fi
+      python3 - "$FAKE_STATE" <<'PY'
+import json
+import pathlib
+import sys
+
+state = pathlib.Path(sys.argv[1])
+print(json.dumps({
+    "name": (state / "release").read_text().strip(),
+    "version": (state / "chart-version").read_text().strip(),
+    "revision": int((state / "revision").read_text().strip()),
+}))
+PY
+      exit 0
+    fi
+    echo "fake helm: unsupported get target: ${2:-}" >&2
+    exit 2
+    ;;
   status)
     if [ ! -f "$FAKE_STATE/release" ]; then
       echo "release: not found" >&2
