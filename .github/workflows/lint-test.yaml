@@ -42,6 +42,10 @@ jobs:
     name: Helm Lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        helm-version: [v3.17.0, v4.3.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,7 +53,7 @@ jobs:
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.0
+          version: ${{ matrix.helm-version }}
 
       - name: Guard against committed packaged charts
         run: |
@@ -60,7 +64,7 @@ jobs:
             exit 1
           fi
 
-      - name: Lint all charts and examples
+      - name: Lint all charts and examples (Helm ${{ matrix.helm-version }})
         run: make lint
 
   schema-validation:
@@ -84,12 +88,16 @@ jobs:
     name: Template Rendering
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        helm-version: [v3.17.0, v4.3.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.0
+          version: ${{ matrix.helm-version }}
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -98,17 +106,19 @@ jobs:
       - name: Install yamllint
         run: pip install yamllint
 
-      - name: Render and validate app chart
+      - name: Render and validate app chart (Helm ${{ matrix.helm-version }})
         run: |
-          hack/lint-app.sh helm template test-app charts/app/ksvc \
-            --namespace test-ns \
-            --set services.api.image.repository=ghcr.io/test/app \
-            --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
+          hack/lint-app.sh bash -c '
+            helm template test-app charts/app/ksvc \
+              --namespace test-ns \
+              --set services.api.image.repository=ghcr.io/test/app \
+              --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
+          '
           yamllint -d relaxed /tmp/rendered-app.yaml
           echo "Resources rendered for app chart:"
           grep -E "^kind:" /tmp/rendered-app.yaml | sort | uniq -c
 
-      - name: Render and validate all examples
+      - name: Render and validate all examples (Helm ${{ matrix.helm-version }})
         run: |
           for example in examples/*/; do
             name=$(basename "$example")
@@ -128,23 +138,40 @@ jobs:
     name: Helm Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # helm-unittest v0.8.2 is verified against Helm 3.17. v1.2.1 declares full
+    # Helm 4 support and is used only on the Helm 4 lane (it requires Helm 4's
+    # plugin manifest schema). Helm 4 also requires --verify=false for a
+    # GitHub-hosted plugin source that publishes no Helm provenance file.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - helm-version: v3.17.0
+            unittest-version: v0.8.2
+            unittest-install-flags: ''
+          - helm-version: v4.3.0
+            unittest-version: v1.2.1
+            unittest-install-flags: '--verify=false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.0
+          version: ${{ matrix.helm-version }}
 
       - name: Cache helm-unittest plugin
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/share/helm/plugins
-          key: unittest-v0.8.2-${{ runner.os }}
+          key: unittest-${{ matrix.unittest-version }}-helm-${{ matrix.helm-version }}-${{ runner.os }}
 
       - name: Install helm-unittest plugin
-        run: helm plugin list | grep -q unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
+        run: |
+          helm plugin list | grep -q unittest || \
+            helm plugin install https://github.com/helm-unittest/helm-unittest.git \
+              --version ${{ matrix.unittest-version }} ${{ matrix.unittest-install-flags }}
 
-      - name: Run unit tests
+      - name: Run unit tests (Helm ${{ matrix.helm-version }})
         run: make test
 
   kubeconform:
