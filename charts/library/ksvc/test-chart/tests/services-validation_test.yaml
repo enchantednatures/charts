@@ -1,0 +1,102 @@
+suite: services and feature validator failure tests
+templates:
+  - templates/common.yaml
+release:
+  name: test-release
+  namespace: test-ns
+
+# This suite intentionally has no suite-level `services` so the missing-services
+# cases are reachable. Tests that need a valid baseline set it locally.
+tests:
+  # ---------- services map ----------
+  - it: fails when services is missing
+    asserts:
+      - failedTemplate:
+          errorMessage: "services is required and must contain at least one service entry"
+
+  - it: fails when services is empty
+    set:
+      services: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: "services must contain at least one service entry"
+
+  - it: fails when services is not a map
+    set:
+      services: not-a-map
+    asserts:
+      - failedTemplate:
+          errorMessage: "services must be a map (e.g. services: { api: { ... } })"
+
+  # ---------- per-service fields ----------
+  - it: fails when image.repository is missing
+    set:
+      services.api.image.tag: v1.0.0
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.image.repository is required"
+
+  - it: fails when scaling is not a map
+    set:
+      services.api.image.repository: test/image
+      services.api.scaling: not-a-map
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling must be a map (got not-a-map)"
+
+  - it: fails when scaling.target is fractional
+    set:
+      services.api.image.repository: test/image
+      services.api.scaling.target: 1.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.target must be an integer (got 1.5)"
+
+  - it: fails when scaling.timeoutSeconds is fractional
+    set:
+      services.api.image.repository: test/image
+      services.api.scaling.timeoutSeconds: 30.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.scaling.timeoutSeconds must be an integer (got 30.5)"
+
+  # ---------- objectBuckets ----------
+  - it: fails when an objectBuckets key exceeds 53 characters
+    set:
+      services.api.image.repository: test/image
+      objectBuckets:
+        aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:
+          storageClassName: ceph-bucket
+    asserts:
+      - failedTemplate:
+          errorMessage: "objectBuckets.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa must be a DNS-1123 label"
+
+  # ---------- dragonfly ----------
+  - it: fails when a dragonfly bucketRef entry has no endpointURL
+    set:
+      services.api.image.repository: test/image
+      dragonfly.enabled: true
+      dragonfly.snapshot.enabled: true
+      dragonfly.snapshot.bucketRef: backups
+      objectBuckets.backups.storageClassName: ceph-bucket
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.snapshot.bucketRef requires an endpointURL on the referenced bucket"
+
+  - it: fails when dragonfly PDB minAvailable is fractional
+    set:
+      services.api.image.repository: test/image
+      dragonfly.enabled: true
+      dragonfly.pdb.minAvailable: 1.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.pdb.minAvailable must be an integer (got 1.5)"
+
+  - it: fails when dragonfly PDB maxUnavailable is fractional
+    set:
+      services.api.image.repository: test/image
+      dragonfly.enabled: true
+      dragonfly.pdb.maxUnavailable: 0.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "dragonfly.pdb.maxUnavailable must be an integer (got 0.5)"

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">ksvc Helm charts</title>
+  <rect width="64" height="64" rx="12" fill="#0b3d91"/>
+  <path d="M16 14h8v16l13-16h9L31 32l16 18h-9L24 34v16h-8z" fill="#ffffff"/>
+  <circle cx="49" cy="17" r="5" fill="#4fc3f7"/>
+</svg>

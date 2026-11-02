@@ -11,6 +11,23 @@ Knative services MUST use hyphens, never underscores.
 {{- end }}
 
 {{/*
+ksvc.globalName — Label value for release-wide resources.
+When global.nameOverride is set it replaces the release fullname for the
+app.kubernetes.io/name label only; resource names stay fullname-based.
+*/}}
+{{- define "ksvc.globalName" -}}
+{{- $override := "" }}
+{{- if .Values.global }}
+{{-   $override = .Values.global.nameOverride | default "" }}
+{{- end }}
+{{- if $override }}
+{{- $override | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- else }}
+{{- include "ksvc.fullname" . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create a default fully qualified app name.
 */}}
 {{- define "ksvc.fullname" -}}

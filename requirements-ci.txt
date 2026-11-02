@@ -1,0 +1,5 @@
+# Pinned Python dependencies for CI workflows.
+# Update with Dependabot's pip ecosystem; keep the versions exact.
+jsonschema==4.26.0
+PyYAML==6.0.3
+yamllint==1.38.0

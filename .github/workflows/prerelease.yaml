@@ -13,11 +13,6 @@ concurrency:
   group: prerelease-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  packages: write
-  pull-requests: write
-
 env:
   REGISTRY: ghcr.io
 
@@ -25,6 +20,12 @@ jobs:
   publish:
     name: Publish pre-release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    environment: prerelease
     # Skip fork PRs: GITHUB_TOKEN is read-only for workflows triggered from a
     # fork, so the registry login/push and the PR comment would all fail. The
     # same guard is mirrored on the cleanup job so both stay symmetric.
@@ -35,13 +36,13 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Package the exact PR head commit, not the synthetic merge ref.
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.17.0
 
@@ -60,9 +61,11 @@ jobs:
           LIB_VER="${LIB_VERSION}-pr.${PR_NUM}.${SHORT_SHA}"
           APP_VER="${APP_VERSION}-pr.${PR_NUM}.${SHORT_SHA}"
 
-          echo "PR_NUM=$PR_NUM" >> "$GITHUB_ENV"
-          echo "LIB_VER=$LIB_VER" >> "$GITHUB_ENV"
-          echo "APP_VER=$APP_VER" >> "$GITHUB_ENV"
+          {
+            echo "PR_NUM=$PR_NUM"
+            echo "LIB_VER=$LIB_VER"
+            echo "APP_VER=$APP_VER"
+          } >> "$GITHUB_ENV"
 
           {
             echo "### Pre-release versions"
@@ -187,6 +190,11 @@ jobs:
   cleanup:
     name: Clean up pre-releases
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
     # Only on close, and only for same-repo PRs (fork PRs are skipped above and
     # have no published versions to remove). No checkout or Helm setup needed:
     # this job only talks to the packages API.

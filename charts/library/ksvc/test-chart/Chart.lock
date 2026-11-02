@@ -1,6 +1,6 @@
 dependencies:
 - name: ksvc
   repository: file://..
-  version: 0.10.0
-digest: sha256:3515affc67fce2cd4fb5a1178822b2e59d9540678d7c2daab2790858b5dd56f3
-generated: "2026-10-30T15:39:34.068181542Z"
+  version: 1.0.0-rc.1.4
+digest: sha256:667ea37634c5924d61200954214667bb0479cbf81eecf0041cece3a91b04bd85
+generated: "2026-11-02T06:22:04.65903826Z"

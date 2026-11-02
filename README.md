@@ -15,11 +15,13 @@ all supporting infrastructure. A ready-to-use application wrapper
 | Path | Description |
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
-| `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. |
+| `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. See its [README](charts/app/ksvc/README.md). |
+| [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 1.0.0, with before/after values for every breaking change. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Curated release history; the `1.0.0` section summarizes the features, breaking changes, and migration links. |
 | `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
-| `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
+| `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, release gating and reconciliation, lock consistency, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
 | `.github/workflows/` | CI/CD workflows (see [CI](#ci--cd)). |
 
 ## The charts
@@ -29,11 +31,18 @@ all supporting infrastructure. A ready-to-use application wrapper
     Kafka sources + DLQ, DragonflyDB, Flagger canaries, Ceph RGW object buckets,
     Kyverno admission policies. Its README is generated from `values.yaml` by
     [helm-docs](https://github.com/norwoodj/helm-docs) (`make docs`).
-*   **ksvc-app application chart** (`charts/app/ksvc/`) — wraps `ksvc` so that
+*   **[ksvc-app application chart](charts/app/ksvc/README.md)** (`charts/app/ksvc/`) — wraps `ksvc` so that
     consumers can `helm install` a normal chart. Pins a `ksvc` version via an
     `oci://ghcr.io/enchantednatures/charts` dependency.
 
+Upgrading from `ksvc` 0.5.0? Read the [migration guide](MIGRATION.md) for the
+multi-service move, the 0.7-0.10 feature additions, and the 1.0.0 API freeze,
+including before/after values for every breaking change.
+
 ## Requirements
+
+Helm **3.17+** and **4.x** are supported; CI runs both a Helm 3.17 lane and a
+Helm 4.3.0 lane.
 
 The charts render custom resources; the matching operators must already run in
 the cluster. Most `make install-*` targets install **CRDs only** — enough for
@@ -51,6 +60,7 @@ the Knative Eventing core that the KafkaSource controller and webhook require.
 
 | Requirement | Needed for | Notes |
 |-------------|------------|-------|
+| [Helm](https://helm.sh/) 3.17+ (3.x) or 4.x | Everything | CI runs a Helm 3.17 lane and a Helm 4.3.0 lane. |
 | Kubernetes >= 1.28 | Everything | `kubeVersion` in the library, app, and example charts. |
 | [Knative Serving](https://knative.dev/docs/serving/) | `services` (default `workload.type: Knative`) | Includes a networking layer (Kourier, Istio, Contour, …). Deployment-mode services do not need Knative. |
 | [Knative Eventing](https://knative.dev/docs/eventing/) | `pingsources`, `kafka.broker`, `kafka.triggers` | Provides the `PingSource`, `Broker`, and `Trigger` CRs and their controllers. |
@@ -71,6 +81,49 @@ The versions exercised by CI are pinned at the top of the [`Makefile`](Makefile)
 Kyverno 3.9.1, Strimzi 1.3.0, Redpanda operator 26.2.5). Managed Strimzi
 requires Kubernetes >= 1.32; the Strimzi e2e job pins a Kind 1.32 node image.
 
+### Compatibility matrix
+
+This matrix targets the `ksvc` and `ksvc-app` **1.0.0** line. Both charts expose
+the same values surface; `ksvc-app` pins the matching `ksvc` release.
+
+| Component | CI-tested / pinned | Supported | Notes |
+|-----------|-------------------|-----------|-------|
+| Kubernetes | 1.28.0, 1.30.0, 1.32.0 (kubeconform); 1.32.0 Kind e2e | >= 1.28 | Every chart declares `kubeVersion: ">=1.28.0"`. Every `helm/kind-action` job pins `node_image: kindest/node:v1.32.0`; managed Strimzi needs >= 1.32. |
+| Helm | 3.17.0 and 4.3.0 | >= 3.17 (3.x) and 4.x | CI runs both lanes; 3.17.0 is the minimum. OCI installs require >= 3.8, but the chart is tested from 3.17. |
+| Knative Serving | v1.17.0 | `serving.knative.dev/v1` | Required for default `workload.type: Knative`; Deployment-mode services do not need it. |
+| Knative Eventing | v1.17.0 | `eventing.knative.dev/v1` | Required for `pingsources`, `kafka.broker`, and `kafka.triggers`. |
+| eventing-kafka | v1.17.0 | `sources.knative.dev/v1beta1` (KafkaSource) | Required for `kafka.sources` and the Kafka Broker implementation. |
+| CloudNativePG | release-1.25 | `postgresql.cnpg.io/v1` | Requires a `ClusterImageCatalog` named `postgresql` (chart default) or an override. |
+| Barman Cloud plugin | v0.15.1 | `barmancloud.cnpg.io/v1` | Only for `postgres.backup.enabled`; renders the `ObjectStore` CR. |
+| Dragonfly operator | v1.7.1 | `dragonflydb.io/v1alpha1` | Renders the `Dragonfly` CR. |
+| Flagger | v1.45.0 | `flagger.app/v1beta1` | Knative provider; Prometheus and the k6 load tester are configured on the Flagger installation. |
+| Kyverno | 3.9.1 chart; 1.19.1 CLI | >= 1.16 | `policies.kyverno.io/v1beta1` on Kyverno 1.16, `policies.kyverno.io/v1` on >= 1.17. |
+| Prometheus Operator | v0.94.2 | `monitoring.coreos.com/v1` | Renders `PodMonitor` and `PrometheusRule`; a Prometheus instance is also required by Flagger. |
+| Strimzi | 1.3.0 | `kafka.strimzi.io/v1` | Managed Kafka only; requires Kubernetes >= 1.32. |
+| Redpanda operator | 26.2.5 | `cluster.redpanda.com/v1alpha2` | Managed Kafka only; TLS requires cert-manager. |
+| lib-bucket-provisioner | commit `be094b8c7ee9aa948aeaaa7ff6ee6e5f359393ad` (master) | `objectbucket.io/v1alpha1` | The only release tag (`kubernetes-v1.14.1`) ships an `apiextensions.k8s.io/v1beta1` CRD, which Kubernetes >= 1.22 no longer serves. The Makefile therefore pins the master commit that renders `apiextensions.k8s.io/v1`. |
+
+### Rendered CRD API versions
+
+| API version | Resources |
+|-------------|-----------|
+| `serving.knative.dev/v1` | Knative Service |
+| `sources.knative.dev/v1beta1` | KafkaSource |
+| `sources.knative.dev/v1` | PingSource |
+| `eventing.knative.dev/v1` | Broker, Trigger |
+| `postgresql.cnpg.io/v1` | Cluster, Pooler, ScheduledBackup |
+| `barmancloud.cnpg.io/v1` | ObjectStore |
+| `monitoring.coreos.com/v1` | PodMonitor, PrometheusRule |
+| `dragonflydb.io/v1alpha1` | Dragonfly |
+| `flagger.app/v1beta1` | Canary |
+| `objectbucket.io/v1alpha1` | ObjectBucketClaim |
+| `kafka.strimzi.io/v1` | Kafka, KafkaNodePool, KafkaTopic, KafkaUser |
+| `cluster.redpanda.com/v1alpha2` | Redpanda, Topic, User |
+| `policies.kyverno.io/v1beta1` or `policies.kyverno.io/v1` | NamespacedValidatingPolicy (configurable via `kyverno.scaling.apiVersion`) |
+| `cert-manager.io/v1` | Certificate |
+| `apps/v1` | Deployment (Deployment workload) |
+| `policy/v1` | PodDisruptionBudget (Deployment workload) |
+
 ## Release process
 
 Charts are published to **GHCR as OCI artifacts** at
@@ -81,29 +134,90 @@ Charts are published to **GHCR as OCI artifacts** at
     job (`hack/check-version-bump.sh`) **fails the PR** if a chart changed
     without a version bump.
 2.  **Merge to `main`** — `release.yaml` diff-detects charts whose `Chart.yaml`
-    `version:` changed on the push, packages them, pushes them to GHCR, tags the
-    commit, and creates a GitHub Release. Pushing a tag of the form
-    **`<chart>-v<version>`** (for example `ksvc-v0.10.0`) also triggers a release.
-3.  **Dependent bump** — when a **library** chart is released, the
-    `update-dependents` job opens a PR that bumps the library dependency (and the
-    dependent app chart's patch version) and refreshes its `Chart.lock`.
+    `version:` changed on the push. Before packaging, a `gate` job waits for the
+    release commit's required checks and fails closed if any are missing, failed,
+    or still pending after its bounded poll. The gate covers `Helm Lint`,
+    `Schema Validation`, `Template Rendering`, `Helm Unit Tests`,
+    `Kubernetes Schema Validation`, every `Kind Cluster Deploy (…)` matrix lane,
+    `App Chart Dry-Run`, `Kyverno Guardrails E2E`, and `Kafka Strimzi E2E`.
+    Pushing a tag of the form **`<chart>-v<version>`** (for example
+    `ksvc-v1.0.0`) also triggers a release and is gated against that tag's
+    commit.
+3.  **Independent reconciliation** — the release job checks the OCI artifact,
+    the git tag, and the GitHub Release separately. Existing artifacts are never
+    overwritten; a missing OCI artifact, tag, or Release is created. If the tag
+    already exists it must point at the expected release commit (the commit that
+    produced the chart version); a tag at any other commit fails with a clear
+    error instead of being moved or reused.
+4.  **Signing and attestation** — every release, including repair runs, signs
+    the published OCI artifact with cosign keyless/OIDC, attaches a Syft SPDX
+    SBOM to the OCI digest, uploads the SBOM and a SLSA provenance predicate to
+    the GitHub Release, and attests the provenance in the registry. Signing,
+    SBOM, attestation, or upload failures fail the release job. Verification
+    commands are in [RELEASING.md](RELEASING.md).
+5.  **Post-publish OCI e2e** — after the release job succeeds, the `e2e` job
+    pulls the exact published version from GHCR into a Kind cluster pinned to
+    `kindest/node:v1.32.0` with Knative Serving CRDs installed. Library releases
+    install a temporary consumer chart whose OCI dependency is the released
+    library version; application releases install the published app chart. Both
+    paths install the previous published version when one exists, upgrade,
+    roll back, uninstall, and assert the Knative Service is removed. A
+    first-ever release logs an annotation and skips only the upgrade/rollback
+    step. See [RELEASING.md](RELEASING.md#post-publish-oci-end-to-end).
+6.  **Dependent bump** — when a **library** chart is released from `main` or a
+    `<chart>-v<version>` tag, the `update-dependents` job opens one PR from the
+    release commit that bumps the dependent app chart (dependency and patch
+    version) and refreshes the app, test-chart, and every example `Chart.lock`.
+    Set the **`RELEASE_BOT_TOKEN`** secret (GitHub App or PAT with `contents:
+    write` and `pull-requests: write`) so the PR triggers CI. When the secret is
+    absent the job falls back to `GITHUB_TOKEN`; the PR is still created, but
+    GitHub may not start `pull_request` workflows for it. See
+    [RELEASING.md](RELEASING.md#dependent-bump-pr).
+
+### Release repair and dispatch
+
+`release.yaml` also accepts `workflow_dispatch` for an explicit chart/version and
+repair runs:
+
+| Input | Description |
+|-------|-------------|
+| `chart` | Chart name to release, for example `ksvc` or `ksvc-app` (required). |
+| `version` | Version to release; must match that chart's `Chart.yaml` (required). |
+| `repair` | When `true`, only repair a missing tag or GitHub Release for a version whose OCI artifact already exists. Repair never publishes a new chart version. |
+| `commit` | Commit that produced the chart version. When omitted, the workflow derives the commit that introduced that `Chart.yaml` version from git history. |
+
+A dispatch never falls back to `HEAD~1`: the expected release commit is either
+the explicit `commit` input or a commit derived from the chart's version history,
+and the workflow fails if neither can be established.
+
+The publish job declares `environment: release`. Required reviewers, wait timers,
+and deployment branch rules for that environment are repository settings, not
+workflow code; they must be configured externally for the environment reference
+to enforce them.
 
 Consumers reference a published chart by OCI repository and version:
 
 ```yaml
 dependencies:
   - name: ksvc
-    version: 0.10.0
+    version: 1.0.0
     repository: oci://ghcr.io/enchantednatures/charts
 ```
 
 ### Version and lock hygiene
 
-*   The committed `Chart.lock` files for `charts/library/ksvc/test-chart` and
-    each `examples/*/` pin the local library (`file://`) version, so a library
-    version bump requires refreshing them — run `make update-locks`.
-*   `hack/lint-app.sh` resolves `charts/app/ksvc` against the **local** library
-    chart for lint/render without touching the committed OCI lock.
+*   The committed `Chart.lock` files for `charts/app/ksvc`,
+    `charts/library/ksvc/test-chart`, and each `examples/*/` chart pin their
+    dependencies, so a dependency version bump requires refreshing them — run
+    `make update-locks`.
+*   The **Chart Lock Consistency** CI job runs `helm dependency build` for the
+    app chart, the test-chart, and every example against the committed lock. It
+    fails if a lock is stale or if a build rewrites it. Run `make check-locks`
+    locally.
+*   `hack/lint-app.sh` verifies the committed app lock against `Chart.yaml`
+    before rewriting it to the local library for lint/render, so the local
+    rewrite cannot mask lock drift. `hack/lint-app.sh --check-lock` runs only
+    that verification.
 
 ## Local development
 
@@ -118,6 +232,10 @@ make test-schema          # values.schema.json positive + negative cases
 make test-kube-version    # examples/app reject Kubernetes < 1.28
 make check-docs           # README requirements drift check
 make check-markdown-links # local Markdown link check
+make check-artifacthub    # Artifact Hub metadata check for both charts
+make check-changelog      # CHANGELOG product-line coverage check
+make check-locks          # committed Chart.lock files match Chart.yaml
+make test-release-logic   # release gate, reconciliation, and lock tests
 make docs                 # regenerate charts/library/ksvc/README.md (helm-docs, docker)
 make update-locks         # refresh committed Chart.lock files
 make template EXAMPLE=minimal
@@ -129,18 +247,47 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
 
 ## CI / CD
 
-*   **Lint and Test** (`.github/workflows/lint-test.yaml`) — `make lint`,
-    `make test`, positive and negative schema validation, Kubernetes-version
-    enforcement, template rendering, kubeconform validation, Kyverno policy
-    tests, and the PR chart-version gate.
+*   **Lint and Test** (`.github/workflows/lint-test.yaml`) — Helm 3.17 and
+    Helm 4.3.0 lanes for `make lint`, `make test`, template rendering, and
+    kubeconform; positive and negative schema validation, Kubernetes-version
+    enforcement, Kyverno policy tests, and the PR chart-version gate. Helm
+    unit tests use helm-unittest 0.8.2 on Helm 3.17 and 1.0.3 on Helm 4.
+    kubeconform is fail-closed against Kubernetes 1.28, 1.30, and 1.32 using
+    the Datree CRD catalog plus a vendored KafkaSource schema. The same
+    workflow runs the Chart Lock Consistency job and the Release Logic Tests
+    (release gate, reconciliation, and stale-lock fixtures). Every GitHub
+    Action is pinned to a full commit SHA; the Action Pin Guard job
+    (`hack/check-action-pins.sh`) fails on floating `@vN` refs. The GitHub
+    Actions Lint job runs `actionlint` over every workflow, the Repository YAML
+    Lint job runs `yamllint -c .yamllint` over the workflows, charts, examples,
+    and Flux manifests, and the Changelog and Artifact Hub Metadata job validates
+    both `Chart.yaml` files and the changelog. Python dependencies come from the
+    pinned [`requirements-ci.txt`](requirements-ci.txt).
 *   **Docs** (`.github/workflows/docs.yaml`) — helm-docs sync, README
     requirements drift checks, Markdown lint, local link checks, and external
     link checks (also run weekly).
 *   **Integration Test** (`.github/workflows/integration-test.yaml`) — nightly
-    and PR Kind-cluster dry-runs for every example, a Kyverno guardrails
-    end-to-end test, and a Strimzi Kafka end-to-end test.
-*   **Release** (`.github/workflows/release.yaml`) — the OCI release pipeline
-    described above.
+    and PR Kind-cluster dry-runs for every example, a real Helm 4 install
+    smoke test, a Kyverno guardrails end-to-end test, and a Strimzi Kafka
+    end-to-end test. Every Kind job pins `kindest/node:v1.32.0`.
+*   **Release** (`.github/workflows/release.yaml`) — the gated, independently
+    reconciled OCI release pipeline described above, including cosign
+    signatures, Syft SBOMs, and SLSA provenance; see [RELEASING.md](RELEASING.md).
+
+## Contributing and support
+
+*   **Contributing:** read [CONTRIBUTING.md](CONTRIBUTING.md) for local test
+    commands, pull request expectations, and conventional commit style.
+*   **Versioning and deprecation:** the public values API follows SemVer. See
+    [the versioning and deprecation policy](CONTRIBUTING.md#versioning-and-deprecation)
+    for major, minor, and patch rules, experimental features, and the required
+    breaking-change release-note format.
+*   **Support:** open a GitHub issue using the bug report or feature request
+    template. Security reports go through [SECURITY.md](SECURITY.md).
+*   **Security:** report vulnerabilities privately through GitHub Security
+    Advisories as described in [SECURITY.md](SECURITY.md).
+*   **Code of conduct:** participation is covered by
+    [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 

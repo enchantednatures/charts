@@ -1,0 +1,195 @@
+suite: kafka source delivery and DLQ tests
+templates:
+  - templates/common.yaml
+
+# Render order with one Kafka source and the DLQ enabled:
+#   doc0 = Knative Service   test-release-api
+#   doc1 = KafkaSource       test-release-events-kafka-source
+#   doc2 = DLQ Knative Service test-release-events-dlq
+set:
+  services.api.image.repository: test/image
+  kafka.sources.events.topic: events
+  kafka.sources.events.sink: api
+  kafka.sources.events.dlq.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  # ---------- KafkaSource fields ----------
+  - it: defaults consumers to 3
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.consumers
+          value: 3
+
+  - it: renders custom consumers
+    set:
+      kafka.sources.events.consumers: 7
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.consumers
+          value: 7
+
+  - it: defaults initialOffset to latest
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.initialOffset
+          value: latest
+
+  - it: renders the earliest initialOffset
+    set:
+      kafka.sources.events.initialOffset: earliest
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.initialOffset
+          value: earliest
+
+  - it: "renders a custom bootstrapServers list (regression guard for the derived/default path)"
+    set:
+      kafka.sources.events.bootstrapServers:
+        - broker-a:9092
+        - broker-b:9092
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.bootstrapServers
+          value:
+            - broker-a:9092
+            - broker-b:9092
+
+  - it: renders default delivery retry, backoffPolicy and backoffDelay
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.delivery.retry
+          value: 5
+      - equal:
+          path: spec.delivery.backoffPolicy
+          value: exponential
+      - equal:
+          path: spec.delivery.backoffDelay
+          value: PT1S
+
+  - it: renders custom delivery retry, backoffPolicy and backoffDelay
+    set:
+      kafka.sources.events.delivery.retry: 12
+      kafka.sources.events.delivery.backoffPolicy: linear
+      kafka.sources.events.delivery.backoffDelay: PT10S
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.delivery.retry
+          value: 12
+      - equal:
+          path: spec.delivery.backoffPolicy
+          value: linear
+      - equal:
+          path: spec.delivery.backoffDelay
+          value: PT10S
+
+  # ---------- DLQ service ----------
+  - it: renders the DLQ image with the default repository and tag
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:latest
+
+  - it: renders a custom DLQ image repository and tag
+    set:
+      kafka.sources.events.dlq.image.repository: ghcr.io/example/dlq
+      kafka.sources.events.dlq.image.tag: v2.0.0
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/example/dlq:v2.0.0
+
+  - it: renders default DLQ resource requests and limits
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 50m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 32Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 200m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 128Mi
+
+  - it: renders custom DLQ resource requests and limits
+    set:
+      kafka.sources.events.dlq.resources.requests.cpu: 100m
+      kafka.sources.events.dlq.resources.requests.memory: 64Mi
+      kafka.sources.events.dlq.resources.limits.cpu: 500m
+      kafka.sources.events.dlq.resources.limits.memory: 256Mi
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 100m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 64Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 500m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 256Mi
+
+  - it: renders the default DLQ scaling bounds as annotations
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/min-scale"]
+          value: "0"
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/max-scale"]
+          value: "2"
+
+  - it: renders custom DLQ scaling bounds
+    set:
+      kafka.sources.events.dlq.scaling.minScale: 1
+      kafka.sources.events.dlq.scaling.maxScale: 5
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/min-scale"]
+          value: "1"
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/max-scale"]
+          value: "5"
+
+  - it: omits the DLQ service and deadLetterSink when the DLQ is disabled
+    set:
+      kafka.sources.events.dlq.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2
+      - notExists:
+          path: spec.delivery.deadLetterSink
+        documentIndex: 1
+
+  # ---------- sink validation failures ----------
+  - it: fails when the sink is missing
+    set:
+      kafka.sources.events.sink: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.sink is required and must reference a key in the services map"
+
+  - it: fails when the sink references an unknown service
+    set:
+      kafka.sources.events.sink: nope
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.sources.events.sink references 'nope' which does not exist in the services map"

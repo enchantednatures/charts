@@ -2,7 +2,8 @@
 # Global Settings
 # =============================================================================
 global:
-  # -- Override the chart name (defaults to the chart name).
+  # -- Override the `app.kubernetes.io/name` label for release-wide resources
+  # (defaults to the release fullname). Does not change resource names.
   nameOverride: ""
   # -- Override the fully qualified release name used for resource names
   # (defaults to `<release>-<chart>`).
@@ -271,8 +272,6 @@ services:
         successRateThreshold: 99
         # -- Maximum p99 latency (ms) allowed during analysis.
         latencyP99ThresholdMs: 500
-        # -- Prometheus server address used for metric checks.
-        prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
 
       loadTest:
         # -- Enable k6 load testing during canary analysis.
@@ -397,6 +396,9 @@ postgres:
     # -- Backup retention period (e.g. `30d`).
     retentionPolicy: "30d"
     objectStore:
+      # -- Key of an `objectBuckets` entry used to derive the CNPG ObjectStore
+      # destinationPath, endpointURL, and credentials. Empty disables derivation.
+      bucketRef: ""
       # -- Destination path for backups (e.g. `s3://bucket/path`). Derived from
       # `bucketRef` when it is set.
       destinationPath: ""
@@ -702,6 +704,9 @@ dragonfly:
     cron: "0 */6 * * *"
     # -- Take snapshots only on the master instance.
     enableOnMasterOnly: true
+    # -- Key of an `objectBuckets` entry used to derive the Dragonfly S3
+    # snapshot dir, credentials, and endpoint. Empty disables derivation.
+    bucketRef: ""
     # -- S3 backup path (`s3://bucket/path`); mutually exclusive with an
     # existing PVC. Derived from `snapshot.bucketRef` when it is set.
     dir: ""

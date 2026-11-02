@@ -7,27 +7,51 @@ on:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'flux/**'
       - 'Makefile'
+      - 'requirements-ci.txt'
       - 'hack/**'
-      - '.github/workflows/lint-test.yaml'
+      - '.github/workflows/**'
+      - '.helmdocsignore'
+      - '.markdownlint-cli2.yaml'
+      - '.yamllint'
+      - '.actionlint.yaml'
+      - 'CHANGELOG.md'
+      - 'docs/**'
   pull_request:
     paths:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'flux/**'
       - 'Makefile'
+      - 'requirements-ci.txt'
       - 'hack/**'
-      - '.github/workflows/lint-test.yaml'
+      - '.github/workflows/**'
+      - '.helmdocsignore'
+      - '.markdownlint-cli2.yaml'
+      - '.yamllint'
+      - '.actionlint.yaml'
+      - 'CHANGELOG.md'
+      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Helm Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        helm-version: [v3.17.0, v4.3.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,7 +59,7 @@ jobs:
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.0
+          version: ${{ matrix.helm-version }}
 
       - name: Guard against committed packaged charts
         run: |
@@ -46,12 +70,13 @@ jobs:
             exit 1
           fi
 
-      - name: Lint all charts and examples
+      - name: Lint all charts and examples (Helm ${{ matrix.helm-version }})
         run: make lint
 
   schema-validation:
     name: Schema Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -60,7 +85,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install jsonschema pyyaml
+        run: pip install -r requirements-ci.txt
 
       - name: Validate example values and negative schema cases
         run: python3 hack/test-values-schema.py
@@ -68,31 +93,39 @@ jobs:
   template-render:
     name: Template Rendering
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        helm-version: [v3.17.0, v4.3.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.0
+          version: ${{ matrix.helm-version }}
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
       - name: Install yamllint
-        run: pip install yamllint
+        run: pip install -r requirements-ci.txt
 
-      - name: Render and validate app chart
+      - name: Render and validate app chart (Helm ${{ matrix.helm-version }})
         run: |
-          hack/lint-app.sh helm template test-app charts/app/ksvc \
-            --namespace test-ns \
-            --set services.api.image.repository=ghcr.io/test/app \
-            --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
+          hack/lint-app.sh bash -c '
+            helm template test-app charts/app/ksvc \
+              --namespace test-ns \
+              --set services.api.image.repository=ghcr.io/test/app \
+              --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
+          '
+          sed -i 's/[[:space:]]*$//' /tmp/rendered-app.yaml
           yamllint -d relaxed /tmp/rendered-app.yaml
           echo "Resources rendered for app chart:"
           grep -E "^kind:" /tmp/rendered-app.yaml | sort | uniq -c
 
-      - name: Render and validate all examples
+      - name: Render and validate all examples (Helm ${{ matrix.helm-version }})
         run: |
           for example in examples/*/; do
             name=$(basename "$example")
@@ -100,6 +133,7 @@ jobs:
             helm dependency build "$example"
             helm template "test-${name}" "$example" \
               --namespace test-ns > "/tmp/rendered-${name}.yaml"
+            sed -i 's/[[:space:]]*$//' "/tmp/rendered-${name}.yaml"
             yamllint -d relaxed "/tmp/rendered-${name}.yaml"
             echo "Resources rendered for $name:"
             grep -E "^kind:" "/tmp/rendered-${name}.yaml" | sort | uniq -c
@@ -111,58 +145,123 @@ jobs:
   unit-tests:
     name: Helm Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # helm-unittest v0.8.2 is verified against Helm 3.17. v1.0.3 is verified
+    # against Helm 4.3.0 on the full suite. Helm 4 also requires --verify=false
+    # for a GitHub-hosted plugin source that publishes no Helm provenance file.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - helm-version: v3.17.0
+            unittest-version: v0.8.2
+            unittest-install-flags: ''
+          - helm-version: v4.3.0
+            unittest-version: v1.0.3
+            unittest-install-flags: '--verify=false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.0
+          version: ${{ matrix.helm-version }}
 
       - name: Cache helm-unittest plugin
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/share/helm/plugins
-          key: unittest-v0.8.2-${{ runner.os }}
+          key: unittest-${{ matrix.unittest-version }}-helm-${{ matrix.helm-version }}-${{ runner.os }}
 
       - name: Install helm-unittest plugin
-        run: helm plugin list | grep -q unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v0.8.2
+        run: |
+          helm plugin list | grep -q unittest || \
+            helm plugin install https://github.com/helm-unittest/helm-unittest.git \
+              --version ${{ matrix.unittest-version }} ${{ matrix.unittest-install-flags }}
 
-      - name: Run unit tests
+      - name: Run unit tests (Helm ${{ matrix.helm-version }})
         run: make test
+
+      - name: Run app chart unit tests (Helm ${{ matrix.helm-version }})
+        run: make test-app
 
   kubeconform:
     name: Kubernetes Schema Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KUBECONFORM_VERSION: v0.8.0
+      KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+    strategy:
+      fail-fast: false
+      matrix:
+        helm-version: [v3.17.0, v4.3.0]
+        kubernetes-version: ["1.28.0", "1.30.0", "1.32.0"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.0
+          version: ${{ matrix.helm-version }}
 
       - name: Install kubeconform
         run: |
-          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-            tar xz -C /usr/local/bin
+          set -euo pipefail
+          archive="$RUNNER_TEMP/kubeconform-linux-amd64.tar.gz"
+          install_dir="$RUNNER_TEMP/kubeconform-bin"
+          mkdir -p "$install_dir"
+          curl -sSLo "$archive" \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  ${archive}" | sha256sum -c -
+          tar xzf "$archive" -C "$install_dir"
+          echo "$install_dir" >> "$GITHUB_PATH"
 
-      - name: Validate rendered manifests
+      - name: Validate examples, app chart, and Kyverno fixtures
         run: |
+          set -euo pipefail
+          schema_args=(
+            -strict
+            -summary
+            -kubernetes-version "${{ matrix.kubernetes-version }}"
+            -schema-location default
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+            -schema-location 'hack/kubeconform-schemas/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          )
+
           for example in examples/*/; do
             name=$(basename "$example")
-            echo "--- Validating $name ---"
+            echo "--- Validating $name (Helm ${{ matrix.helm-version }}, Kubernetes ${{ matrix.kubernetes-version }}) ---"
             helm dependency build "$example"
-            helm template "test-${name}" "$example" --namespace test-ns | \
-              kubeconform \
-                -strict \
-                -ignore-missing-schemas \
-                -summary \
-                -skip "Canary,MetricTemplate,KafkaSource,Cluster,ScheduledBackup,ObjectStore,ObjectBucketClaim,Pooler,PodMonitor,PrometheusRule,Dragonfly,Kafka,KafkaNodePool,KafkaTopic,KafkaUser,Redpanda,Topic,User" \
-                -kubernetes-version 1.28.0
+            helm template "test-${name}" "$example" \
+              --namespace test-ns > "/tmp/rendered-${name}.yaml"
+            kubeconform "${schema_args[@]}" "/tmp/rendered-${name}.yaml"
           done
+
+          echo "--- Validating the app chart render ---"
+          hack/lint-app.sh bash -c '
+            set -euo pipefail
+            helm template test-app charts/app/ksvc \
+              --namespace test-ns \
+              --set services.api.image.repository=ghcr.io/test/app \
+              --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
+          '
+          kubeconform "${schema_args[@]}" /tmp/rendered-app.yaml
+
+          echo "--- Validating the test-chart Kyverno policies ---"
+          helm dependency build charts/library/ksvc/test-chart
+          helm template guardrails charts/library/ksvc/test-chart \
+            --namespace test-ns \
+            --set services.api.image.repository=example/app \
+            --set kyverno.enabled=true \
+            --set kyverno.scaling.enabled=true > /tmp/rendered-test-chart.yaml
+          kubeconform "${schema_args[@]}" /tmp/rendered-test-chart.yaml
+
+          echo "--- Validating test/kyverno fixtures ---"
+          kubeconform "${schema_args[@]}" test/kyverno
 
   kyverno-policy-tests:
     name: Kyverno Policy Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       KYVERNO_VERSION: v1.19.1
     steps:
@@ -177,7 +276,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements-ci.txt
 
       - name: Install Kyverno CLI
         run: |
@@ -255,9 +354,116 @@ jobs:
           check_denied test/kyverno/cnpg-invalid-instances.yaml "spec.instances must be between 1 and 16"
           check_denied test/kyverno/dragonfly-invalid-replicas.yaml "spec.replicas must be between 1 and 16"
 
+  lock-consistency:
+    name: Chart Lock Consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Verify committed Chart.lock files
+        run: hack/check-lock-consistency.sh
+
+  action-pins:
+    name: Action Pin Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify every action is pinned to a full commit SHA
+        run: hack/check-action-pins.sh
+
+  actionlint:
+    name: GitHub Actions Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      ACTIONLINT_VERSION: v1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          install_dir="$RUNNER_TEMP/actionlint-bin"
+          mkdir -p "$install_dir"
+          curl -sSLo "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION#v}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -
+          tar xzf "$archive" -C "$install_dir" actionlint
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Lint every workflow
+        run: actionlint .github/workflows/*.yaml
+
+  yaml-lint:
+    name: Repository YAML Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Lint workflow, chart, example, and Flux YAML
+        run: yamllint -c .yamllint .github/workflows charts examples flux
+
+  metadata-validation:
+    name: Changelog and Artifact Hub Metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Validate Artifact Hub metadata
+        run: python3 hack/check-artifacthub.py
+
+      - name: Validate changelog coverage
+        run: python3 hack/check-changelog.py
+
+  release-logic-tests:
+    name: Release Logic Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Run release gate, reconciliation, and lock tests
+        run: make test-release-logic
+
   version-check:
     name: Chart version bump check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

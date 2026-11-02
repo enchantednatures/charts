@@ -5,9 +5,10 @@ description: >-
   optional CloudNativePG PostgreSQL, Kafka event sources, DragonflyDB cache
   clusters, and Flagger canary releases.
 type: application
-version: 0.7.3
+version: 0.7.5
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
+icon: https://raw.githubusercontent.com/enchantednatures/charts/main/docs/icon.svg
 home: https://github.com/enchantednatures/charts
 sources:
   - https://github.com/enchantednatures/charts
@@ -28,3 +29,20 @@ dependencies:
 annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT
+  artifacthub.io/changes: |
+    - kind: added
+      description: ksvc-app application wrapper for the ksvc 1.0 library chart
+    - kind: added
+      description: Values surface follows the frozen ksvc 1.0 API, including multi-service, Kafka, PostgreSQL, DragonflyDB, and Flagger settings
+    - kind: changed
+      description: See MIGRATION.md for the 1.0 upgrade guide and breaking changes
+  artifacthub.io/images: |
+    - name: event-display
+      image: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:latest
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/enchantednatures/charts
+    - name: Documentation
+      url: https://github.com/enchantednatures/charts/blob/main/charts/app/ksvc/README.md
+    - name: Migration guide
+      url: https://github.com/enchantednatures/charts/blob/main/MIGRATION.md

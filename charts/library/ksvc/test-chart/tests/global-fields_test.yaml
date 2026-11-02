@@ -1,0 +1,291 @@
+suite: global fields tests
+templates:
+  - templates/common.yaml
+
+# Render order for this suite (deterministic; Helm iterates maps by sorted key):
+#   doc0 = Knative Service        test-release-api
+#   doc1 = Deployment             test-release-worker
+#   doc2 = core Service           test-release-worker
+#   doc3 = ObjectBucketClaim      test-release-backups
+#   doc4 = CNPG Cluster           test-release-postgres
+#   doc5 = Broker ConfigMap       test-release-kafka-broker-config
+#   doc6 = Broker                 test-release-kafka-broker
+#   doc7 = Dragonfly              test-release-dragonfly
+set:
+  services.api.image.repository: test/image
+  services.worker.image.repository: test/worker
+  services.worker.workload.type: Deployment
+  objectBuckets.backups.storageClassName: ceph-bucket
+  postgres.enabled: true
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: false
+  postgres.pooler.enabled: false
+  kafka.broker.enabled: true
+  dragonfly.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+
+tests:
+  # ---------- global.labels ----------
+  - it: applies global labels to the Knative Service
+    set:
+      global.labels.team: platform
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+
+  - it: applies global labels to the Deployment
+    set:
+      global.labels.team: platform
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+
+  - it: applies global labels to the core Service
+    set:
+      global.labels.team: platform
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+
+  - it: applies global labels to the ObjectBucketClaim
+    set:
+      global.labels.team: platform
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+
+  - it: applies global labels to the CNPG Cluster
+    set:
+      global.labels.team: platform
+    documentIndex: 4
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+
+  - it: applies global labels to the Broker
+    set:
+      global.labels.team: platform
+    documentIndex: 6
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+
+  - it: applies global labels to Dragonfly
+    set:
+      global.labels.team: platform
+    documentIndex: 7
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+
+  # ---------- global.annotations ----------
+  - it: applies global annotations to the Knative Service
+    set:
+      global.annotations.team: platform
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  - it: applies global annotations to the Deployment
+    set:
+      global.annotations.team: platform
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  - it: applies global annotations to the core Service
+    set:
+      global.annotations.team: platform
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  - it: applies global annotations to the ObjectBucketClaim
+    set:
+      global.annotations.team: platform
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  - it: applies global annotations to the CNPG Cluster
+    set:
+      global.annotations.team: platform
+    documentIndex: 4
+    asserts:
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  - it: applies global annotations to the Broker
+    set:
+      global.annotations.team: platform
+    documentIndex: 6
+    asserts:
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  - it: applies global annotations to Dragonfly
+    set:
+      global.annotations.team: platform
+    documentIndex: 7
+    asserts:
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  # ---------- fullnameOverride ----------
+  - it: uses fullnameOverride for resource names and name labels
+    set:
+      global.fullnameOverride: myapp
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-api
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: myapp-api
+
+  - it: uses fullnameOverride for the Deployment and core Service
+    set:
+      global.fullnameOverride: myapp
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-worker
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: myapp-worker
+
+  - it: uses fullnameOverride for the CNPG Cluster name
+    set:
+      global.fullnameOverride: myapp
+    documentIndex: 4
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-postgres
+
+  - it: uses fullnameOverride for the ObjectBucketClaim name
+    set:
+      global.fullnameOverride: myapp
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-backups
+
+  - it: uses fullnameOverride for the Broker name
+    set:
+      global.fullnameOverride: myapp
+    documentIndex: 6
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-kafka-broker
+
+  - it: uses fullnameOverride for the Dragonfly name
+    set:
+      global.fullnameOverride: myapp
+    documentIndex: 7
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-dragonfly
+
+  - it: combines fullnameOverride with the per-service nameOverride suffix
+    set:
+      global.fullnameOverride: myapp
+      services.api.nameOverride: web
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-web
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: myapp-web
+
+  # ---------- global.nameOverride ----------
+  - it: uses global.nameOverride for the release-wide name label on the CNPG Cluster
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 4
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-postgres
+
+  - it: uses global.nameOverride for the release-wide name label on Dragonfly
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 7
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-dragonfly
+
+  - it: uses global.nameOverride for the release-wide name label on the ObjectBucketClaim
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-backups
+
+  - it: uses global.nameOverride for the release-wide name label on the Broker
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 6
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: custom-name
+      - equal:
+          path: metadata.name
+          value: test-release-kafka-broker
+
+  - it: keeps resource names and service-specific labels fullname-based with global.nameOverride
+    set:
+      global.nameOverride: custom-name
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-api
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: test-release-api

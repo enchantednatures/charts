@@ -18,11 +18,17 @@
 # developer's uncommitted edits.
 #
 # Usage:
-#   hack/lint-app.sh <command...>
+#   hack/lint-app.sh [--check-lock] [<command...>]
 #
 # Examples:
 #   hack/lint-app.sh helm lint charts/app/ksvc
 #   hack/lint-app.sh helm unittest charts/app/ksvc
+#   hack/lint-app.sh --check-lock
+#
+# Before any rewrite, the committed Chart.lock is verified against Chart.yaml
+# with hack/check-chart-lock.py. --check-lock runs only that verification and
+# exits without mutating the working tree. This prevents the local-dependency
+# rewrite below from masking a stale committed lock.
 #
 # With no command it only resolves the dependency (e.g. to populate
 # charts/app/ksvc/charts/ for a later step) and then restores.
@@ -34,6 +40,27 @@ cd "$repo_root"
 chart_dir="charts/app/ksvc"
 chart_yaml="$chart_dir/Chart.yaml"
 chart_lock="$chart_dir/Chart.lock"
+
+mode="resolve"
+if [ "${1:-}" = "--check-lock" ]; then
+  mode="check-lock"
+  shift
+fi
+
+if [ "$mode" = "check-lock" ] && [ "$#" -gt 0 ]; then
+  echo "lint-app.sh: --check-lock does not accept a command" >&2
+  exit 2
+fi
+
+# Verify the committed metadata before rewriting it. The rewrite below changes
+# the dependency repository and version, so a check afterwards could never see
+# the lock that CI would resolve.
+python3 hack/check-chart-lock.py "$chart_dir"
+
+if [ "$mode" = "check-lock" ]; then
+  echo "lint-app.sh: committed Chart.lock matches Chart.yaml"
+  exit 0
+fi
 
 # Snapshot the chart metadata before mutating anything so the restore is exact.
 snapshot="$(mktemp -d)"

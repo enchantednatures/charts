@@ -8,6 +8,8 @@ This library chart provides a standardized way to deploy serverless applications
 
 Infrastructure resources (PostgreSQL, DragonflyDB) are shared globally across all services in the release, while Kafka event sources and Flagger canary configs are scoped per-source and per-service respectively.
 
+> **Upgrading from 0.5.0?** See the repository [migration guide](../../../MIGRATION.md) for the multi-service move, the 0.7-0.10 additions, and the 1.0.0 API freeze.
+
 ## Architecture
 
 ```
@@ -77,7 +79,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.10.0
+        version: 1.0.0
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -117,6 +119,26 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **DragonflyDB** | Dragonfly | Global |
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
+
+## Feature maturity
+
+Feature maturity follows the [versioning and deprecation policy](../../../CONTRIBUTING.md#versioning-and-deprecation). Stable features follow that policy. Experimental features may change in a minor release.
+
+| Feature | Maturity | Notes |
+|---------|----------|-------|
+| Global settings (`global.*`) | Stable | Follows the versioning policy. |
+| Services (Knative workload) | Stable | Follows the versioning policy. |
+| Deployment workload (`workload.type: Deployment`) | Stable | Follows the versioning policy. |
+| PostgreSQL (CloudNativePG) | Stable | Follows the versioning policy. |
+| Dragonfly | Stable | Follows the versioning policy. |
+| Flagger canary | Stable | Follows the versioning policy. |
+| Object buckets (`objectBuckets`) | Stable | Follows the versioning policy. |
+| PingSource | Stable | Follows the versioning policy. |
+| KafkaSource and DLQ | Stable | Follows the versioning policy. |
+| cert-manager integration | Stable | Follows the versioning policy. |
+| Managed Kafka (Strimzi and Redpanda) | Experimental | May change in a minor release. |
+| Kafka Broker and Trigger | Experimental | May change in a minor release. |
+| Kyverno guardrails | Experimental | May change in a minor release. |
 
 ## Values Reference
 
@@ -162,6 +184,7 @@ sections following the table.
 | dragonfly.serviceSpec.name | string | `""` | Override the generated Service name. |
 | dragonfly.serviceSpec.nodePort | int | `0` | Node port (only used when `type` is `NodePort`). |
 | dragonfly.serviceSpec.type | string | `"ClusterIP"` | Kubernetes Service type. |
+| dragonfly.snapshot.bucketRef | string | `""` | Key of an `objectBuckets` entry used to derive the Dragonfly S3 snapshot dir, credentials, and endpoint. Empty disables derivation. |
 | dragonfly.snapshot.cron | string | `"0 */6 * * *"` | Cron schedule for snapshots. |
 | dragonfly.snapshot.dir | string | `""` | S3 backup path (`s3://bucket/path`); mutually exclusive with an existing PVC. Derived from `snapshot.bucketRef` when it is set. |
 | dragonfly.snapshot.enableOnMasterOnly | bool | `true` | Take snapshots only on the master instance. |
@@ -184,7 +207,7 @@ sections following the table.
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
 | global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
-| global.nameOverride | string | `""` | Override the chart name (defaults to the chart name). |
+| global.nameOverride | string | `""` | Override the `app.kubernetes.io/name` label for release-wide resources (defaults to the release fullname). Does not change resource names. |
 | kafka.broker.annotations | object | `{}` | Annotations added to the Broker. |
 | kafka.broker.config.authSecretName | string | `""` | Secret containing the broker's Kafka auth credentials. |
 | kafka.broker.config.bootstrapServers | list | `["kafka.kafka.svc.cluster.local:9092"]` | Kafka bootstrap servers used by the broker. |
@@ -231,6 +254,7 @@ sections following the table.
 | objectBuckets | object | `{}` | Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each key renders an ObjectBucketClaim named `<release>-<key>`; see the Object Buckets section for the per-entry schema. |
 | pingsources | object | `{}` | Map of PingSource entries, keyed by source name. Each key renders a PingSource named `<release>-<key>-ping-source`; every entry's `sink` must reference a key in `services` (validated at render time). Per-entry fields: `schedule`, `timezone`, `data`, `contentType`, `ceOverrides.extensions` (custom extensions only, never `type`), and the required `sink`. |
 | postgres.backup.enabled | bool | `true` | Enable WAL archiving and scheduled backups. |
+| postgres.backup.objectStore.bucketRef | string | `""` | Key of an `objectBuckets` entry used to derive the CNPG ObjectStore destinationPath, endpointURL, and credentials. Empty disables derivation. |
 | postgres.backup.objectStore.data.compression | string | `"gzip"` | Compression algorithm for data backups (`snappy`, `gzip`, `bzip2` or `lz4`). |
 | postgres.backup.objectStore.data.jobs | int | `2` | Number of parallel jobs for data backups. |
 | postgres.backup.objectStore.destinationPath | string | `""` | Destination path for backups (e.g. `s3://bucket/path`). Derived from `bucketRef` when it is set. |
@@ -282,7 +306,6 @@ sections following the table.
 | services.api.flagger.loadTest.vus | int | `10` | Number of virtual users for the k6 load test. |
 | services.api.flagger.loadTest.webhookUrl | string | `"http://k6-loadtester.flagger-system/launch-test"` | URL of the k6 webhook service that starts load tests. |
 | services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
-| services.api.flagger.metrics.prometheusAddress | string | `"http://prometheus.observability.svc.cluster.local:9090"` | Prometheus server address used for metric checks. |
 | services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
 | services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |
 | services.api.image.imagePullSecrets | list | `[]` | List of imagePullSecrets attached to the pod spec (private registries). |
@@ -379,6 +402,10 @@ services:
         cloud.google.com/backend-config: '{"default": "gateway-idle"}'
 ```
 
+### Rolling update strategy
+
+`workload.strategy.maxUnavailable` and `workload.strategy.maxSurge` accept either an integer or a percentage string, matching the Kubernetes `Deployment` API. The chart intentionally does **not** compare `maxUnavailable` against `workload.replicas`: a value greater than the replica count is valid (Kubernetes simply takes every pod down at once), and percent strings have no fixed integer value to compare. The only availability constraint the chart validates is the `minAvailable`/`maxUnavailable` mutual exclusion on a PodDisruptionBudget (set one of them to `0`).
+
 ### PodDisruptionBudget semantics
 
 A PodDisruptionBudget governs **voluntary** evictions only, which means node drains and cluster upgrades. It does not govern rolling updates (those follow `workload.strategy`), and it does not stop a node failure or a crash from taking pods down.
@@ -397,7 +424,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
+| `kafka.sources.<key>.topic` | Kafka topic name. Optional; defaults to `events` when omitted | `"events"` |
 | `kafka.sources.<key>.sink` | **Required unless `kafka.broker.enabled` is true.** Key from the `services` map, or omit to sink to the Broker | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
 | `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
@@ -421,6 +448,8 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.net.sasl.userKey` | Username key within the Secret | `user` |
 | `kafka.sources.<key>.net.sasl.passwordSecret` | Secret containing the SASL password | `""` |
 | `kafka.sources.<key>.net.sasl.passwordKey` | Password key within the Secret | `password` |
+
+`kafka.sources.<key>.topic` is optional. When it is omitted the loader defaults the source to the `events` topic, so a minimal source only needs `sink` (or `kafka.broker.enabled: true`). An explicit `topic` always wins.
 
 ### TLS and SASL
 
@@ -669,6 +698,8 @@ The relevant values (`kyverno.enabled`, `kyverno.scaling.enabled`, `kyverno.scal
 
 ## Migration from v0.1.x
 
+> For upgrades from 0.5.0 onward, use the [migration guide](../../../MIGRATION.md). The section below only covers the older v0.1.x -> v0.2.0 layout.
+
 v0.2.0 is a **breaking change**. The `knativeService:` and top-level `flagger:` / `kafka:` keys have been replaced.
 
 ### Key changes
@@ -749,7 +780,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 The repository uses GitHub Actions for automated quality assurance:
 
 *   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
-*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.10.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
+*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v1.0.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing

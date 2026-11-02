@@ -231,6 +231,31 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
         mutate(["kafka", "cluster", "redpanda", "unexpected"], True),
         "Additional properties are not allowed",
     ),
+    (
+        "object bucket key longer than 53 characters",
+        mutate(["objectBuckets", "a" * 54], {"storageClassName": "ceph-bucket"}),
+        "is too long",
+    ),
+    (
+        "flagger prometheusAddress was removed in the v1 API freeze",
+        mutate(
+            ["services", "api", "flagger", "metrics", "prometheusAddress"],
+            "http://prometheus.observability.svc.cluster.local:9090",
+        ),
+        "Additional properties are not allowed",
+    ),
+]
+
+# (description, values) pairs that must validate.
+POSITIVE_CASES: list[tuple[str, dict]] = [
+    (
+        "object bucket key of exactly 53 characters",
+        mutate(["objectBuckets", "a" * 53], {"storageClassName": "ceph-bucket"}),
+    ),
+    (
+        "kafka source without topic (defaults to events)",
+        mutate(["kafka", "sources", "events"], {"sink": "api"}),
+    ),
 ]
 
 
@@ -274,13 +299,24 @@ def main() -> int:
             continue
         print(f"PASS: {description} is rejected")
 
+    for description, values in POSITIVE_CASES:
+        errors = sorted(validator.iter_errors(values), key=lambda e: list(e.path))
+        if errors:
+            failures += 1
+            print(f"FAIL: {description}: schema rejected valid values", file=sys.stderr)
+            for error in errors:
+                print(f"  - {error.message}", file=sys.stderr)
+            continue
+        print(f"PASS: {description} validates")
+
     if failures:
         print(f"test-values-schema: {failures} failure(s)", file=sys.stderr)
         return 1
 
     print(
         f"test-values-schema: OK "
-        f"({len(example_paths)} examples, {len(NEGATIVE_CASES)} negative cases)"
+        f"({len(example_paths)} examples, {len(NEGATIVE_CASES)} negative, "
+        f"{len(POSITIVE_CASES)} positive cases)"
     )
     return 0
 

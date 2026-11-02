@@ -19,6 +19,7 @@
 #   make template EXAMPLE=x        Render templates for an example
 #   make lint                      Lint all charts and examples
 #   make test                      Run helm-unittest
+#   make test-app                  Run helm-unittest for the app chart
 #   make docs                      Regenerate the chart README with helm-docs
 # =============================================================================
 
@@ -30,14 +31,21 @@ SHELL := /bin/bash
 # ---------------------------------------------------------------------------
 KNATIVE_VERSION       ?= v1.17.0
 CNPG_RELEASE          ?= release-1.25
-FLAGGER_BRANCH        ?= main
+FLAGGER_VERSION       ?= v1.45.0
 KAFKA_EVENTING_VERSION ?= v1.17.0
-DRAGONFLY_BRANCH      ?= main
+DRAGONFLY_OPERATOR_VERSION ?= v1.7.1
+BARMAN_PLUGIN_VERSION ?= v0.15.1
+PROMETHEUS_OPERATOR_VERSION ?= v0.94.2
 KYVERNO_CHART_VERSION ?= 3.9.1
 STRIMZI_VERSION       ?= 1.3.0
 REDPANDA_OPERATOR_VERSION ?= 26.2.5
 HELM_VERSION          ?= v3.17.0
 HELM_DOCS_VERSION     ?= v1.14.2
+HELM_DOCS_IMAGE       ?= jnorwood/helm-docs:$(HELM_DOCS_VERSION)@sha256:7e562b49ab6b1dbc50c3da8f2dd6ffa8a5c6bba327b1c6335cc15ce29267979c
+# lib-bucket-provisioner has no release tag whose CRDs are usable on
+# Kubernetes >= 1.22 (the only tag ships apiextensions.k8s.io/v1beta1), so pin
+# the master commit that publishes the apiextensions.k8s.io/v1 CRDs.
+LIB_BUCKET_PROVISIONER_COMMIT ?= be094b8c7ee9aa948aeaaa7ff6ee6e5f359393ad
 KIND_CLUSTER_NAME     ?= test-cluster
 EXAMPLE               ?= minimal
 NAMESPACE             ?= test-ns
@@ -53,14 +61,14 @@ CNPG_CRDS := \
 	$(CNPG_CRD_BASE)/postgresql.cnpg.io_clusters.yaml \
 	$(CNPG_CRD_BASE)/postgresql.cnpg.io_poolers.yaml \
 	$(CNPG_CRD_BASE)/postgresql.cnpg.io_scheduledbackups.yaml \
-	https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/main/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml
+	https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/$(BARMAN_PLUGIN_VERSION)/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml
 
-PROMETHEUS_CRD_BASE := https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd
+PROMETHEUS_CRD_BASE := https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/$(PROMETHEUS_OPERATOR_VERSION)/example/prometheus-operator-crd
 MONITORING_CRDS := \
 	$(PROMETHEUS_CRD_BASE)/monitoring.coreos.com_podmonitors.yaml \
 	$(PROMETHEUS_CRD_BASE)/monitoring.coreos.com_prometheusrules.yaml
 
-FLAGGER_CRDS := https://raw.githubusercontent.com/fluxcd/flagger/$(FLAGGER_BRANCH)/artifacts/flagger/crd.yaml
+FLAGGER_CRDS := https://raw.githubusercontent.com/fluxcd/flagger/$(FLAGGER_VERSION)/artifacts/flagger/crd.yaml
 
 KAFKA_SOURCE_CRDS := https://raw.githubusercontent.com/knative-extensions/eventing-kafka-broker/knative-$(KAFKA_EVENTING_VERSION)/control-plane/config/eventing-kafka-broker/100-source/100-kafka-source.yaml
 
@@ -68,9 +76,9 @@ STRIMZI_CRDS := https://github.com/strimzi/strimzi-kafka-operator/releases/downl
 
 EVENTING_CRDS := https://github.com/knative/eventing/releases/download/knative-$(KNATIVE_VERSION)/eventing-crds.yaml
 
-DRAGONFLY_CRDS := https://raw.githubusercontent.com/dragonflydb/dragonfly-operator/$(DRAGONFLY_BRANCH)/config/crd/bases/dragonflydb.io_dragonflies.yaml
+DRAGONFLY_CRDS := https://raw.githubusercontent.com/dragonflydb/dragonfly-operator/$(DRAGONFLY_OPERATOR_VERSION)/config/crd/bases/dragonflydb.io_dragonflies.yaml
 
-OBJECT_BUCKET_CRD_BASE := https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds
+OBJECT_BUCKET_CRD_BASE := https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/$(LIB_BUCKET_PROVISIONER_COMMIT)/deploy/crds
 OBJECT_BUCKET_CRDS := \
 	$(OBJECT_BUCKET_CRD_BASE)/objectbucket_v1alpha1_objectbucketclaim_crd.yaml \
 	$(OBJECT_BUCKET_CRD_BASE)/objectbucket_v1alpha1_objectbucket_crd.yaml
@@ -283,6 +291,13 @@ test: ## Run helm unit tests
 	helm dependency build charts/library/ksvc/test-chart
 	helm unittest charts/library/ksvc/test-chart
 
+.PHONY: test-app
+test-app: ## Run helm unit tests for the app chart
+	@# hack/lint-app.sh resolves the ksvc dependency against the local library
+	@# chart and restores Chart.yaml/Chart.lock on exit, so the app tests
+	@# exercise the source in this worktree rather than the published pin.
+	hack/lint-app.sh helm unittest charts/app/ksvc --with-subchart=false
+
 .PHONY: test-schema
 test-schema: ## Validate values.schema.json with positive and negative cases
 	python3 hack/test-values-schema.py
@@ -299,6 +314,14 @@ check-docs: ## Verify README requirements match the chart sources
 check-markdown-links: ## Check local links in repository Markdown files
 	python3 hack/check-markdown-links.py
 
+.PHONY: check-artifacthub
+check-artifacthub: ## Validate Artifact Hub metadata in both Chart.yaml files
+	python3 hack/check-artifacthub.py
+
+.PHONY: check-changelog
+check-changelog: ## Verify CHANGELOG.md covers the current chart product line
+	python3 hack/check-changelog.py
+
 .PHONY: docs
 docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-docs
 	@# Runs the pinned helm-docs image; scans only the library chart and skips
@@ -307,9 +330,23 @@ docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-doc
 		--volume "$(CURDIR):/helm-docs" \
 		--workdir /helm-docs \
 		--user "$(shell id -u):$(shell id -g)" \
-		jnorwood/helm-docs:$(HELM_DOCS_VERSION) \
+		$(HELM_DOCS_IMAGE) \
 		--chart-search-root=charts/library \
 		--template-files=README.md.gotmpl
+
+.PHONY: check-locks
+check-locks: ## Verify every committed Chart.lock matches its Chart.yaml
+	hack/check-lock-consistency.sh
+
+.PHONY: test-release-logic
+test-release-logic: ## Run release gate, reconciliation, signing, dependents, e2e, and lock-consistency tests
+	hack/release/test-release-gate.sh
+	hack/release/test-reconcile-release.sh
+	hack/release/test-sign-release.sh
+	hack/release/test-find-previous-version.sh
+	hack/release/test-update-dependents.sh
+	hack/release/test-e2e-oci-install.sh
+	hack/test-lock-consistency.sh
 
 .PHONY: update-locks
 update-locks: ## Refresh Chart.lock files (test-chart, examples, app chart) from current sources

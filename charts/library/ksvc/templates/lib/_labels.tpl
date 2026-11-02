@@ -2,7 +2,7 @@
 Standard Kubernetes labels applied to all resources.
 */}}
 {{- define "ksvc.labels" -}}
-app.kubernetes.io/name: {{ include "ksvc.fullname" . }}
+app.kubernetes.io/name: {{ include "ksvc.globalName" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
@@ -16,7 +16,7 @@ helm.sh/chart: {{ include "ksvc.chart" . }}
 Selector labels (subset for matchLabels).
 */}}
 {{- define "ksvc.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "ksvc.fullname" . }}
+app.kubernetes.io/name: {{ include "ksvc.globalName" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
