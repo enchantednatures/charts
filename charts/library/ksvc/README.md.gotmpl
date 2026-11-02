@@ -194,6 +194,10 @@ services:
         cloud.google.com/backend-config: '{"default": "gateway-idle"}'
 ```
 
+### Rolling update strategy
+
+`workload.strategy.maxUnavailable` and `workload.strategy.maxSurge` accept either an integer or a percentage string, matching the Kubernetes `Deployment` API. The chart intentionally does **not** compare `maxUnavailable` against `workload.replicas`: a value greater than the replica count is valid (Kubernetes simply takes every pod down at once), and percent strings have no fixed integer value to compare. The only availability constraint the chart validates is the `minAvailable`/`maxUnavailable` mutual exclusion on a PodDisruptionBudget (set one of them to `0`).
+
 ### PodDisruptionBudget semantics
 
 A PodDisruptionBudget governs **voluntary** evictions only, which means node drains and cluster upgrades. It does not govern rolling updates (those follow `workload.strategy`), and it does not stop a node failure or a crash from taking pods down.
@@ -212,7 +216,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
+| `kafka.sources.<key>.topic` | Kafka topic name. Optional; defaults to `events` when omitted | `"events"` |
 | `kafka.sources.<key>.sink` | **Required unless `kafka.broker.enabled` is true.** Key from the `services` map, or omit to sink to the Broker | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
 | `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
@@ -236,6 +240,8 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.net.sasl.userKey` | Username key within the Secret | `user` |
 | `kafka.sources.<key>.net.sasl.passwordSecret` | Secret containing the SASL password | `""` |
 | `kafka.sources.<key>.net.sasl.passwordKey` | Password key within the Secret | `password` |
+
+`kafka.sources.<key>.topic` is optional. When it is omitted the loader defaults the source to the `events` topic, so a minimal source only needs `sink` (or `kafka.broker.enabled: true`). An explicit `topic` always wins.
 
 ### TLS and SASL
 

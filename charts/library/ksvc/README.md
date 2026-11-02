@@ -162,6 +162,7 @@ sections following the table.
 | dragonfly.serviceSpec.name | string | `""` | Override the generated Service name. |
 | dragonfly.serviceSpec.nodePort | int | `0` | Node port (only used when `type` is `NodePort`). |
 | dragonfly.serviceSpec.type | string | `"ClusterIP"` | Kubernetes Service type. |
+| dragonfly.snapshot.bucketRef | string | `""` | Key of an `objectBuckets` entry used to derive the Dragonfly S3 snapshot dir, credentials, and endpoint. Empty disables derivation. |
 | dragonfly.snapshot.cron | string | `"0 */6 * * *"` | Cron schedule for snapshots. |
 | dragonfly.snapshot.dir | string | `""` | S3 backup path (`s3://bucket/path`); mutually exclusive with an existing PVC. Derived from `snapshot.bucketRef` when it is set. |
 | dragonfly.snapshot.enableOnMasterOnly | bool | `true` | Take snapshots only on the master instance. |
@@ -231,6 +232,7 @@ sections following the table.
 | objectBuckets | object | `{}` | Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each key renders an ObjectBucketClaim named `<release>-<key>`; see the Object Buckets section for the per-entry schema. |
 | pingsources | object | `{}` | Map of PingSource entries, keyed by source name. Each key renders a PingSource named `<release>-<key>-ping-source`; every entry's `sink` must reference a key in `services` (validated at render time). Per-entry fields: `schedule`, `timezone`, `data`, `contentType`, `ceOverrides.extensions` (custom extensions only, never `type`), and the required `sink`. |
 | postgres.backup.enabled | bool | `true` | Enable WAL archiving and scheduled backups. |
+| postgres.backup.objectStore.bucketRef | string | `""` | Key of an `objectBuckets` entry used to derive the CNPG ObjectStore destinationPath, endpointURL, and credentials. Empty disables derivation. |
 | postgres.backup.objectStore.data.compression | string | `"gzip"` | Compression algorithm for data backups (`snappy`, `gzip`, `bzip2` or `lz4`). |
 | postgres.backup.objectStore.data.jobs | int | `2` | Number of parallel jobs for data backups. |
 | postgres.backup.objectStore.destinationPath | string | `""` | Destination path for backups (e.g. `s3://bucket/path`). Derived from `bucketRef` when it is set. |
@@ -282,7 +284,6 @@ sections following the table.
 | services.api.flagger.loadTest.vus | int | `10` | Number of virtual users for the k6 load test. |
 | services.api.flagger.loadTest.webhookUrl | string | `"http://k6-loadtester.flagger-system/launch-test"` | URL of the k6 webhook service that starts load tests. |
 | services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
-| services.api.flagger.metrics.prometheusAddress | string | `"http://prometheus.observability.svc.cluster.local:9090"` | Prometheus server address used for metric checks. |
 | services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
 | services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |
 | services.api.image.imagePullSecrets | list | `[]` | List of imagePullSecrets attached to the pod spec (private registries). |
@@ -379,6 +380,10 @@ services:
         cloud.google.com/backend-config: '{"default": "gateway-idle"}'
 ```
 
+### Rolling update strategy
+
+`workload.strategy.maxUnavailable` and `workload.strategy.maxSurge` accept either an integer or a percentage string, matching the Kubernetes `Deployment` API. The chart intentionally does **not** compare `maxUnavailable` against `workload.replicas`: a value greater than the replica count is valid (Kubernetes simply takes every pod down at once), and percent strings have no fixed integer value to compare. The only availability constraint the chart validates is the `minAvailable`/`maxUnavailable` mutual exclusion on a PodDisruptionBudget (set one of them to `0`).
+
 ### PodDisruptionBudget semantics
 
 A PodDisruptionBudget governs **voluntary** evictions only, which means node drains and cluster upgrades. It does not govern rolling updates (those follow `workload.strategy`), and it does not stop a node failure or a crash from taking pods down.
@@ -397,7 +402,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `kafka.sources.<key>.topic` | Kafka topic name | `"events"` |
+| `kafka.sources.<key>.topic` | Kafka topic name. Optional; defaults to `events` when omitted | `"events"` |
 | `kafka.sources.<key>.sink` | **Required unless `kafka.broker.enabled` is true.** Key from the `services` map, or omit to sink to the Broker | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
 | `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
@@ -421,6 +426,8 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.net.sasl.userKey` | Username key within the Secret | `user` |
 | `kafka.sources.<key>.net.sasl.passwordSecret` | Secret containing the SASL password | `""` |
 | `kafka.sources.<key>.net.sasl.passwordKey` | Password key within the Secret | `password` |
+
+`kafka.sources.<key>.topic` is optional. When it is omitted the loader defaults the source to the `events` topic, so a minimal source only needs `sink` (or `kafka.broker.enabled: true`). An explicit `topic` always wins.
 
 ### TLS and SASL
 
