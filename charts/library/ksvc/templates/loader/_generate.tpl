@@ -227,7 +227,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $flaggerDefaults := dict
     "enabled" false
     "analysis" (dict "interval" "1m" "threshold" 5 "maxWeight" 50 "stepWeight" 10 "progressDeadlineSeconds" 120)
-    "metrics" (dict "successRateThreshold" 99 "latencyP99ThresholdMs" 500 "prometheusAddress" "http://prometheus.observability.svc.cluster.local:9090")
+    "metrics" (dict "successRateThreshold" 99 "latencyP99ThresholdMs" 500)
     "loadTest" (dict "enabled" true "webhookUrl" "http://k6-loadtester.flagger-system/launch-test" "vus" 10 "duration" "1m" "p95ThresholdMs" 500 "errorRateThreshold" 0.01 "script" "")
   -}}
 
@@ -507,7 +507,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "resources" (dict "requests" (dict "cpu" "500m" "memory" "512Mi") "limits" (dict "cpu" "1" "memory" "1Gi"))
     "authentication" (dict "passwordFromSecret" (dict "name" "" "key" "password") "clientCaCertSecret" (dict "name" "" "key" "ca.crt"))
     "tls" (dict "secretName" "" "certManager" (dict "enabled" false "issuerRef" (dict "name" "" "kind" "" "group" "") "duration" "2160h" "renewBefore" "360h"))
-    "snapshot" (dict "enabled" false "cron" "0 */6 * * *" "enableOnMasterOnly" true
+    "snapshot" (dict "enabled" false "cron" "0 */6 * * *" "enableOnMasterOnly" true "bucketRef" ""
       "storage" (dict "size" "10Gi" "storageClassName" "")
     )
     "serviceSpec" (dict "type" "ClusterIP" "name" "" "nodePort" 0 "annotations" (dict) "labels" (dict))

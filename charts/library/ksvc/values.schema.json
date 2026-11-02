@@ -44,7 +44,8 @@
       "type": "object",
       "description": "Map of ObjectBucketClaim entries. Each key becomes a name suffix: <release-name>-<key>",
       "propertyNames": {
-        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+        "maxLength": 53
       },
       "additionalProperties": {
         "$ref": "#/$defs/objectBucketEntry"
@@ -677,6 +678,7 @@
               "minimum": 0
             },
             "maxUnavailable": {
+              "description": "Maximum unavailable pods. Intentionally NOT compared against replicas: values greater than replicas are legal and only the minAvailable/maxUnavailable mutual exclusion is validated.",
               "type": "integer",
               "minimum": 0
             }
@@ -826,6 +828,7 @@
           "additionalProperties": false,
           "properties": {
             "maxUnavailable": {
+              "description": "Maximum unavailable pods during a rolling update (integer or percentage string). Intentionally NOT compared against replicas: values greater than replicas are legal and only the minAvailable/maxUnavailable mutual exclusion is validated.",
               "oneOf": [
                 {
                   "type": "integer",
@@ -935,6 +938,7 @@
           ]
         },
         "maxUnavailable": {
+          "description": "Maximum unavailable pods (integer or percentage string). Intentionally NOT compared against replicas: values greater than replicas are legal and only the minAvailable/maxUnavailable mutual exclusion is validated.",
           "oneOf": [
             {
               "type": "integer",
@@ -1180,9 +1184,6 @@
                 "latencyP99ThresholdMs": {
                   "type": "integer",
                   "minimum": 1
-                },
-                "prometheusAddress": {
-                  "type": "string"
                 }
               }
             },
@@ -1224,12 +1225,11 @@
     "kafkaSourceEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "topic"
-      ],
       "properties": {
         "topic": {
-          "type": "string"
+          "type": "string",
+          "default": "events",
+          "description": "Kafka topic to consume. Defaults to 'events' when omitted."
         },
         "consumerGroup": {
           "type": "string"

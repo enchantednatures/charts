@@ -154,9 +154,6 @@ def check_defaults(readme: str) -> None:
     try:
         image_catalog = get_path(values, ["postgres", "imageCatalog", "name"])
         monitoring = get_path(values, ["postgres", "monitoring", "enabled"])
-        prometheus = get_path(
-            values, ["services", "api", "flagger", "metrics", "prometheusAddress"]
-        )
         load_test = get_path(values, ["services", "api", "flagger", "loadTest", "webhookUrl"])
     except KeyError as exc:
         error(f"values.yaml no longer contains {exc.args[0]}")
@@ -172,7 +169,7 @@ def check_defaults(readme: str) -> None:
             f"({monitoring})"
         )
 
-    for label, value in (("Prometheus address", prometheus), ("k6 load tester", load_test)):
+    for label, value in (("k6 load tester", load_test),):
         host = urlsplit(str(value)).netloc
         if host not in readme:
             error(f"README does not mention the default {label} ({host})")

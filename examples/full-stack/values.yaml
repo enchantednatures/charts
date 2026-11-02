@@ -37,7 +37,6 @@ services:
       metrics:
         successRateThreshold: 99
         latencyP99ThresholdMs: 500
-        prometheusAddress: http://prometheus.observability.svc.cluster.local:9090
       loadTest:
         enabled: true
         webhookUrl: http://k6-loadtester.flagger-system/launch-test
