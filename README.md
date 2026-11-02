@@ -148,7 +148,13 @@ Charts are published to **GHCR as OCI artifacts** at
     already exists it must point at the expected release commit (the commit that
     produced the chart version); a tag at any other commit fails with a clear
     error instead of being moved or reused.
-4.  **Dependent bump** — when a **library** chart is released, the
+4.  **Signing and attestation** — every release, including repair runs, signs
+    the published OCI artifact with cosign keyless/OIDC, attaches a Syft SPDX
+    SBOM to the OCI digest, uploads the SBOM and a SLSA provenance predicate to
+    the GitHub Release, and attests the provenance in the registry. Signing,
+    SBOM, attestation, or upload failures fail the release job. Verification
+    commands are in [RELEASING.md](RELEASING.md).
+5.  **Dependent bump** — when a **library** chart is released, the
     `update-dependents` job opens a PR that bumps the library dependency (and the
     dependent app chart's patch version) and refreshes its `Chart.lock`.
 
@@ -240,7 +246,8 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
     smoke test, a Kyverno guardrails end-to-end test, and a Strimzi Kafka
     end-to-end test.
 *   **Release** (`.github/workflows/release.yaml`) — the gated, independently
-    reconciled OCI release pipeline described above.
+    reconciled OCI release pipeline described above, including cosign
+    signatures, Syft SBOMs, and SLSA provenance; see [RELEASING.md](RELEASING.md).
 
 ## Contributing and support
 
