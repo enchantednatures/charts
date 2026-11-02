@@ -14,6 +14,11 @@ metadata:
   labels:
     {{- include "ksvc.labels" .root | nindent 4 }}
     app.kubernetes.io/component: object-bucket
+  {{- $globalAnnotations := include "ksvc.annotations" .root -}}
+  {{- with $globalAnnotations }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 spec:
   storageClassName: {{ .bucket.storageClassName | quote }}
   bucketName: {{ .bucket.bucketName | quote }}

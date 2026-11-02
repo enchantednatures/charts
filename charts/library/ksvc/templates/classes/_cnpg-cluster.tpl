@@ -9,6 +9,11 @@ metadata:
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
+  {{- $globalAnnotations := include "ksvc.annotations" . -}}
+  {{- with $globalAnnotations }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 spec:
   instances: {{ $pg.instances }}
   imageCatalogRef:
