@@ -137,7 +137,7 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
     Helm 4.3.0 lanes for `make lint`, `make test`, template rendering, and
     kubeconform; positive and negative schema validation, Kubernetes-version
     enforcement, Kyverno policy tests, and the PR chart-version gate. Helm
-    unit tests use helm-unittest 0.8.2 on Helm 3.17 and 1.2.1 on Helm 4.
+    unit tests use helm-unittest 0.8.2 on Helm 3.17 and 1.0.3 on Helm 4.
     kubeconform is fail-closed against Kubernetes 1.28, 1.30, and 1.32 using
     the Datree CRD catalog plus a vendored KafkaSource schema.
 *   **Docs** (`.github/workflows/docs.yaml`) — helm-docs sync, README

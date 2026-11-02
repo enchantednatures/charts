@@ -138,10 +138,9 @@ jobs:
     name: Helm Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # helm-unittest v0.8.2 is verified against Helm 3.17. v1.2.1 declares full
-    # Helm 4 support and is used only on the Helm 4 lane (it requires Helm 4's
-    # plugin manifest schema). Helm 4 also requires --verify=false for a
-    # GitHub-hosted plugin source that publishes no Helm provenance file.
+    # helm-unittest v0.8.2 is verified against Helm 3.17. v1.0.3 is verified
+    # against Helm 4.3.0 on the full suite. Helm 4 also requires --verify=false
+    # for a GitHub-hosted plugin source that publishes no Helm provenance file.
     strategy:
       fail-fast: false
       matrix:
@@ -150,7 +149,7 @@ jobs:
             unittest-version: v0.8.2
             unittest-install-flags: ''
           - helm-version: v4.3.0
-            unittest-version: v1.2.1
+            unittest-version: v1.0.3
             unittest-install-flags: '--verify=false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -179,7 +178,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      KUBECONFORM_VERSION: v1.7.12
+      KUBECONFORM_VERSION: v0.8.0
     strategy:
       fail-fast: false
       matrix:
