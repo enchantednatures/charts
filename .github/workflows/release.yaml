@@ -214,6 +214,58 @@ jobs:
             --tag "${{ matrix.tag }}" \
             --commit "${{ matrix.commit }}"
 
+  e2e:
+    name: "Post-publish OCI E2E (${{ matrix.name }} v${{ matrix.version }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [detect, release]
+    permissions:
+      contents: read
+      packages: read
+    if: needs.detect.outputs.matrix != '' && toJSON(fromJSON(needs.detect.outputs.matrix).include) != '[]'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.commit }}
+          fetch-depth: 1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          cluster_name: release-e2e
+          node_image: kindest/node:v1.32.0
+
+      - name: Install Knative Serving CRDs
+        run: make install-knative
+
+      - name: Login to OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ${{ env.REGISTRY }} \
+              --username ${{ github.actor }} \
+              --password-stdin
+
+      - name: Install, upgrade, roll back, and uninstall the published artifact
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+        run: |
+          REPOSITORY_OWNER="${GITHUB_REPOSITORY%%/*}"
+          hack/release/e2e-oci-install.sh \
+            --chart "${{ matrix.name }}" \
+            --version "${{ matrix.version }}" \
+            --chart-type "${{ matrix.type }}" \
+            --oci-repository "oci://${{ env.REGISTRY }}/${REPOSITORY_OWNER}/charts" \
+            --release-name "release-e2e-${{ matrix.name }}" \
+            --namespace release-e2e
+
   update-dependents:
     name: Update Dependent Charts
     runs-on: ubuntu-latest
@@ -222,10 +274,15 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.has_library == 'true'
+      packages: read
+    if: >-
+      needs.detect.outputs.has_library == 'true' &&
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.detect.outputs.release_commit }}
           fetch-depth: 1
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -239,84 +296,14 @@ jobs:
               --username ${{ github.actor }} \
               --password-stdin
 
-      - name: Update dependent app charts and create PR
+      - name: Update dependent charts, refresh locks, and create PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          RELEASED_MATRIX: ${{ needs.detect.outputs.matrix }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          RELEASED='${{ needs.detect.outputs.matrix }}'
-          UPDATED_ANY="false"
-          UPDATED_DIRS=""
-          BRANCH_NAME="chore/bump-deps-$(date +%s)"
-          PR_BODY="Automated dependency bump triggered by library chart release.\n\n**Updated dependencies:**\n"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH_NAME"
-
-          # For each released library chart, find and update dependent app charts
-          for row in $(echo "$RELEASED" | jq -c '.include[] | select(.type == "library")'); do
-            LIB_NAME=$(echo "$row" | jq -r '.name')
-            LIB_VERSION=$(echo "$row" | jq -r '.version')
-
-            echo "Looking for app charts depending on $LIB_NAME..."
-
-            for app_chart in charts/app/*/Chart.yaml; do
-              [[ -f "$app_chart" ]] || continue
-
-              # Check if this app chart depends on the released library
-              if ! grep -q "name: $LIB_NAME" "$app_chart"; then
-                continue
-              fi
-
-              APP_NAME=$(grep '^name:' "$app_chart" | head -1 | awk '{print $2}')
-              OLD_APP_VERSION=$(grep '^version:' "$app_chart" | head -1 | awk '{print $2}')
-
-              # Bump app chart patch version
-              IFS='.' read -r MAJOR MINOR PATCH <<< "$OLD_APP_VERSION"
-              NEW_APP_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
-
-              echo "Updating $APP_NAME: version $OLD_APP_VERSION -> $NEW_APP_VERSION, dep $LIB_NAME -> $LIB_VERSION"
-
-              # Update the app chart version
-              sed -i "s/^version: ${OLD_APP_VERSION}/version: ${NEW_APP_VERSION}/" "$app_chart"
-
-              # Update the dependency version for this library
-              awk -v lib="$LIB_NAME" -v ver="$LIB_VERSION" '
-                /^dependencies:/ { in_deps=1 }
-                in_deps && /- name:/ { in_dep_entry=1; is_target=0 }
-                in_deps && in_dep_entry && $0 ~ "name: " lib { is_target=1 }
-                in_deps && in_dep_entry && is_target && /version:/ {
-                  sub(/version: .*/, "version: " ver)
-                  is_target=0; in_dep_entry=0
-                }
-                { print }
-              ' "$app_chart" > "${app_chart}.tmp" && mv "${app_chart}.tmp" "$app_chart"
-
-              PR_BODY+="- \`$APP_NAME\` $OLD_APP_VERSION → $NEW_APP_VERSION (dep \`$LIB_NAME\` → $LIB_VERSION)\n"
-              UPDATED_ANY="true"
-              UPDATED_DIRS+=" $(dirname "$app_chart")"
-            done
-          done
-
-          if [[ "$UPDATED_ANY" == "false" ]]; then
-            echo "No dependent charts to update"
-            exit 0
-          fi
-
-          # Regenerate each updated chart's committed Chart.lock so it tracks the
-          # just-released library version; CI resolves dependencies with
-          # `helm dependency build`, which requires the lock to be in sync.
-          for app_dir in $UPDATED_DIRS; do
-            echo "Refreshing Chart.lock for $app_dir"
-            helm dependency update "$app_dir"
-          done
-
-          git add charts/app/*/Chart.yaml charts/app/*/Chart.lock
-          git commit -m "chore: bump dependent chart versions"
-          git push origin "$BRANCH_NAME"
-
-          gh pr create \
-            --title "chore: bump dependent chart versions" \
-            --body "$(echo -e "$PR_BODY")" \
-            --base main \
-            --head "$BRANCH_NAME"
+          gh auth setup-git
+          hack/release/update-dependents.sh \
+            --release-commit "${{ needs.detect.outputs.release_commit }}" \
+            --base-branch main
