@@ -182,3 +182,139 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: api
+
+  # ---------- probes, pull policy, envFrom, secrets and volumes ----------
+  - it: should render custom liveness probe fields
+    set:
+      services.api.probes.liveness.path: /live
+      services.api.probes.liveness.port: 8081
+      services.api.probes.liveness.initialDelaySeconds: 7
+      services.api.probes.liveness.periodSeconds: 11
+      services.api.probes.liveness.timeoutSeconds: 4
+      services.api.probes.liveness.failureThreshold: 6
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /live
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: 8081
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.initialDelaySeconds
+          value: 7
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.periodSeconds
+          value: 11
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
+          value: 4
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 6
+
+  - it: should render custom readiness probe fields
+    set:
+      services.api.probes.readiness.path: /ready
+      services.api.probes.readiness.port: 8082
+      services.api.probes.readiness.initialDelaySeconds: 9
+      services.api.probes.readiness.periodSeconds: 13
+      services.api.probes.readiness.timeoutSeconds: 5
+      services.api.probes.readiness.failureThreshold: 8
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ready
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: 8082
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.initialDelaySeconds
+          value: 9
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 13
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 5
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 8
+
+  - it: should render imagePullSecrets
+    set:
+      services.api.image.imagePullSecrets:
+        - name: registry-creds
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: registry-creds
+
+  - it: should render a custom image pull policy
+    set:
+      services.api.image.pullPolicy: Always
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+
+  - it: should render envFrom secretRef and configMapRef entries
+    set:
+      services.api.envFrom:
+        - secretRef:
+            name: app-secret
+        - configMapRef:
+            name: app-config
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: app-secret
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].configMapRef.name
+          value: app-config
+
+  - it: should append extra volumes and volumeMounts after the reserved tmp entries
+    set:
+      services.api.volumes:
+        - name: data
+          emptyDir: {}
+      services.api.volumeMounts:
+        - name: data
+          mountPath: /data
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.volumes[1].name
+          value: data
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1].name
+          value: data
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1].mountPath
+          value: /data
+
+  - it: should not render the scaling class annotation by default
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/class"]
+
+  - it: should render the scaling class annotation when set
+    set:
+      services.api.scaling.class: kpa.autoscaling.knative.dev
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["autoscaling.knative.dev/class"]
+          value: kpa.autoscaling.knative.dev
