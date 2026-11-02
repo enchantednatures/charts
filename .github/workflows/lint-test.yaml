@@ -336,6 +336,34 @@ jobs:
           check_denied test/kyverno/cnpg-invalid-instances.yaml "spec.instances must be between 1 and 16"
           check_denied test/kyverno/dragonfly-invalid-replicas.yaml "spec.replicas must be between 1 and 16"
 
+  lock-consistency:
+    name: Chart Lock Consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Verify committed Chart.lock files
+        run: hack/check-lock-consistency.sh
+
+  release-logic-tests:
+    name: Release Logic Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Run release gate, reconciliation, and lock tests
+        run: make test-release-logic
+
   version-check:
     name: Chart version bump check
     runs-on: ubuntu-latest

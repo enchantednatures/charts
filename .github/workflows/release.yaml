@@ -8,6 +8,24 @@ on:
     tags:
       - '*-v*'
   workflow_dispatch:
+    inputs:
+      chart:
+        description: Chart name to release (for example ksvc or ksvc-app)
+        required: true
+        type: string
+      version:
+        description: Chart version to release (must match Chart.yaml)
+        required: true
+        type: string
+      repair:
+        description: Only repair a missing tag or GitHub Release for an already-published OCI artifact
+        required: false
+        default: false
+        type: boolean
+      commit:
+        description: Commit that produced the chart version (defaults to the commit that introduced it)
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -26,92 +44,52 @@ jobs:
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
       has_library: ${{ steps.build-matrix.outputs.has_library }}
+      release_commit: ${{ steps.build-matrix.outputs.release_commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Build release matrix
         id: build-matrix
-        run: |
-          CHARTS="[]"
-          HAS_LIBRARY="false"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          INPUT_CHART: ${{ inputs.chart }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_REPAIR: ${{ inputs.repair }}
+          INPUT_COMMIT: ${{ inputs.commit }}
+        run: hack/release/detect-charts.sh
 
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            CHART_NAME="${TAG%-v*}"
-            CHART_VERSION="${TAG##*-v}"
+  gate:
+    name: Verify Required Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: detect
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+    if: needs.detect.outputs.matrix != '' && toJSON(fromJSON(needs.detect.outputs.matrix).include) != '[]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
 
-            if [[ -z "$CHART_NAME" || -z "$CHART_VERSION" ]]; then
-              echo "::error::Tag '$TAG' does not match pattern '<chart-name>-v<version>'"
-              exit 1
-            fi
-
-            for candidate in charts/library/*/Chart.yaml charts/app/*/Chart.yaml; do
-              [[ -f "$candidate" ]] || continue
-              name=$(grep '^name:' "$candidate" | head -1 | awk '{print $2}')
-              if [[ "$name" == "$CHART_NAME" ]]; then
-                CHART_PATH="$(dirname "$candidate")"
-                CHART_TYPE=$(grep '^type:' "$candidate" | awk '{print $2}')
-                CHARTS=$(echo "$CHARTS" | jq -c \
-                  --arg name "$CHART_NAME" \
-                  --arg version "$CHART_VERSION" \
-                  --arg path "$CHART_PATH" \
-                  --arg type "$CHART_TYPE" \
-                  --arg tag "$TAG" \
-                  '. + [{"name":$name,"version":$version,"path":$path,"type":$type,"tag":$tag}]')
-                [[ "$CHART_TYPE" == "library" ]] && HAS_LIBRARY="true"
-                break
-              fi
-            done
-
-            if [[ "$CHARTS" == "[]" ]]; then
-              echo "::error::No chart found with name '$CHART_NAME'"
-              exit 1
-            fi
-
-          else
-            for chart_yaml in $(git diff HEAD~1 --name-only -- 'charts/*/Chart.yaml' 'charts/*/*/Chart.yaml' | grep 'Chart\.yaml$' || true); do
-              [[ -f "$chart_yaml" ]] || continue
-
-              CHART_NAME=$(grep '^name:' "$chart_yaml" | head -1 | awk '{print $2}')
-              NEW_VERSION=$(grep '^version:' "$chart_yaml" | head -1 | awk '{print $2}')
-
-              [[ -z "$CHART_NAME" || -z "$NEW_VERSION" ]] && continue
-
-              OLD_VERSION=$(git show HEAD~1:"$chart_yaml" 2>/dev/null | grep '^version:' | head -1 | awk '{print $2}' || true)
-              [[ "$OLD_VERSION" == "$NEW_VERSION" ]] && continue
-
-              CHART_PATH="$(dirname "$chart_yaml")"
-              CHART_TYPE=$(grep '^type:' "$chart_yaml" | awk '{print $2}')
-              TAG="${CHART_NAME}-v${NEW_VERSION}"
-
-              CHARTS=$(echo "$CHARTS" | jq -c \
-                --arg name "$CHART_NAME" \
-                --arg version "$NEW_VERSION" \
-                --arg path "$CHART_PATH" \
-                --arg type "$CHART_TYPE" \
-                --arg tag "$TAG" \
-                '. + [{"name":$name,"version":$version,"path":$path,"type":$type,"tag":$tag}]')
-
-              [[ "$CHART_TYPE" == "library" ]] && HAS_LIBRARY="true"
-            done
-          fi
-
-          if [[ "$CHARTS" == "[]" ]]; then
-            echo "No charts to release"
-          else
-            echo "Charts to release: $CHARTS"
-          fi
-
-          echo "matrix={\"include\":$CHARTS}" >> "$GITHUB_OUTPUT"
-          echo "has_library=$HAS_LIBRARY" >> "$GITHUB_OUTPUT"
+      - name: Wait for required checks on the release commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: >-
+          hack/release/check-required-checks.sh
+          --commit "${{ needs.detect.outputs.release_commit }}"
+          --timeout 3300
 
   release:
     name: "Release ${{ matrix.name }} v${{ matrix.version }}"
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: detect
+    needs: [detect, gate]
     permissions:
       contents: write
       packages: write
@@ -123,6 +101,9 @@ jobs:
       matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.commit }}
+          fetch-depth: 0
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
@@ -147,7 +128,7 @@ jobs:
           CHART_TYPE="${{ matrix.type }}"
 
           if [[ "$CHART_TYPE" == "application" ]]; then
-            helm dependency update "$CHART_PATH"
+            helm dependency build "$CHART_PATH"
           fi
 
           helm lint "$CHART_PATH"
@@ -166,7 +147,7 @@ jobs:
         run: |
           CHART_PATH="${{ matrix.path }}"
           if [[ -d "$CHART_PATH/test-chart" ]]; then
-            helm dependency update "$CHART_PATH/test-chart"
+            helm dependency build "$CHART_PATH/test-chart"
             helm unittest "$CHART_PATH/test-chart"
           else
             echo "No test-chart found, skipping unit tests"
@@ -179,49 +160,24 @@ jobs:
               --username ${{ github.actor }} \
               --password-stdin
 
-      - name: Check whether version already exists in OCI registry
-        id: oci-check
+      - name: Reconcile OCI artifact, git tag, and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPAIR: ${{ matrix.repair }}
         run: |
-          if helm show chart \
-            "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ matrix.name }}" \
-            --version "${{ matrix.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "${{ matrix.name }} v${{ matrix.version }} is already published; skipping push, tag and release."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "${{ matrix.name }} v${{ matrix.version }} is not published yet; proceeding with the release."
+          args=(
+            --chart "${{ matrix.name }}"
+            --version "${{ matrix.version }}"
+            --path "${{ matrix.path }}"
+            --type "${{ matrix.type }}"
+            --tag "${{ matrix.tag }}"
+            --commit "${{ matrix.commit }}"
+          )
+          if [[ "${REPAIR}" == "true" ]]; then
+            args+=(--repair)
           fi
-
-      - name: Package chart
-        run: |
-          helm package ${{ matrix.path }} --destination /tmp/charts
-
-      - name: Push chart to OCI registry
-        if: steps.oci-check.outputs.exists != 'true'
-        run: |
-          helm push "/tmp/charts/${{ matrix.name }}-${{ matrix.version }}.tgz" \
-            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
-
-      - name: Create tag
-        if: steps.oci-check.outputs.exists != 'true'
-        run: |
-          TAG="${{ matrix.tag }}"
-          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping"
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-
-      - name: Create GitHub Release
-        if: steps.oci-check.outputs.exists != 'true'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          tag_name: ${{ matrix.tag }}
-          name: "${{ matrix.name }} v${{ matrix.version }}"
-          generate_release_notes: true
-          files: |
-            /tmp/charts/${{ matrix.name }}-${{ matrix.version }}.tgz
+          hack/release/reconcile-release.sh "${args[@]}"
 
   update-dependents:
     name: Update Dependent Charts

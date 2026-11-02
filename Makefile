@@ -311,6 +311,16 @@ docs: ## Regenerate charts/library/ksvc/README.md from values.yaml with helm-doc
 		--chart-search-root=charts/library \
 		--template-files=README.md.gotmpl
 
+.PHONY: check-locks
+check-locks: ## Verify every committed Chart.lock matches its Chart.yaml
+	hack/check-lock-consistency.sh
+
+.PHONY: test-release-logic
+test-release-logic: ## Run release gate, reconciliation, and lock-consistency tests
+	hack/release/test-release-gate.sh
+	hack/release/test-reconcile-release.sh
+	hack/test-lock-consistency.sh
+
 .PHONY: update-locks
 update-locks: ## Refresh Chart.lock files (test-chart, examples, app chart) from current sources
 	helm dependency update charts/library/ksvc/test-chart
