@@ -3,14 +3,15 @@ Validate required values at template render time.
 Call this from the loader to catch misconfigurations early.
 */}}
 {{- define "ksvc.validate" -}}
-  {{/* services map must exist and have at least one entry */}}
-  {{- if not .Values.services -}}
+  {{/* services map must exist, be a map, and have at least one entry.
+       Use kindOf so a nil value is rejected before len is evaluated. */}}
+  {{- $services := .Values.services -}}
+  {{- $servicesKind := kindOf $services -}}
+  {{- if eq $servicesKind "invalid" -}}
     {{- fail "services is required and must contain at least one service entry" -}}
-  {{- end -}}
-  {{- if not (kindIs "map" .Values.services) -}}
+  {{- else if ne $servicesKind "map" -}}
     {{- fail "services must be a map (e.g. services: { api: { ... } })" -}}
-  {{- end -}}
-  {{- if eq (len .Values.services) 0 -}}
+  {{- else if eq (len $services) 0 -}}
     {{- fail "services must contain at least one service entry" -}}
   {{- end -}}
 

@@ -1,0 +1,146 @@
+suite: cnpg monitoring tests
+templates:
+  - templates/common.yaml
+
+# Render order with postgres enabled, pooler/backup disabled, monitoring enabled:
+#   doc0 = Knative Service   test-release-api
+#   doc1 = CNPG Cluster      test-release-postgres
+#   doc2 = PodMonitor        test-release-postgres-metrics
+#   doc3 = PrometheusRule    test-release-postgres-alerts
+set:
+  services.api.image.repository: test/image
+  postgres.enabled: true
+  postgres.pooler.enabled: false
+  postgres.backup.enabled: false
+  postgres.monitoring.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: renders a PodMonitor for the CNPG cluster
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: PodMonitor
+      - equal:
+          path: apiVersion
+          value: monitoring.coreos.com/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-metrics
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: metadata.labels.app
+          value: test-release-postgres
+      - equal:
+          path: metadata.labels.release
+          value: prometheus
+
+  - it: selects the CNPG pods by the postgresql label
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels.postgresql
+          value: test-release-postgres
+
+  - it: configures the metrics endpoint port, interval, timeout, path and scheme
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].port
+          value: metrics
+      - equal:
+          path: spec.podMetricsEndpoints[0].interval
+          value: 30s
+      - equal:
+          path: spec.podMetricsEndpoints[0].scrapeTimeout
+          value: 10s
+      - equal:
+          path: spec.podMetricsEndpoints[0].path
+          value: /metrics
+      - equal:
+          path: spec.podMetricsEndpoints[0].scheme
+          value: http
+
+  - it: scopes the PodMonitor to the release namespace
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.namespaceSelector.matchNames[0]
+          value: test-ns
+
+  - it: renders a PrometheusRule for the CNPG cluster
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: PrometheusRule
+      - equal:
+          path: apiVersion
+          value: monitoring.coreos.com/v1
+      - equal:
+          path: metadata.name
+          value: test-release-postgres-alerts
+      - equal:
+          path: metadata.namespace
+          value: test-ns
+      - equal:
+          path: metadata.labels.app
+          value: test-release-postgres
+      - equal:
+          path: metadata.labels.prometheus
+          value: kube-prometheus
+
+  - it: renders one rule group with the postgres name and interval
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.groups[0].name
+          value: postgres.rules
+      - equal:
+          path: spec.groups[0].interval
+          value: 30s
+      - lengthEqual:
+          path: spec.groups[0].rules
+          count: 5
+
+  - it: interpolates the default alert thresholds from values
+    documentIndex: 3
+    asserts:
+      - matchRegex:
+          path: spec.groups[0].rules[1].expr
+          pattern: "cnpg_pg_replication_lag > 10"
+      - matchRegex:
+          path: spec.groups[0].rules[2].expr
+          pattern: "cnpg_pg_replication_lag > 60"
+      - matchRegex:
+          path: spec.groups[0].rules[4].expr
+          pattern: "cnpg_pg_stat_activity_count > 50"
+
+  - it: interpolates custom alert thresholds from values
+    set:
+      postgres.monitoring.alerts.replicationLagWarning: 15
+      postgres.monitoring.alerts.replicationLagCritical: 90
+      postgres.monitoring.alerts.highConnectionCount: 75
+    documentIndex: 3
+    asserts:
+      - matchRegex:
+          path: spec.groups[0].rules[1].expr
+          pattern: "cnpg_pg_replication_lag > 15"
+      - matchRegex:
+          path: spec.groups[0].rules[2].expr
+          pattern: "cnpg_pg_replication_lag > 90"
+      - matchRegex:
+          path: spec.groups[0].rules[4].expr
+          pattern: "cnpg_pg_stat_activity_count > 75"
+
+  - it: renders no monitoring resources when monitoring is disabled
+    set:
+      postgres.monitoring.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: Cluster
+        documentIndex: 1

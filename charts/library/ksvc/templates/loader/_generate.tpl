@@ -231,15 +231,18 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "loadTest" (dict "enabled" true "webhookUrl" "http://k6-loadtester.flagger-system/launch-test" "vus" 10 "duration" "1m" "p95ThresholdMs" 500 "errorRateThreshold" 0.01 "script" "")
   -}}
 
-  {{- $services := .Values.services | default dict -}}
+  {{- $rawServices := .Values.services -}}
+  {{- $services := $rawServices | default dict -}}
+  {{- if kindIs "map" $rawServices -}}
   {{- range $key, $svc := $services }}
     {{- $merged := mustMergeOverwrite (deepCopy $svcDefaults) $svc -}}
     {{/* Merge flagger defaults into the service's flagger config */}}
     {{- $svcFlagger := $merged.flagger | default dict -}}
     {{- $_ := set $merged "flagger" (mustMergeOverwrite (deepCopy $flaggerDefaults) $svcFlagger) -}}
     {{- $_ := set $services $key $merged -}}
-  {{- end }}
+  {{- end -}}
   {{- $_ := set .Values "services" $services -}}
+  {{- end -}}
 
   {{/* --- kafka source, cluster, broker, and trigger defaults --- */}}
   {{- $kafkaSourceDefaults := dict
