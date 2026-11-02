@@ -1,0 +1,120 @@
+suite: v1.0.0 API freeze tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+
+# Covers the B1a API-freeze guarantees:
+#   * postgres.backup.objectStore.bucketRef and dragonfly.snapshot.bucketRef
+#     default to an empty string and therefore derive no bucket wiring.
+#   * kafka.sources.<key>.topic defaults to `events`; an explicit topic wins.
+#   * workload.strategy.maxUnavailable accepts a percentage string and is not
+#     compared against workload.replicas.
+#
+# Documents are selected by kind so the assertions stay stable as unrelated
+# resources are added or removed from the render order.
+tests:
+  # -------------------------------------------------------------------------
+  # bucketRef defaults are empty
+  # -------------------------------------------------------------------------
+  - it: postgres backup objectStore bucketRef defaults to empty (no derived wiring)
+    set:
+      postgres.enabled: true
+      postgres.pooler.enabled: false
+      postgres.monitoring.enabled: false
+      postgres.backup.enabled: true
+      postgres.backup.objectStore.destinationPath: "s3://manual-bucket/"
+      postgres.backup.objectStore.endpointURL: "http://manual:9000"
+      objectBuckets.backups.storageClassName: ceph-bucket
+      objectBuckets.backups.endpointURL: http://rgw.example:80
+    documentSelector:
+      path: kind
+      value: ObjectStore
+    asserts:
+      - equal:
+          path: spec.configuration.destinationPath
+          value: "s3://manual-bucket/"
+      - equal:
+          path: spec.configuration.endpointURL
+          value: "http://manual:9000"
+      - equal:
+          path: spec.configuration.s3Credentials.accessKeyId.name
+          value: "postgres-backup-storage"
+
+  - it: dragonfly snapshot bucketRef defaults to empty (no derived dir or AWS env)
+    set:
+      dragonfly.enabled: true
+      dragonfly.snapshot.enabled: true
+    documentSelector:
+      path: kind
+      value: Dragonfly
+    asserts:
+      - notExists:
+          path: spec.snapshot.dir
+      - notExists:
+          path: spec.env
+      - notExists:
+          path: spec.args
+
+  # -------------------------------------------------------------------------
+  # Kafka topic default and override
+  # -------------------------------------------------------------------------
+  - it: kafka source without topic defaults to events
+    set:
+      kafka.sources.events.sink: api
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - contains:
+          path: spec.topics
+          content: events
+
+  - it: an explicit kafka topic wins over the events default
+    set:
+      kafka.sources.events.topic: custom-topic
+      kafka.sources.events.sink: api
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - contains:
+          path: spec.topics
+          content: custom-topic
+      - notContains:
+          path: spec.topics
+          content: events
+
+  # -------------------------------------------------------------------------
+  # maxUnavailable rendering (documented, not validated against replicas)
+  # -------------------------------------------------------------------------
+  - it: renders a percentage maxUnavailable
+    set:
+      services.api.workload.type: Deployment
+      services.api.workload.strategy.maxUnavailable: "50%"
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: "50%"
+
+  - it: renders maxUnavailable greater than replicas without failing
+    set:
+      services.api.workload.type: Deployment
+      services.api.workload.replicas: 3
+      services.api.workload.strategy.maxUnavailable: 5
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 5
