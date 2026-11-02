@@ -87,7 +87,7 @@ the same values surface; `ksvc-app` pins the matching `ksvc` release.
 
 | Component | CI-tested / pinned | Supported | Notes |
 |-----------|-------------------|-----------|-------|
-| Kubernetes | 1.28.0, 1.30.0, 1.32.0 (kubeconform); 1.32.0 Kind e2e | >= 1.28 | Every chart declares `kubeVersion: ">=1.28.0"`. Managed Strimzi needs >= 1.32. |
+| Kubernetes | 1.28.0, 1.30.0, 1.32.0 (kubeconform); 1.32.0 Kind e2e | >= 1.28 | Every chart declares `kubeVersion: ">=1.28.0"`. Every `helm/kind-action` job pins `node_image: kindest/node:v1.32.0`; managed Strimzi needs >= 1.32. |
 | Helm | 3.17.0 and 4.3.0 | >= 3.17 (3.x) and 4.x | CI runs both lanes; 3.17.0 is the minimum. OCI installs require >= 3.8, but the chart is tested from 3.17. |
 | Knative Serving | v1.17.0 | `serving.knative.dev/v1` | Required for default `workload.type: Knative`; Deployment-mode services do not need it. |
 | Knative Eventing | v1.17.0 | `eventing.knative.dev/v1` | Required for `pingsources`, `kafka.broker`, and `kafka.triggers`. |
@@ -237,14 +237,17 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
     kubeconform is fail-closed against Kubernetes 1.28, 1.30, and 1.32 using
     the Datree CRD catalog plus a vendored KafkaSource schema. The same
     workflow runs the Chart Lock Consistency job and the Release Logic Tests
-    (release gate, reconciliation, and stale-lock fixtures).
+    (release gate, reconciliation, and stale-lock fixtures). Every GitHub
+    Action is pinned to a full commit SHA; the Action Pin Guard job
+    (`hack/check-action-pins.sh`) fails on floating `@vN` refs. Python
+    dependencies come from the pinned [`requirements-ci.txt`](requirements-ci.txt).
 *   **Docs** (`.github/workflows/docs.yaml`) — helm-docs sync, README
     requirements drift checks, Markdown lint, local link checks, and external
     link checks (also run weekly).
 *   **Integration Test** (`.github/workflows/integration-test.yaml`) — nightly
     and PR Kind-cluster dry-runs for every example, a real Helm 4 install
     smoke test, a Kyverno guardrails end-to-end test, and a Strimzi Kafka
-    end-to-end test.
+    end-to-end test. Every Kind job pins `kindest/node:v1.32.0`.
 *   **Release** (`.github/workflows/release.yaml`) — the gated, independently
     reconciled OCI release pipeline described above, including cosign
     signatures, Syft SBOMs, and SLSA provenance; see [RELEASING.md](RELEASING.md).

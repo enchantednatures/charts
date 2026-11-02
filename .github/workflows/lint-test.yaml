@@ -9,6 +9,7 @@ on:
       - 'test/**'
       - 'flux/**'
       - 'Makefile'
+      - 'requirements-ci.txt'
       - 'hack/**'
       - '.github/workflows/**'
       - '.helmdocsignore'
@@ -22,6 +23,7 @@ on:
       - 'test/**'
       - 'flux/**'
       - 'Makefile'
+      - 'requirements-ci.txt'
       - 'hack/**'
       - '.github/workflows/**'
       - '.helmdocsignore'
@@ -79,7 +81,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install jsonschema pyyaml
+        run: pip install -r requirements-ci.txt
 
       - name: Validate example values and negative schema cases
         run: python3 hack/test-values-schema.py
@@ -104,7 +106,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install yamllint
-        run: pip install yamllint
+        run: pip install -r requirements-ci.txt
 
       - name: Render and validate app chart (Helm ${{ matrix.helm-version }})
         run: |
@@ -182,6 +184,7 @@ jobs:
     timeout-minutes: 15
     env:
       KUBECONFORM_VERSION: v0.8.0
+      KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
     strategy:
       fail-fast: false
       matrix:
@@ -197,8 +200,14 @@ jobs:
       - name: Install kubeconform
         run: |
           set -euo pipefail
-          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | \
-            tar xz -C /usr/local/bin
+          archive="$RUNNER_TEMP/kubeconform-linux-amd64.tar.gz"
+          install_dir="$RUNNER_TEMP/kubeconform-bin"
+          mkdir -p "$install_dir"
+          curl -sSLo "$archive" \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  ${archive}" | sha256sum -c -
+          tar xzf "$archive" -C "$install_dir"
+          echo "$install_dir" >> "$GITHUB_PATH"
 
       - name: Validate examples, app chart, and Kyverno fixtures
         run: |
@@ -261,7 +270,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements-ci.txt
 
       - name: Install Kyverno CLI
         run: |
@@ -352,6 +361,16 @@ jobs:
 
       - name: Verify committed Chart.lock files
         run: hack/check-lock-consistency.sh
+
+  action-pins:
+    name: Action Pin Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify every action is pinned to a full commit SHA
+        run: hack/check-action-pins.sh
 
   release-logic-tests:
     name: Release Logic Tests
