@@ -82,10 +82,8 @@ requires Kubernetes >= 1.32; the Strimzi e2e job pins a Kind 1.32 node image.
 
 ### Compatibility matrix
 
-This matrix targets the `ksvc` **1.0.0** line. The library on this branch is
-`1.0.0-rc.1.3`; the `ksvc-app` wrapper is still `0.7.3` and pins `ksvc 0.10.0`
-until the app release batch. The wrapper follows the library version once that
-batch ships.
+This matrix targets the `ksvc` and `ksvc-app` **1.0.0** line. Both charts expose
+the same values surface; `ksvc-app` pins the matching `ksvc` release.
 
 | Component | CI-tested / pinned | Supported | Notes |
 |-----------|-------------------|-----------|-------|
@@ -142,7 +140,7 @@ Charts are published to **GHCR as OCI artifacts** at
     `Kubernetes Schema Validation`, every `Kind Cluster Deploy (…)` matrix lane,
     `App Chart Dry-Run`, `Kyverno Guardrails E2E`, and `Kafka Strimzi E2E`.
     Pushing a tag of the form **`<chart>-v<version>`** (for example
-    `ksvc-v1.0.0-rc.1.3`) also triggers a release and is gated against that tag's
+    `ksvc-v1.0.0`) also triggers a release and is gated against that tag's
     commit.
 3.  **Independent reconciliation** — the release job checks the OCI artifact,
     the git tag, and the GitHub Release separately. Existing artifacts are never
@@ -180,7 +178,7 @@ Consumers reference a published chart by OCI repository and version:
 ```yaml
 dependencies:
   - name: ksvc
-    version: 1.0.0-rc.1.3
+    version: 1.0.0
     repository: oci://ghcr.io/enchantednatures/charts
 ```
 
