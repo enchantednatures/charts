@@ -17,14 +17,14 @@ service image:
 
 ```bash
 helm install my-svc oci://ghcr.io/enchantednatures/charts/ksvc-app \
-  --version 1.0.0-rc.1 \
+  --version 1.0.0 \
   --namespace my-services \
   --create-namespace \
   --set services.api.image.repository=ghcr.io/my-org/my-app \
   --set services.api.image.tag=v1.0.0
 ```
 
-The chart pins its `ksvc` library dependency to `1.0.0-rc.1.4` in `Chart.yaml` (and
+The chart pins its `ksvc` library dependency to `1.0.0` in `Chart.yaml` (and
 the digest in `Chart.lock`). The wrapper version and the dependency pin are
 independent: the wrapper follows its own release line, while the dependency
 advances when a new library release is adopted.
@@ -34,7 +34,7 @@ embeds the library directly:
 
 ```bash
 helm upgrade --install my-svc oci://ghcr.io/enchantednatures/charts/ksvc-app \
-  --version 1.0.0-rc.1 \
+  --version 1.0.0 \
   --namespace my-services \
   --set services.api.image.repository=ghcr.io/my-org/my-app \
   --set services.api.image.tag=v1.1.0 \
