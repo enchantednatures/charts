@@ -1,0 +1,189 @@
+suite: dragonfly advanced configuration tests
+templates:
+  - templates/common.yaml
+
+# Render order with one Knative service and Dragonfly enabled:
+#   doc0 = Knative Service   test-release-api
+#   doc1 = Dragonfly         test-release-dragonfly
+set:
+  services.api.image.repository: test/image
+  dragonfly.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: renders the client CA secret name and default key
+    set:
+      dragonfly.authentication.passwordFromSecret.name: df-password
+      dragonfly.authentication.clientCaCertSecret.name: df-client-ca
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.authentication.passwordFromSecret.name
+          value: df-password
+      - equal:
+          path: spec.authentication.clientCaCertSecret.name
+          value: df-client-ca
+      - equal:
+          path: spec.authentication.clientCaCertSecret.key
+          value: ca.crt
+
+  - it: renders a custom client CA secret key
+    set:
+      dragonfly.authentication.passwordFromSecret.name: df-password
+      dragonfly.authentication.clientCaCertSecret.name: df-client-ca
+      dragonfly.authentication.clientCaCertSecret.key: custom-ca.crt
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.authentication.clientCaCertSecret.key
+          value: custom-ca.crt
+
+  - it: renders plain environment variables
+    set:
+      dragonfly.env:
+        - name: LOG_LEVEL
+          value: debug
+        - name: MAX_MEMORY
+          value: 2gb
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.env
+          value:
+            - name: LOG_LEVEL
+              value: debug
+            - name: MAX_MEMORY
+              value: 2gb
+
+  - it: renders a custom snapshot cron and enableOnMasterOnly
+    set:
+      dragonfly.snapshot.enabled: true
+      dragonfly.snapshot.cron: "0 */12 * * *"
+      dragonfly.snapshot.enableOnMasterOnly: true
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.snapshot.cron
+          value: "0 */12 * * *"
+      - equal:
+          path: spec.snapshot.enableOnMasterOnly
+          value: true
+
+  - it: omits enableOnMasterOnly when set to false
+    set:
+      dragonfly.snapshot.enabled: true
+      dragonfly.snapshot.enableOnMasterOnly: false
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.snapshot.enableOnMasterOnly
+
+  - it: renders serviceSpec name, nodePort and labels
+    set:
+      dragonfly.serviceSpec.type: NodePort
+      dragonfly.serviceSpec.name: dragonfly-client
+      dragonfly.serviceSpec.nodePort: 30379
+      dragonfly.serviceSpec.labels:
+        team: cache
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.serviceSpec.type
+          value: NodePort
+      - equal:
+          path: spec.serviceSpec.name
+          value: dragonfly-client
+      - equal:
+          path: spec.serviceSpec.nodePort
+          value: 30379
+      - equal:
+          path: spec.serviceSpec.labels.team
+          value: cache
+
+  - it: renders PDB maxUnavailable when minAvailable is zero
+    set:
+      dragonfly.pdb.minAvailable: 0
+      dragonfly.pdb.maxUnavailable: 1
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.pdb.maxUnavailable
+          value: 1
+      - isNull:
+          path: spec.pdb.minAvailable
+
+  - it: renders affinity, tolerations and topologySpreadConstraints
+    set:
+      dragonfly.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.kubernetes.io/zone
+              operator: In
+              values:
+                - zone-a
+      dragonfly.tolerations:
+        - key: dedicated
+          operator: Equal
+          value: cache
+          effect: NoSchedule
+      dragonfly.topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: test-release-dragonfly
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key
+          value: topology.kubernetes.io/zone
+      - equal:
+          path: spec.tolerations[0].key
+          value: dedicated
+      - equal:
+          path: spec.topologySpreadConstraints[0].topologyKey
+          value: topology.kubernetes.io/zone
+
+  - it: renders nodeSelector and security contexts
+    set:
+      dragonfly.nodeSelector:
+        kubernetes.io/os: linux
+      dragonfly.podSecurityContext:
+        runAsNonRoot: true
+        fsGroup: 2000
+      dragonfly.containerSecurityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.nodeSelector["kubernetes.io/os"]
+          value: linux
+      - equal:
+          path: spec.podSecurityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.podSecurityContext.fsGroup
+          value: 2000
+      - equal:
+          path: spec.containerSecurityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.containerSecurityContext.capabilities.drop[0]
+          value: ALL
+
+  - it: renders serviceAccountName and priorityClassName
+    set:
+      dragonfly.serviceAccountName: dragonfly-sa
+      dragonfly.priorityClassName: high-priority
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.serviceAccountName
+          value: dragonfly-sa
+      - equal:
+          path: spec.priorityClassName
+          value: high-priority

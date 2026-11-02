@@ -119,3 +119,16 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "dragonfly.tls.certManager: issuerRef.name must be set (locally or via global.certManager.issuerRef.name) when certManager is enabled — an empty issuerRef produces an invalid Certificate"
+
+  - it: renders custom certificate duration and renewBefore
+    set:
+      dragonfly.tls.certManager.duration: "720h"
+      dragonfly.tls.certManager.renewBefore: "120h"
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: spec.duration
+          value: "720h"
+      - equal:
+          path: spec.renewBefore
+          value: "120h"
