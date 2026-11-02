@@ -9,6 +9,8 @@ This library chart provides a standardized way to deploy serverless applications
 
 Infrastructure resources (PostgreSQL, DragonflyDB) are shared globally across all services in the release, while Kafka event sources and Flagger canary configs are scoped per-source and per-service respectively.
 
+> **Upgrading from 0.5.0?** See the repository [migration guide](../../../MIGRATION.md) for the multi-service move, the 0.7-0.10 additions, and the 1.0.0 API freeze.
+
 ## Architecture
 
 ```
@@ -78,7 +80,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 0.10.0
+        version: 1.0.0-rc.1.3
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -510,6 +512,8 @@ The relevant values (`kyverno.enabled`, `kyverno.scaling.enabled`, `kyverno.scal
 
 ## Migration from v0.1.x
 
+> For upgrades from 0.5.0 onward, use the [migration guide](../../../MIGRATION.md). The section below only covers the older v0.1.x -> v0.2.0 layout.
+
 v0.2.0 is a **breaking change**. The `knativeService:` and top-level `flagger:` / `kafka:` keys have been replaced.
 
 ### Key changes
@@ -590,7 +594,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 The repository uses GitHub Actions for automated quality assurance:
 
 *   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
-*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v0.10.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
+*   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v1.0.0-rc.1.3`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 
 ## Testing
