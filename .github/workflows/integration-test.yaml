@@ -8,14 +8,18 @@ on:
       - 'examples/**'
       - 'test/**'
       - 'Makefile'
-      - '.github/workflows/integration-test.yaml'
+      - 'hack/**'
+      - 'flux/**'
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
       - 'Makefile'
-      - '.github/workflows/integration-test.yaml'
+      - 'hack/**'
+      - 'flux/**'
+      - '.github/workflows/**'
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:

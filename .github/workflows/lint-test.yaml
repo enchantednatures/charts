@@ -7,17 +7,27 @@ on:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'flux/**'
       - 'Makefile'
       - 'hack/**'
-      - '.github/workflows/lint-test.yaml'
+      - '.github/workflows/**'
+      - '.helmdocsignore'
+      - '.markdownlint-cli2.yaml'
+      - '.yamllint'
+      - '.actionlint.yaml'
   pull_request:
     paths:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'flux/**'
       - 'Makefile'
       - 'hack/**'
-      - '.github/workflows/lint-test.yaml'
+      - '.github/workflows/**'
+      - '.helmdocsignore'
+      - '.markdownlint-cli2.yaml'
+      - '.yamllint'
+      - '.actionlint.yaml'
   workflow_dispatch:
 
 concurrency:
