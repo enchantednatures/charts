@@ -25,10 +25,9 @@ helm install my-svc oci://ghcr.io/enchantednatures/charts/ksvc-app \
 ```
 
 The chart pins its `ksvc` library dependency to `0.10.0` in `Chart.yaml` (and
-the digest in `Chart.lock`). The application chart version and the dependency
-pin are independent: the wrapper follows its own patch releases, and the
-dependency advances when the library is released. A later release candidate
-normalization moves the pin to the matching `1.0.0-rc` version.
+the digest in `Chart.lock`). The wrapper version and the dependency pin are
+independent: the wrapper follows its own release line, while the dependency
+advances when a new library release is adopted.
 
 All values are provided at the chart root, exactly as they are for a chart that
 embeds the library directly:
