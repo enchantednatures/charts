@@ -31,8 +31,9 @@ process. In short:
 
 ## Local setup
 
-You need Helm 3.17 or newer. `make lint`, `make test`, and the example commands
-also expect `kubectl` and `kind`; `make docs` uses Docker to run helm-docs.
+You need Helm 3.17+ or Helm 4.x; CI exercises both. `make lint`, `make test`,
+and the example commands also expect `kubectl` and `kind`; `make docs` uses
+Docker to run helm-docs.
 Python 3 is needed for the schema, Kubernetes-version, requirements-docs, and
 Markdown-link checks.
 

@@ -35,6 +35,9 @@ all supporting infrastructure. A ready-to-use application wrapper
 
 ## Requirements
 
+Helm **3.17+** and **4.x** are supported; CI runs both a Helm 3.17 lane and a
+Helm 4.3.0 lane.
+
 The charts render custom resources; the matching operators must already run in
 the cluster. Most `make install-*` targets install **CRDs only** — enough for
 `helm template` and server-side dry-runs, but not for reconciliation
@@ -51,6 +54,7 @@ the Knative Eventing core that the KafkaSource controller and webhook require.
 
 | Requirement | Needed for | Notes |
 |-------------|------------|-------|
+| [Helm](https://helm.sh/) 3.17+ (3.x) or 4.x | Everything | CI runs a Helm 3.17 lane and a Helm 4.3.0 lane. |
 | Kubernetes >= 1.28 | Everything | `kubeVersion` in the library, app, and example charts. |
 | [Knative Serving](https://knative.dev/docs/serving/) | `services` (default `workload.type: Knative`) | Includes a networking layer (Kourier, Istio, Contour, …). Deployment-mode services do not need Knative. |
 | [Knative Eventing](https://knative.dev/docs/eventing/) | `pingsources`, `kafka.broker`, `kafka.triggers` | Provides the `PingSource`, `Broker`, and `Trigger` CRs and their controllers. |
@@ -129,16 +133,20 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
 
 ## CI / CD
 
-*   **Lint and Test** (`.github/workflows/lint-test.yaml`) — `make lint`,
-    `make test`, positive and negative schema validation, Kubernetes-version
-    enforcement, template rendering, kubeconform validation, Kyverno policy
-    tests, and the PR chart-version gate.
+*   **Lint and Test** (`.github/workflows/lint-test.yaml`) — Helm 3.17 and
+    Helm 4.3.0 lanes for `make lint`, `make test`, template rendering, and
+    kubeconform; positive and negative schema validation, Kubernetes-version
+    enforcement, Kyverno policy tests, and the PR chart-version gate. Helm
+    unit tests use helm-unittest 0.8.2 on Helm 3.17 and 1.2.1 on Helm 4.
+    kubeconform is fail-closed against Kubernetes 1.28, 1.30, and 1.32 using
+    the Datree CRD catalog plus a vendored KafkaSource schema.
 *   **Docs** (`.github/workflows/docs.yaml`) — helm-docs sync, README
     requirements drift checks, Markdown lint, local link checks, and external
     link checks (also run weekly).
 *   **Integration Test** (`.github/workflows/integration-test.yaml`) — nightly
-    and PR Kind-cluster dry-runs for every example, a Kyverno guardrails
-    end-to-end test, and a Strimzi Kafka end-to-end test.
+    and PR Kind-cluster dry-runs for every example, a real Helm 4 install
+    smoke test, a Kyverno guardrails end-to-end test, and a Strimzi Kafka
+    end-to-end test.
 *   **Release** (`.github/workflows/release.yaml`) — the OCI release pipeline
     described above.
 
