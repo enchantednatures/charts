@@ -1,10 +1,9 @@
 # Migrating ksvc from 0.5.0 to 1.0.0
 
-This guide covers every values change between the multi-service `v0.5.0` tag
-and the `1.0.0` release. It is written for consumers of the `ksvc` **library**
-chart; the `ksvc-app` wrapper follows the library release once the app chart is
-bumped. On this branch the library is `1.0.0-rc.1.3`, while `ksvc-app` is still
-`0.7.3` and pins `ksvc 0.10.0`.
+This guide covers the breaking and behavior-changing values changes between the
+multi-service `v0.5.0` tag and the `1.0.0` release. It is written for consumers
+of the `ksvc` **library** chart; the `ksvc-app` 1.0.0 wrapper exposes the same
+values surface.
 
 Every "After" example is rendered with `helm template` against the local chart
 source. "Before" examples target the release named in the section and are kept
@@ -26,8 +25,9 @@ to show the exact shape being replaced.
 
 The `v0.5.0` tag moved from a single top-level `knativeService` plus top-level
 `flagger` and `kafka` blocks to keyed maps. The old layout renders a resource
-named after the release; the new layout names each resource after its service
-key (`<release>-<key>`).
+named after the release; the new layout names each service resource after its
+service key (`<release>-<key>`). KafkaSource and DLQ resources use the
+`kafka.sources` key instead.
 
 Before (`v0.4.0` and earlier):
 
@@ -67,8 +67,9 @@ kafka:
 Notes:
 
 *   `services` is a map keyed by a consumer-chosen service name. Each key is
-    the name suffix for the Knative Service, Deployment, Flagger Canary, Kafka
-    DLQ service, and related resources.
+    the name suffix for the Knative Service, Deployment, Flagger Canary, and
+    related per-service resources. KafkaSource and DLQ names use the
+    `kafka.sources` key instead.
 *   `kafka.enabled` is gone. A `kafka.sources` entry is what enables a source.
 *   `kafka.source.sink` was implicit in the old layout (the single Knative
     Service). In the map layout each source must set `sink` to a key in
@@ -150,7 +151,7 @@ dragonfly:
 ```
 
 Each `bucketRef` derives the S3 destination, endpoint, and credentials from the
-referenced bucket. Explicit values still win; see [bucketRef defaults](#100-bucketref-defaults).
+referenced bucket. Explicit values still win; see [bucketRef defaults](#bucketref-defaults).
 
 ## 0.7.3: statement logging removed from defaults
 
@@ -586,8 +587,9 @@ The chart does not compare `services.<key>.workload.strategy.maxUnavailable`
 against `workload.replicas`, and `1.0.0` documents that as intentional. A value
 greater than the replica count is legal Kubernetes input: the rollout simply
 takes every pod down at once. Percentage strings have no fixed integer value to
-compare. The only availability constraint the chart validates is the
-PodDisruptionBudget `minAvailable` / `maxUnavailable` mutual exclusion.
+compare. The chart validates the PodDisruptionBudget `minAvailable` /
+`maxUnavailable` mutual exclusion and that a numeric `minAvailable` does not
+exceed replicas; it intentionally does not bound `maxUnavailable`.
 
 This example renders as-is under `1.0.0`:
 
@@ -627,9 +629,9 @@ objectBuckets:
     endpointURL: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
 ```
 
-The generated `ObjectBucketClaim` is `<release>-<key>`, so a long key plus a
-long release name would otherwise collide with the 63-character Kubernetes name
-limit.
+The generated `ObjectBucketClaim` is `<release>-<key>` and is truncated to the
+63-character Kubernetes name limit. The 53-character cap keeps room for the
+release prefix and avoids truncation and collision surprises.
 
 ### `bucketRef` defaults
 
