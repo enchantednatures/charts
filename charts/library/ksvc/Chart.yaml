@@ -6,9 +6,10 @@ description: >-
   managed Strimzi or Redpanda Kafka clusters, Knative Broker/Trigger,
   DragonflyDB cache clusters, and Flagger canary releases.
 type: library
-version: 1.0.0-rc.1.3
+version: 1.0.0-rc.1.4
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
+icon: https://raw.githubusercontent.com/enchantednatures/charts/main/docs/icon.svg
 home: https://github.com/enchantednatures/charts
 sources:
   - https://github.com/enchantednatures/charts
@@ -27,3 +28,26 @@ keywords:
 annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT
+  artifacthub.io/changes: |
+    - kind: added
+      description: Multi-service services map with per-service Knative Services, Deployments, and Flagger canaries
+    - kind: added
+      description: Managed Strimzi and Redpanda Kafka clusters, Kafka Broker and Trigger eventing, and PingSource scheduled events
+    - kind: added
+      description: CloudNativePG PostgreSQL with poolers, scheduled backups, monitoring, and Ceph RGW object bucket claims
+    - kind: added
+      description: DragonflyDB cache clusters and Kyverno admission guardrails
+    - kind: changed
+      description: The values API is frozen for the 1.0 line; see MIGRATION.md for the full upgrade guide
+    - kind: removed
+      description: services.<key>.flagger.metrics.prometheusAddress was removed in favor of the chart-managed Flagger configuration
+  artifacthub.io/images: |
+    - name: event-display
+      image: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:latest
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/enchantednatures/charts
+    - name: Documentation
+      url: https://github.com/enchantednatures/charts/blob/main/charts/library/ksvc/README.md
+    - name: Migration guide
+      url: https://github.com/enchantednatures/charts/blob/main/MIGRATION.md
