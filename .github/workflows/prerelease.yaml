@@ -61,9 +61,11 @@ jobs:
           LIB_VER="${LIB_VERSION}-pr.${PR_NUM}.${SHORT_SHA}"
           APP_VER="${APP_VERSION}-pr.${PR_NUM}.${SHORT_SHA}"
 
-          echo "PR_NUM=$PR_NUM" >> "$GITHUB_ENV"
-          echo "LIB_VER=$LIB_VER" >> "$GITHUB_ENV"
-          echo "APP_VER=$APP_VER" >> "$GITHUB_ENV"
+          {
+            echo "PR_NUM=$PR_NUM"
+            echo "LIB_VER=$LIB_VER"
+            echo "APP_VER=$APP_VER"
+          } >> "$GITHUB_ENV"
 
           {
             echo "### Pre-release versions"

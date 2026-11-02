@@ -120,6 +120,7 @@ jobs:
               --set services.api.image.repository=ghcr.io/test/app \
               --set services.api.image.tag=v1.0.0 > /tmp/rendered-app.yaml
           '
+          sed -i 's/[[:space:]]*$//' /tmp/rendered-app.yaml
           yamllint -d relaxed /tmp/rendered-app.yaml
           echo "Resources rendered for app chart:"
           grep -E "^kind:" /tmp/rendered-app.yaml | sort | uniq -c
@@ -132,6 +133,7 @@ jobs:
             helm dependency build "$example"
             helm template "test-${name}" "$example" \
               --namespace test-ns > "/tmp/rendered-${name}.yaml"
+            sed -i 's/[[:space:]]*$//' "/tmp/rendered-${name}.yaml"
             yamllint -d relaxed "/tmp/rendered-${name}.yaml"
             echo "Resources rendered for $name:"
             grep -E "^kind:" "/tmp/rendered-${name}.yaml" | sort | uniq -c
