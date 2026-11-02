@@ -20,6 +20,7 @@ jobs:
   detect:
     name: Detect Charts to Release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
@@ -109,6 +110,7 @@ jobs:
   release:
     name: "Release ${{ matrix.name }} v${{ matrix.version }}"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: detect
     permissions:
       contents: write
@@ -223,6 +225,7 @@ jobs:
   update-dependents:
     name: Update Dependent Charts
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [detect, release]
     permissions:
       contents: write

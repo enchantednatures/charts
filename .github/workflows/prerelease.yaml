@@ -20,6 +20,7 @@ jobs:
   publish:
     name: Publish pre-release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -186,6 +187,7 @@ jobs:
   cleanup:
     name: Clean up pre-releases
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: write

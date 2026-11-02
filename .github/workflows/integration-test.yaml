@@ -31,6 +31,7 @@ jobs:
   integration:
     name: Kind Cluster Deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -181,6 +182,7 @@ jobs:
   app-chart:
     name: App Chart Dry-Run
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -212,6 +214,7 @@ jobs:
   kyverno-guardrails-e2e:
     name: Kyverno Guardrails E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
