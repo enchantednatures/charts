@@ -9,11 +9,6 @@ on:
       - '*-v*'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  packages: write
-  pull-requests: write
-
 env:
   REGISTRY: ghcr.io
 
@@ -25,6 +20,8 @@ jobs:
   detect:
     name: Detect Charts to Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
       has_library: ${{ steps.build-matrix.outputs.has_library }}
@@ -113,6 +110,10 @@ jobs:
     name: "Release ${{ matrix.name }} v${{ matrix.version }}"
     runs-on: ubuntu-latest
     needs: detect
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
     if: needs.detect.outputs.matrix != '' && toJSON(fromJSON(needs.detect.outputs.matrix).include) != '[]'
     strategy:
       fail-fast: false
@@ -223,6 +224,9 @@ jobs:
     name: Update Dependent Charts
     runs-on: ubuntu-latest
     needs: [detect, release]
+    permissions:
+      contents: write
+      pull-requests: write
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.has_library == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
