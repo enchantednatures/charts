@@ -6,7 +6,7 @@ description: >-
   managed Strimzi or Redpanda Kafka clusters, Knative Broker/Trigger,
   DragonflyDB cache clusters, and Flagger canary releases.
 type: library
-version: 1.0.0-rc.1.4
+version: 1.0.0
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
 icon: https://raw.githubusercontent.com/enchantednatures/charts/main/docs/icon.svg
