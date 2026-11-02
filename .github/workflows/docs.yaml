@@ -9,9 +9,10 @@ on:
       - 'charts/**'
       - 'Makefile'
       - 'hack/**'
+      - 'flux/**'
       - '.helmdocsignore'
       - '.markdownlint-cli2.yaml'
-      - '.github/workflows/docs.yaml'
+      - '.github/workflows/**'
   pull_request:
     paths:
       - '*.md'
@@ -19,9 +20,10 @@ on:
       - 'charts/**'
       - 'Makefile'
       - 'hack/**'
+      - 'flux/**'
       - '.helmdocsignore'
       - '.markdownlint-cli2.yaml'
-      - '.github/workflows/docs.yaml'
+      - '.github/workflows/**'
   schedule:
     - cron: '0 5 * * 1'
   workflow_dispatch:
@@ -37,6 +39,7 @@ jobs:
   helm-docs:
     name: Helm Docs Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -53,6 +56,7 @@ jobs:
   requirements:
     name: Requirements Drift
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -69,6 +73,7 @@ jobs:
   markdown:
     name: Markdown Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -78,6 +83,7 @@ jobs:
   links:
     name: Markdown Links
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

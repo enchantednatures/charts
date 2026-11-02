@@ -7,27 +7,41 @@ on:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'flux/**'
       - 'Makefile'
       - 'hack/**'
-      - '.github/workflows/lint-test.yaml'
+      - '.github/workflows/**'
+      - '.helmdocsignore'
+      - '.markdownlint-cli2.yaml'
+      - '.yamllint'
+      - '.actionlint.yaml'
   pull_request:
     paths:
       - 'charts/**'
       - 'examples/**'
       - 'test/**'
+      - 'flux/**'
       - 'Makefile'
       - 'hack/**'
-      - '.github/workflows/lint-test.yaml'
+      - '.github/workflows/**'
+      - '.helmdocsignore'
+      - '.markdownlint-cli2.yaml'
+      - '.yamllint'
+      - '.actionlint.yaml'
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Helm Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,6 +66,7 @@ jobs:
   schema-validation:
     name: Schema Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -68,6 +83,7 @@ jobs:
   template-render:
     name: Template Rendering
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -111,6 +127,7 @@ jobs:
   unit-tests:
     name: Helm Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -133,6 +150,7 @@ jobs:
   kubeconform:
     name: Kubernetes Schema Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -163,6 +181,7 @@ jobs:
   kyverno-policy-tests:
     name: Kyverno Policy Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       KYVERNO_VERSION: v1.19.1
     steps:
@@ -258,6 +277,7 @@ jobs:
   version-check:
     name: Chart version bump check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
