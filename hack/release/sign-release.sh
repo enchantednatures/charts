@@ -196,7 +196,7 @@ echo "Signing $image_ref (digest sha256:${digest})"
 cosign sign --yes "$image_ref"
 
 echo "Attaching SPDX SBOM to $image_digest_ref"
-cosign attach sbom --sbom "$sbom" --type spdxjson "$image_digest_ref"
+cosign attach sbom --sbom "$sbom" --type spdx "$image_digest_ref"
 
 echo "Attesting SLSA provenance to $image_digest_ref"
 cosign attest --yes --predicate "$predicate" --type slsaprovenance1 "$image_digest_ref"

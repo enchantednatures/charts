@@ -164,7 +164,7 @@ run_sign
 [ "$RC" -eq 0 ] || fail "success scenario exited $RC: $(cat "$NEW_STATE/run.log")"
 assert_contains "$NEW_STATE/tools.log" "cosign sign --yes ghcr.io/test-org/charts/ksvc:${version}"
 assert_contains "$NEW_STATE/tools.log" "cosign attach sbom --sbom"
-assert_contains "$NEW_STATE/tools.log" "--type spdxjson ghcr.io/test-org/charts/ksvc@sha256:${digest}"
+assert_contains "$NEW_STATE/tools.log" "--type spdx ghcr.io/test-org/charts/ksvc@sha256:${digest}"
 assert_contains "$NEW_STATE/tools.log" "cosign attest --yes --predicate"
 assert_contains "$NEW_STATE/tools.log" "--type slsaprovenance1 ghcr.io/test-org/charts/ksvc@sha256:${digest}"
 assert_contains "$NEW_STATE/tools.log" "gh release upload ksvc-v${version}"
