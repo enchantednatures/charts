@@ -1,0 +1,55 @@
+suite: maxUnavailable greater than replicas is intentionally unvalidated
+templates:
+  - templates/common.yaml
+
+# INTENTIONAL 1.0 GAP (documented in README.md and values.schema.json):
+# the chart does NOT compare maxUnavailable against the replica count.
+# A value greater than replicas is legal Kubernetes — the controller simply
+# takes every pod down at once — and percentage strings have no fixed integer
+# value to compare. Only the PodDisruptionBudget minAvailable/maxUnavailable
+# mutual exclusion is validated. These tests lock the documented behaviour and
+# must not be converted into validator failures.
+#
+# Render order: doc0 = Deployment, doc1 = core Service, doc2 = PodDisruptionBudget
+# (doc3 = Dragonfly when enabled in an individual test).
+set:
+  services.api.image.repository: test/image
+  services.api.workload.type: Deployment
+  services.api.workload.replicas: 2
+  services.api.podDisruptionBudget.enabled: true
+  services.api.podDisruptionBudget.maxUnavailable: 5
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: renders an integer maxUnavailable greater than replicas
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.maxUnavailable
+          value: 5
+
+  - it: renders a percentage maxUnavailable greater than replicas
+    set:
+      services.api.podDisruptionBudget.maxUnavailable: "90%"
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: "90%"
+
+  - it: renders a Dragonfly maxUnavailable greater than replicas
+    set:
+      dragonfly.enabled: true
+      dragonfly.replicas: 3
+      dragonfly.pdb.minAvailable: 0
+      dragonfly.pdb.maxUnavailable: 9
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: Dragonfly
+      - equal:
+          path: spec.pdb.maxUnavailable
+          value: 9
