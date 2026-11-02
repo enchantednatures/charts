@@ -173,6 +173,9 @@ jobs:
       - name: Run unit tests (Helm ${{ matrix.helm-version }})
         run: make test
 
+      - name: Run app chart unit tests (Helm ${{ matrix.helm-version }})
+        run: make test-app
+
   kubeconform:
     name: Kubernetes Schema Validation
     runs-on: ubuntu-latest

@@ -15,7 +15,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 | Path | Description |
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
-| `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. |
+| `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. See its [README](charts/app/ksvc/README.md). |
 | [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 1.0.0, with before/after values for every breaking change. |
 | `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
@@ -30,7 +30,7 @@ all supporting infrastructure. A ready-to-use application wrapper
     Kafka sources + DLQ, DragonflyDB, Flagger canaries, Ceph RGW object buckets,
     Kyverno admission policies. Its README is generated from `values.yaml` by
     [helm-docs](https://github.com/norwoodj/helm-docs) (`make docs`).
-*   **ksvc-app application chart** (`charts/app/ksvc/`) — wraps `ksvc` so that
+*   **[ksvc-app application chart](charts/app/ksvc/README.md)** (`charts/app/ksvc/`) — wraps `ksvc` so that
     consumers can `helm install` a normal chart. Pins a `ksvc` version via an
     `oci://ghcr.io/enchantednatures/charts` dependency.
 

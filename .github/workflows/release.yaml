@@ -153,6 +153,14 @@ jobs:
             echo "No test-chart found, skipping unit tests"
           fi
 
+      - name: Run unit tests (application charts)
+        if: matrix.type == 'application'
+        run: |
+          CHART_PATH="${{ matrix.path }}"
+          # The Helm lint step above already ran `helm dependency build` for
+          # application charts, so the pinned dependency is in charts/.
+          helm unittest "$CHART_PATH" --with-subchart=false
+
       - name: Login to OCI registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \

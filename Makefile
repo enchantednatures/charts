@@ -19,6 +19,7 @@
 #   make template EXAMPLE=x        Render templates for an example
 #   make lint                      Lint all charts and examples
 #   make test                      Run helm-unittest
+#   make test-app                  Run helm-unittest for the app chart
 #   make docs                      Regenerate the chart README with helm-docs
 # =============================================================================
 
@@ -288,6 +289,13 @@ lint: ## Lint all charts and examples
 test: ## Run helm unit tests
 	helm dependency build charts/library/ksvc/test-chart
 	helm unittest charts/library/ksvc/test-chart
+
+.PHONY: test-app
+test-app: ## Run helm unit tests for the app chart
+	@# hack/lint-app.sh resolves the ksvc dependency against the local library
+	@# chart and restores Chart.yaml/Chart.lock on exit, so the app tests
+	@# exercise the source in this worktree rather than the published pin.
+	hack/lint-app.sh helm unittest charts/app/ksvc --with-subchart=false
 
 .PHONY: test-schema
 test-schema: ## Validate values.schema.json with positive and negative cases
