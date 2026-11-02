@@ -215,6 +215,47 @@ jobs:
             --dry-run=server \
             --timeout 120s
 
+  helm4-install:
+    name: Helm 4 Kind Install
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          cluster_name: test-cluster
+
+      - name: Install Knative Serving CRDs
+        run: make install-knative
+
+      - name: Helm dependency build
+        run: helm dependency build examples/minimal
+
+      - name: Helm install minimal example
+        run: |
+          helm install helm4-smoke examples/minimal \
+            --namespace test-ns \
+            --create-namespace \
+            --timeout 120s
+
+      - name: Smoke assertions
+        run: |
+          set -euo pipefail
+          helm status helm4-smoke --namespace test-ns
+          kubectl get kservice -n test-ns
+          image=$(kubectl get kservice -n test-ns \
+            -o jsonpath='{.items[0].spec.template.spec.containers[0].image}')
+          test "$image" = "ghcr.io/example-org/minimal-service:v1.0.0"
+          status=$(helm status helm4-smoke --namespace test-ns -o json | \
+            python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["status"])')
+          test "$status" = "deployed"
+
   kyverno-guardrails-e2e:
     name: Kyverno Guardrails E2E
     runs-on: ubuntu-latest
