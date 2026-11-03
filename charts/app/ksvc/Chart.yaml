@@ -30,6 +30,8 @@ annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT
   artifacthub.io/changes: |
+    - kind: changed
+      description: ksvc-app now depends on ksvc 1.2.0, including Ceph RGW bucket notifications and app bucket bindings
     - kind: added
       description: ksvc-app application wrapper for the ksvc 1.0 library chart
     - kind: added
