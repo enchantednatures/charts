@@ -5,7 +5,7 @@ description: >-
   optional CloudNativePG PostgreSQL, Kafka event sources, DragonflyDB cache
   clusters, and Flagger canary releases.
 type: application
-version: 1.0.0
+version: 1.0.1
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
 icon: https://raw.githubusercontent.com/enchantednatures/charts/main/docs/icon.svg
@@ -24,12 +24,14 @@ keywords:
   - kafka
 dependencies:
   - name: ksvc
-    version: 1.0.0
+    version: 1.2.0
     repository: oci://ghcr.io/enchantednatures/charts
 annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT
   artifacthub.io/changes: |
+    - kind: changed
+      description: ksvc-app now depends on ksvc 1.2.0, including Ceph RGW bucket notifications and app bucket bindings
     - kind: added
       description: ksvc-app application wrapper for the ksvc 1.0 library chart
     - kind: added
