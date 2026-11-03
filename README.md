@@ -18,7 +18,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. See its [README](charts/app/ksvc/README.md). |
 | [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 1.0.0, with before/after values for every breaking change. |
 | [`CHANGELOG.md`](CHANGELOG.md) | Curated release history; the `1.0.0` section summarizes the features, breaking changes, and migration links. |
-| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`. |
+| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`, `object-bucket-notifications`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
 | `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, release gating and reconciliation, lock consistency, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
@@ -71,14 +71,15 @@ the Knative Eventing core that the KafkaSource controller and webhook require.
 | [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) CRDs | `postgres.monitoring.enabled` (default `true` when Postgres is enabled) | Renders `PodMonitor` and `PrometheusRule`. Disable monitoring if the CRDs are absent. A Prometheus instance is also required by Flagger. |
 | [Dragonfly Operator](https://github.com/dragonflydb/dragonfly-operator) | `dragonfly.enabled` | Provides the `Dragonfly` CR (`dragonflydb.io/v1alpha1`). |
 | [Flagger](https://flagger.app/) | `services.<key>.flagger.enabled` | Renders `Canary`; must be configured with the Knative provider and a metrics provider. Defaults assume Prometheus at `prometheus.observability.svc.cluster.local:9090` and the k6 load tester at `k6-loadtester.flagger-system` (load tests can be disabled). |
-| [Rook-Ceph](https://rook.io/) (CephObjectStore + RGW) and the [lib-bucket-provisioner](https://github.com/kube-object-storage/lib-bucket-provisioner) CRDs | `objectBuckets` | The chart renders `ObjectBucketClaim` only. Requires an existing bucket `StorageClass` (for example `provisioner: rook-ceph.ceph.rook.io/bucket`) and a reachable RGW endpoint. |
+| [Rook-Ceph](https://rook.io/) (CephObjectStore + RGW) and the [lib-bucket-provisioner](https://github.com/kube-object-storage/lib-bucket-provisioner) CRDs | `objectBuckets`, bucket notifications | The chart renders `ObjectBucketClaim` and, for notifications, `CephBucketTopic`/`CephBucketNotification`. Requires an existing bucket `StorageClass` (for example `provisioner: rook-ceph.ceph.rook.io/bucket`), a reachable RGW endpoint, and — for notifications — the Rook notification CRDs (`make install-rook-crds`). Notifications currently support only the chart-managed Kafka cluster with auth/TLS disabled; see issue #137. |
 | [cert-manager](https://cert-manager.io/) | `postgres.certManager.enabled`, `dragonfly.tls.certManager.enabled` | Optional; renders `Certificate` resources. Without it, supply the TLS Secrets yourself. |
 | [Kyverno](https://kyverno.io/) >= 1.16 | `kyverno.enabled` | Optional admission guardrails (`NamespacedValidatingPolicy`). Use `policies.kyverno.io/v1` on Kyverno >= 1.17. |
 | A default StorageClass (or an explicit `storageClassName`) | `postgres.enabled`, `dragonfly.snapshot` | PVCs for Postgres instance volumes and Dragonfly snapshots. |
 
 The versions exercised by CI are pinned at the top of the [`Makefile`](Makefile)
 (Knative Serving/Eventing v1.17.0, CNPG release-1.25, eventing-kafka v1.17.0,
-Kyverno 3.9.1, Strimzi 1.3.0, Redpanda operator 26.2.5). Managed Strimzi
+Kyverno 3.9.1, Strimzi 1.3.0, Redpanda operator 26.2.5, Rook v1.21.1).
+Managed Strimzi
 requires Kubernetes >= 1.32; the Strimzi e2e job pins a Kind 1.32 node image.
 
 ### Compatibility matrix
@@ -102,6 +103,7 @@ the same values surface; `ksvc-app` pins the matching `ksvc` release.
 | Strimzi | 1.3.0 | `kafka.strimzi.io/v1` | Managed Kafka only; requires Kubernetes >= 1.32. |
 | Redpanda operator | 26.2.5 | `cluster.redpanda.com/v1alpha2` | Managed Kafka only; TLS requires cert-manager. |
 | lib-bucket-provisioner | commit `be094b8c7ee9aa948aeaaa7ff6ee6e5f359393ad` (master) | `objectbucket.io/v1alpha1` | The only release tag (`kubernetes-v1.14.1`) ships an `apiextensions.k8s.io/v1beta1` CRD, which Kubernetes >= 1.22 no longer serves. The Makefile therefore pins the master commit that renders `apiextensions.k8s.io/v1`. |
+| Rook | v1.21.1 (CI CRDs) | `ceph.rook.io/v1` | Bucket notifications render `CephBucketTopic`/`CephBucketNotification`; install them with `make install-rook-crds`. The Rook operator must be running. v1 notifications use the plaintext, unauthenticated managed Kafka listener; auth/TLS is tracked in issue #137. |
 
 ### Rendered CRD API versions
 
@@ -117,6 +119,7 @@ the same values surface; `ksvc-app` pins the matching `ksvc` release.
 | `dragonflydb.io/v1alpha1` | Dragonfly |
 | `flagger.app/v1beta1` | Canary |
 | `objectbucket.io/v1alpha1` | ObjectBucketClaim |
+| `ceph.rook.io/v1` | CephBucketTopic, CephBucketNotification (bucket notifications) |
 | `kafka.strimzi.io/v1` | Kafka, KafkaNodePool, KafkaTopic, KafkaUser |
 | `cluster.redpanda.com/v1alpha2` | Redpanda, Topic, User |
 | `policies.kyverno.io/v1beta1` or `policies.kyverno.io/v1` | NamespacedValidatingPolicy (configurable via `kyverno.scaling.apiVersion`) |
@@ -200,7 +203,7 @@ Consumers reference a published chart by OCI repository and version:
 ```yaml
 dependencies:
   - name: ksvc
-    version: 1.0.0
+    version: 1.2.0
     repository: oci://ghcr.io/enchantednatures/charts
 ```
 

@@ -14,7 +14,6 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import yaml
 
@@ -23,7 +22,6 @@ README = ROOT / "README.md"
 MAKEFILE = ROOT / "Makefile"
 TEMPLATES = ROOT / "charts" / "library" / "ksvc" / "templates"
 VALUES = ROOT / "charts" / "library" / "ksvc" / "values.yaml"
-LOADER = ROOT / "charts" / "library" / "ksvc" / "templates" / "loader" / "_generate.tpl"
 CHARTS = [
     ROOT / "charts" / "library" / "ksvc" / "Chart.yaml",
     ROOT / "charts" / "app" / "ksvc" / "Chart.yaml",
@@ -154,7 +152,8 @@ def check_defaults(readme: str) -> None:
     try:
         image_catalog = get_path(values, ["postgres", "imageCatalog", "name"])
         monitoring = get_path(values, ["postgres", "monitoring", "enabled"])
-        load_test = get_path(values, ["services", "api", "flagger", "loadTest", "webhookUrl"])
+        load_tester = get_path(values, ["flagger", "loadTester"])
+        bootstrap_servers = get_path(values, ["kafka", "bootstrapServers"])
     except KeyError as exc:
         error(f"values.yaml no longer contains {exc.args[0]}")
         return
@@ -169,18 +168,19 @@ def check_defaults(readme: str) -> None:
             f"({monitoring})"
         )
 
-    for label, value in (("k6 load tester", load_test),):
-        host = urlsplit(str(value)).netloc
-        if host not in readme:
-            error(f"README does not mention the default {label} ({host})")
+    load_test_host = str(load_tester.get("serviceName", ""))
+    if load_tester.get("namespace"):
+        load_test_host = f"{load_test_host}.{load_tester['namespace']}"
+    for label, value in (("k6 load tester", load_test_host),):
+        if value not in readme:
+            error(f"README does not mention the default {label} ({value})")
 
-    bootstrap_match = re.search(r'"bootstrapServers"\s*\(list\s+"([^"]+)"', read(LOADER))
-    if not bootstrap_match:
-        error("could not find the default bootstrapServers in the loader template")
-    elif bootstrap_match.group(1) not in readme:
+    if not isinstance(bootstrap_servers, list) or not bootstrap_servers:
+        error("values.yaml kafka.bootstrapServers must contain at least one server")
+    elif str(bootstrap_servers[0]) not in readme:
         error(
             "README does not mention the default bootstrapServers "
-            f"({bootstrap_match.group(1)})"
+            f"({bootstrap_servers[0]})"
         )
 
 

@@ -55,6 +55,13 @@ merged. We must apply defaults explicitly before rendering.
     {{- range $key, $bucket := .Values.objectBuckets }}
 ---
   {{- include "ksvc.class.objectBucketClaim" (dict "root" $ "key" $key "bucket" $bucket) | nindent 0 }}
+      {{- $notifications := $bucket.notifications | default dict }}
+      {{- range $eventKey, $notification := $notifications }}
+        {{- if $notification.enabled }}
+---
+  {{- include "ksvc.class.objectBucketNotification" (dict "root" $ "bucketKey" $key "eventKey" $eventKey "bucket" $bucket "notification" $notification) | nindent 0 }}
+        {{- end }}
+      {{- end }}
     {{- end }}
   {{- end }}
 
@@ -89,7 +96,7 @@ merged. We must apply defaults explicitly before rendering.
   {{- if and .Values.kafka .Values.kafka.cluster .Values.kafka.cluster.enabled }}
 ---
   {{- include "ksvc.class.kafkaCluster" . | nindent 0 }}
-  {{- if and .Values.kafka.cluster.topics.create .Values.kafka.sources }}
+  {{- if and .Values.kafka.cluster.topics.create (or .Values.kafka.sources (include "ksvc.hasObjectBucketNotifications" .)) }}
 ---
   {{- include "ksvc.class.kafkaTopics" . | nindent 0 }}
   {{- end }}
@@ -192,6 +199,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     )
     "env" (list)
     "envFrom" (list)
+    "objectBuckets" (dict)
     "securityContext" (dict
       "runAsNonRoot" true
       "runAsUser" 10001
@@ -224,11 +232,17 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "podDisruptionBudget" (dict "enabled" false "minAvailable" 0 "maxUnavailable" 0)
   -}}
 
+  {{- $loadTesterDefaults := dict "namespace" "flagger-system" "serviceName" "k6-loadtester" "scheme" "http" "port" 80 "path" "/launch-test" -}}
+  {{- $flaggerTop := .Values.flagger | default dict -}}
+  {{- $loadTester := mustMergeOverwrite (deepCopy $loadTesterDefaults) ($flaggerTop.loadTester | default dict) -}}
+  {{- $_ := set $flaggerTop "loadTester" $loadTester -}}
+  {{- $_ := set .Values "flagger" $flaggerTop -}}
+
   {{- $flaggerDefaults := dict
     "enabled" false
     "analysis" (dict "interval" "1m" "threshold" 5 "maxWeight" 50 "stepWeight" 10 "progressDeadlineSeconds" 120)
     "metrics" (dict "successRateThreshold" 99 "latencyP99ThresholdMs" 500)
-    "loadTest" (dict "enabled" true "webhookUrl" "http://k6-loadtester.flagger-system/launch-test" "vus" 10 "duration" "1m" "p95ThresholdMs" 500 "errorRateThreshold" 0.01 "script" "")
+    "loadTest" (dict "enabled" true "webhookUrl" "" "smokePath" "/health/live" "path" "/" "smokeTimeout" "1m" "timeout" "5m" "vus" 10 "duration" "1m" "p95ThresholdMs" 500 "errorRateThreshold" 0.01 "script" "")
   -}}
 
   {{- $rawServices := .Values.services -}}
@@ -239,22 +253,130 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     {{/* Merge flagger defaults into the service's flagger config */}}
     {{- $svcFlagger := $merged.flagger | default dict -}}
     {{- $_ := set $merged "flagger" (mustMergeOverwrite (deepCopy $flaggerDefaults) $svcFlagger) -}}
+    {{/* Derive the load-tester URL when the service does not override it. */}}
+    {{- $lt := $merged.flagger.loadTest -}}
+    {{- if not $lt.webhookUrl -}}
+      {{- $scheme := $loadTester.scheme | default "http" -}}
+      {{- $host := $loadTester.serviceName | default "k6-loadtester" -}}
+      {{- $ns := $loadTester.namespace | default "" -}}
+      {{- if $ns -}}
+        {{- $host = printf "%s.%s" $host $ns -}}
+      {{- end -}}
+      {{- $port := int ($loadTester.port | default 80) -}}
+      {{- if ne $port 80 -}}
+        {{- $host = printf "%s:%d" $host $port -}}
+      {{- end -}}
+      {{- $path := $loadTester.path | default "/launch-test" -}}
+      {{- $_ := set $lt "webhookUrl" (printf "%s://%s%s" $scheme $host $path) -}}
+      {{- $_ := set $merged.flagger "loadTest" $lt -}}
+    {{- end -}}
+    {{/* Keep the default scrape port in sync with a custom service port. */}}
+    {{- $rawAnnotations := $svc.annotations | default dict -}}
+    {{- if and (kindIs "map" $merged.annotations) (not (and (kindIs "map" $rawAnnotations) (hasKey $rawAnnotations "prometheus.io/port"))) -}}
+      {{- $_ := set $merged.annotations "prometheus.io/port" (toString $merged.port) -}}
+    {{- end -}}
+    {{- $rawPodAnnotations := $svc.podAnnotations | default dict -}}
+    {{- if and (kindIs "map" $merged.podAnnotations) (not (and (kindIs "map" $rawPodAnnotations) (hasKey $rawPodAnnotations "prometheus.io/port"))) -}}
+      {{- $_ := set $merged.podAnnotations "prometheus.io/port" (toString $merged.port) -}}
+    {{- end -}}
+    {{/* Expose referenced object buckets to this service. */}}
+    {{- $svcBuckets := $merged.objectBuckets | default dict -}}
+    {{- if kindIs "map" $svcBuckets -}}
+      {{- range $bucketKey, $binding := $svcBuckets }}
+        {{- $bindingDefaults := dict "mode" "envFrom" "configMapName" "" "secretName" ""
+          "envNames" (dict
+            "bucketName" "BUCKET_NAME"
+            "bucketHost" "BUCKET_HOST"
+            "bucketPort" "BUCKET_PORT"
+            "accessKeyId" "AWS_ACCESS_KEY_ID"
+            "secretAccessKey" "AWS_SECRET_ACCESS_KEY"
+          )
+        -}}
+        {{- $_ := set $svcBuckets $bucketKey (mustMergeOverwrite (deepCopy $bindingDefaults) ($binding | default dict)) -}}
+      {{- end -}}
+      {{- $_ := set $merged "objectBuckets" $svcBuckets -}}
+      {{- range $bucketKey, $binding := $svcBuckets }}
+        {{- $claimName := include "ksvc.objectBucketName" (dict "root" $ "key" $bucketKey) -}}
+        {{- $configMapName := $binding.configMapName | default $claimName -}}
+        {{- $secretName := $binding.secretName | default $claimName -}}
+        {{- if eq ($binding.mode | default "envFrom") "envFrom" }}
+          {{- $envFrom := $merged.envFrom | default list -}}
+          {{- $hasSecretRef := false -}}
+          {{- $hasConfigMapRef := false -}}
+          {{- range $source := $envFrom }}
+            {{- if and (kindIs "map" $source) (hasKey $source "secretRef") -}}
+              {{- $ref := index $source "secretRef" -}}
+              {{- if and (kindIs "map" $ref) (eq (toString (index $ref "name" | default "")) $secretName) -}}
+                {{- $hasSecretRef = true -}}
+              {{- end -}}
+            {{- end -}}
+            {{- if and (kindIs "map" $source) (hasKey $source "configMapRef") -}}
+              {{- $ref := index $source "configMapRef" -}}
+              {{- if and (kindIs "map" $ref) (eq (toString (index $ref "name" | default "")) $configMapName) -}}
+                {{- $hasConfigMapRef = true -}}
+              {{- end -}}
+            {{- end -}}
+          {{- end -}}
+          {{- if not $hasSecretRef -}}
+            {{- $envFrom = append $envFrom (dict "secretRef" (dict "name" $secretName)) -}}
+          {{- end -}}
+          {{- if not $hasConfigMapRef -}}
+            {{- $envFrom = append $envFrom (dict "configMapRef" (dict "name" $configMapName)) -}}
+          {{- end -}}
+          {{- $_ := set $merged "envFrom" $envFrom -}}
+        {{- else if eq ($binding.mode | default "envFrom") "env" }}
+          {{- $env := $merged.env | default list -}}
+          {{- $existingEnv := dict -}}
+          {{- range $entry := $env }}
+            {{- if and (kindIs "map" $entry) (hasKey $entry "name") -}}
+              {{- $_ := set $existingEnv (toString (index $entry "name")) true -}}
+            {{- end -}}
+          {{- end -}}
+          {{- $envNames := mustMergeOverwrite (deepCopy (dict "bucketName" "BUCKET_NAME" "bucketHost" "BUCKET_HOST" "bucketPort" "BUCKET_PORT" "accessKeyId" "AWS_ACCESS_KEY_ID" "secretAccessKey" "AWS_SECRET_ACCESS_KEY")) ($binding.envNames | default dict) -}}
+          {{- $configKeys := dict "bucketName" "BUCKET_NAME" "bucketHost" "BUCKET_HOST" "bucketPort" "BUCKET_PORT" -}}
+          {{- range $field, $sourceKey := $configKeys }}
+            {{- $target := toString (index $envNames $field | default "") -}}
+            {{- if and $target (not (hasKey $existingEnv $target)) }}
+              {{- $env = append $env (dict "name" $target "valueFrom" (dict "configMapKeyRef" (dict "name" $configMapName "key" $sourceKey))) -}}
+              {{- $_ := set $existingEnv $target true -}}
+            {{- end -}}
+          {{- end -}}
+          {{- $secretKeys := dict "accessKeyId" "AWS_ACCESS_KEY_ID" "secretAccessKey" "AWS_SECRET_ACCESS_KEY" -}}
+          {{- range $field, $sourceKey := $secretKeys }}
+            {{- $target := toString (index $envNames $field | default "") -}}
+            {{- if and $target (not (hasKey $existingEnv $target)) }}
+              {{- $env = append $env (dict "name" $target "valueFrom" (dict "secretKeyRef" (dict "name" $secretName "key" $sourceKey))) -}}
+              {{- $_ := set $existingEnv $target true -}}
+            {{- end -}}
+          {{- end -}}
+          {{- $_ := set $merged "env" $env -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
     {{- $_ := set $services $key $merged -}}
   {{- end -}}
   {{- $_ := set .Values "services" $services -}}
   {{- end -}}
 
   {{/* --- kafka source, cluster, broker, and trigger defaults --- */}}
+  {{- $kafkaBootstrapDefaults := list "kafka.kafka.svc.cluster.local:9092" -}}
+  {{- $kafkaValues := .Values.kafka | default dict -}}
+  {{- $defaultBootstrap := $kafkaValues.bootstrapServers | default $kafkaBootstrapDefaults -}}
   {{- $kafkaSourceDefaults := dict
     "topic" "events"
     "consumerGroup" ""
-    "bootstrapServers" (list "kafka.kafka.svc.cluster.local:9092")
+    "bootstrapServers" $defaultBootstrap
     "consumers" 3
     "initialOffset" "latest"
     "sink" ""
     "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
     "dlq" (dict "enabled" true
       "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "latest")
+      "port" 8080
+      "env" (list
+        (dict "name" "POD_NAME" "valueFrom" (dict "fieldRef" (dict "fieldPath" "metadata.name")))
+        (dict "name" "POD_NAMESPACE" "valueFrom" (dict "fieldRef" (dict "fieldPath" "metadata.namespace")))
+      )
       "scaling" (dict "minScale" 0 "maxScale" 2)
       "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
     )
@@ -269,6 +391,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "provider" "strimzi"
     "name" ""
     "replicas" 3
+    "listeners" (dict "plainPort" 9092 "tlsPort" 9093)
     "storage" (dict "size" "20Gi" "storageClassName" "")
     "resources" (dict "requests" (dict "cpu" "500m" "memory" "1Gi") "limits" (dict "cpu" "2" "memory" "4Gi"))
     "tls" (dict "enabled" false)
@@ -283,7 +406,6 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "externalTopic" ""
     "annotations" (dict)
     "config" (dict
-      "bootstrapServers" (list "kafka.kafka.svc.cluster.local:9092")
       "topicPartitions" 10
       "topicReplicationFactor" 3
       "authSecretName" ""
@@ -306,12 +428,18 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
     "dlq" (dict "enabled" false
       "image" (dict "repository" "gcr.io/knative-releases/knative.dev/eventing/cmd/event_display" "tag" "latest")
+      "port" 8080
+      "env" (list
+        (dict "name" "POD_NAME" "valueFrom" (dict "fieldRef" (dict "fieldPath" "metadata.name")))
+        (dict "name" "POD_NAMESPACE" "valueFrom" (dict "fieldRef" (dict "fieldPath" "metadata.namespace")))
+      )
       "scaling" (dict "minScale" 0 "maxScale" 2)
       "resources" (dict "requests" (dict "cpu" "50m" "memory" "32Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))
     )
   -}}
 
-  {{- $kafka := .Values.kafka | default dict -}}
+  {{- $kafka := $kafkaValues -}}
+  {{- $_ := set $kafka "bootstrapServers" $defaultBootstrap -}}
   {{- if or (not (hasKey $kafka "sources")) (not $kafka.sources) -}}
     {{- $_ := set $kafka "sources" dict -}}
   {{- end -}}
@@ -388,6 +516,9 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- if not (kindIs "map" $brokerConfig) -}}
     {{- $brokerConfig = deepCopy $brokerDefaults.config -}}
   {{- end -}}
+  {{- if not (hasKey $brokerConfig "bootstrapServers") -}}
+    {{- $_ := set $brokerConfig "bootstrapServers" $defaultBootstrap -}}
+  {{- end -}}
   {{- if $cluster.enabled -}}
     {{- $derivedBootstrap := list (include "ksvc.kafkaBootstrapServers" $) -}}
     {{- if $rawBrokerBootstrap -}}
@@ -429,11 +560,19 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $_ := set .Values "pingsources" $pingSources -}}
 
   {{/* --- object bucket defaults (applied to each entry in the objectBuckets map) --- */}}
-  {{- $bucketDefaults := dict "bucketName" "" "endpointURL" "" "region" "" -}}
+  {{- $notificationDefaults := dict "enabled" false "topicName" "" "persistent" false "opaqueData" "" "ackLevel" "broker" "filter" (dict) -}}
+  {{- $bucketDefaults := dict "bucketName" "" "endpointURL" "" "region" "" "objectStore" (dict "name" "" "namespace" "") "notifications" (dict) -}}
   {{- $buckets := .Values.objectBuckets | default dict -}}
   {{- range $key, $bucket := $buckets }}
     {{- $merged := mustMergeOverwrite (deepCopy $bucketDefaults) $bucket -}}
     {{- $_ := set $merged "bucketName" (default (include "ksvc.objectBucketName" (dict "root" $ "key" $key)) $merged.bucketName) -}}
+    {{- $notifications := $merged.notifications | default dict -}}
+    {{- if kindIs "map" $notifications -}}
+      {{- range $eventKey, $notification := $notifications }}
+        {{- $_ := set $notifications $eventKey (mustMergeOverwrite (deepCopy $notificationDefaults) ($notification | default dict)) -}}
+      {{- end -}}
+      {{- $_ := set $merged "notifications" $notifications -}}
+    {{- end -}}
     {{- $_ := set $buckets $key $merged -}}
   {{- end -}}
   {{- $_ := set .Values "objectBuckets" $buckets -}}
@@ -475,7 +614,21 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
         "wal" (dict "compression" "gzip" "maxParallel" 4)
       )
     )
-    "monitoring" (dict "enabled" true "alerts" (dict "replicationLagWarning" 10 "replicationLagCritical" 60 "highConnectionCount" 50))
+    "monitoring" (dict
+      "enabled" true
+      "podMonitor" (dict
+        "labels" (dict "release" "prometheus")
+        "interval" "30s"
+        "scrapeTimeout" "10s"
+        "path" "/metrics"
+        "scheme" "http"
+      )
+      "prometheusRule" (dict
+        "labels" (dict "prometheus" "kube-prometheus")
+        "interval" "30s"
+      )
+      "alerts" (dict "replicationLagWarning" 10 "replicationLagCritical" 60 "highConnectionCount" 50)
+    )
     "certManager" (dict "enabled" false "issuerRef" (dict "name" "" "kind" "" "group" ""))
   -}}
   {{- $pg := .Values.postgres | default dict -}}
@@ -539,6 +692,7 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $globalDefaults := dict
     "nameOverride" ""
     "fullnameOverride" ""
+    "clusterDomain" "cluster.local"
     "labels" (dict)
     "annotations" (dict)
     "certManager" (dict "issuerRef" (dict "name" "" "kind" "ClusterIssuer" "group" "cert-manager.io"))

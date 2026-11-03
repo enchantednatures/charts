@@ -1,6 +1,9 @@
 {{- define "ksvc.class.cnpgAlerts" -}}
 {{- $pgName := include "ksvc.postgresName" . -}}
-{{- $alerts := .Values.postgres.monitoring.alerts -}}
+{{- $mon := .Values.postgres.monitoring -}}
+{{- $alerts := $mon.alerts -}}
+{{- $labels := dict "app" $pgName -}}
+{{- $labels = mustMergeOverwrite $labels (deepCopy ($mon.prometheusRule.labels | default dict)) -}}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -8,12 +11,11 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ksvc.labels" . | nindent 4 }}
-    app: {{ $pgName }}
-    prometheus: kube-prometheus
+    {{- toYaml $labels | nindent 4 }}
 spec:
   groups:
     - name: postgres.rules
-      interval: 30s
+      interval: {{ $mon.prometheusRule.interval }}
       rules:
         - alert: PostgreSQLBackupFailed
           expr: |

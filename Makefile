@@ -11,6 +11,7 @@
 #   make install-flagger           Flagger CRDs only
 #   make install-dragonfly         DragonflyDB CRDs only
 #   make install-object-bucket     ObjectBucketClaim + ObjectBucket CRDs only
+#   make install-rook-crds         Rook Ceph CRDs (for bucket notifications)
 #   make install-monitoring        Prometheus Operator CRDs only
 #   make install-kyverno           Kyverno (CRDs + controllers) via Helm
 #   make create-kind-cluster       Create a Kind cluster + install all CRDs
@@ -39,6 +40,7 @@ PROMETHEUS_OPERATOR_VERSION ?= v0.94.2
 KYVERNO_CHART_VERSION ?= 3.9.1
 STRIMZI_VERSION       ?= 1.3.0
 REDPANDA_OPERATOR_VERSION ?= 26.2.5
+ROOK_VERSION          ?= v1.21.1
 HELM_VERSION          ?= v3.17.0
 HELM_DOCS_VERSION     ?= v1.14.2
 HELM_DOCS_IMAGE       ?= jnorwood/helm-docs:$(HELM_DOCS_VERSION)@sha256:7e562b49ab6b1dbc50c3da8f2dd6ffa8a5c6bba327b1c6335cc15ce29267979c
@@ -82,6 +84,11 @@ OBJECT_BUCKET_CRD_BASE := https://raw.githubusercontent.com/kube-object-storage/
 OBJECT_BUCKET_CRDS := \
 	$(OBJECT_BUCKET_CRD_BASE)/objectbucket_v1alpha1_objectbucketclaim_crd.yaml \
 	$(OBJECT_BUCKET_CRD_BASE)/objectbucket_v1alpha1_objectbucket_crd.yaml
+
+# Rook's upstream bundle includes CephBucketTopic and CephBucketNotification,
+# which the chart uses for bucket notifications. The bundle also installs the
+# other Ceph CRDs; that is harmless in the Kind test cluster.
+ROOK_CRDS := https://raw.githubusercontent.com/rook/rook/$(ROOK_VERSION)/deploy/examples/crds.yaml
 
 # ---------------------------------------------------------------------------
 # Helper: kubectl apply with retries
@@ -202,6 +209,11 @@ install-dragonfly: ## Install DragonflyDB CRDs
 install-object-bucket: ## Install ObjectBucketClaim + ObjectBucket CRDs (Rook/Ceph bucket provisioning)
 	$(call apply-with-retry,$(OBJECT_BUCKET_CRDS))
 
+.PHONY: install-rook-crds
+install-rook-crds: ## Install Rook Ceph CRDs (CephBucketTopic/CephBucketNotification for bucket notifications)
+	$(call apply-with-retry,$(ROOK_CRDS))
+	$(call wait-established,cephbuckettopics.ceph.rook.io cephbucketnotifications.ceph.rook.io)
+
 .PHONY: install-kyverno
 install-kyverno: ## Install Kyverno (CRDs + admission/background/cleanup/reports controllers)
 	helm repo add --force-update kyverno https://kyverno.github.io/kyverno/
@@ -215,7 +227,7 @@ install-kyverno: ## Install Kyverno (CRDs + admission/background/cleanup/reports
 	$(call wait-kyverno-webhook)
 
 .PHONY: install-all-crds
-install-all-crds: install-knative install-cnpg install-monitoring install-flagger install-kafka install-strimzi-crds install-redpanda-crds install-eventing install-dragonfly install-object-bucket ## Install all CRDs
+install-all-crds: install-knative install-cnpg install-monitoring install-flagger install-kafka install-strimzi-crds install-redpanda-crds install-eventing install-dragonfly install-object-bucket install-rook-crds ## Install all CRDs
 
 # ---------------------------------------------------------------------------
 # Kind cluster management

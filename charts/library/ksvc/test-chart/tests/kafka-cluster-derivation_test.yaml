@@ -31,6 +31,19 @@ tests:
           path: "spec.bootstrapServers[0]"
           value: custom-kafka:9092
 
+  - it: should inherit top-level bootstrapServers when the source does not set them
+    set:
+      kafka.bootstrapServers:
+        - shared-kafka:9092
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: shared-kafka:9092
+
+
   - it: should derive the Strimzi plaintext bootstrap
     set:
       kafka.cluster.enabled: true
@@ -224,3 +237,28 @@ tests:
       - equal:
           path: data["default.topic.replication.factor"]
           value: "2"
+
+  - it: should use global.clusterDomain for the derived bootstrap
+    set:
+      kafka.cluster.enabled: true
+      global.clusterDomain: example.internal
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: test-release-kafka-kafka-bootstrap.test-ns.svc.example.internal:9092
+
+  - it: should use custom listener ports for the derived bootstrap
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.listeners.plainPort: 19092
+      kafka.cluster.listeners.tlsPort: 19093
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: "spec.bootstrapServers[0]"
+          value: test-release-kafka-kafka-bootstrap.test-ns.svc.cluster.local:19092

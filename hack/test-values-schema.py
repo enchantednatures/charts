@@ -244,6 +244,88 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
         ),
         "Additional properties are not allowed",
     ),
+    (
+        "invalid flagger load tester scheme",
+        mutate(["flagger", "loadTester", "scheme"], "ftp"),
+        "'ftp' is not one of ['http', 'https']",
+    ),
+    (
+        "invalid managed kafka listener port",
+        mutate(["kafka", "cluster", "listeners", "plainPort"], 0),
+        "is less than the minimum of 1",
+    ),
+    (
+        "invalid pod monitor scheme",
+        mutate(["postgres", "monitoring", "podMonitor", "scheme"], "ftp"),
+        "'ftp' is not one of ['http', 'https']",
+    ),
+    (
+        "invalid dlq port",
+        mutate(["kafka", "sources", "events", "dlq", "port"], 0),
+        "is less than the minimum of 1",
+    ),
+    (
+        "unknown object bucket notification event",
+        mutate(
+            ["objectBuckets", "uploads"],
+            {"storageClassName": "ceph-bucket", "notifications": {"read": {"enabled": True}}},
+        ),
+        "is not one of",
+    ),
+    (
+        "unknown object bucket notification field",
+        mutate(
+            ["objectBuckets", "uploads"],
+            {
+                "storageClassName": "ceph-bucket",
+                "notifications": {"put": {"enabled": True, "unexpected": True}},
+            },
+        ),
+        "Additional properties are not allowed",
+    ),
+    (
+        "invalid object bucket notification topic name",
+        mutate(
+            ["objectBuckets", "uploads"],
+            {
+                "storageClassName": "ceph-bucket",
+                "notifications": {"put": {"enabled": True, "topicName": "Bad_Name"}},
+            },
+        ),
+        "does not match",
+    ),
+    (
+        "invalid object bucket notification filter name",
+        mutate(
+            ["objectBuckets", "uploads"],
+            {
+                "storageClassName": "ceph-bucket",
+                "notifications": {
+                    "put": {
+                        "enabled": True,
+                        "filter": {"keyFilters": [{"name": "contains", "value": "x"}]},
+                    }
+                },
+            },
+        ),
+        "is not one of",
+    ),
+    (
+        "invalid object bucket binding mode",
+        mutate(
+            ["services", "api", "objectBuckets"],
+            {"uploads": {"mode": "volume"}},
+        ),
+        "is not one of",
+    ),
+    (
+        "unknown object bucket env name field",
+        mutate(
+            ["services", "api", "objectBuckets"],
+            {"uploads": {"mode": "env", "envNames": {"bucket": "S3_BUCKET"}}},
+        ),
+        "Additional properties are not allowed",
+    ),
 ]
 
 # (description, values) pairs that must validate.
@@ -255,6 +337,29 @@ POSITIVE_CASES: list[tuple[str, dict]] = [
     (
         "kafka source without topic (defaults to events)",
         mutate(["kafka", "sources", "events"], {"sink": "api"}),
+    ),
+    (
+        "object bucket application binding",
+        mutate(
+            ["services", "api", "objectBuckets"],
+            {"uploads": {"mode": "env", "envNames": {"bucketName": "S3_BUCKET"}}},
+        ),
+    ),
+    (
+        "object bucket notification",
+        mutate(
+            ["objectBuckets", "uploads"],
+            {
+                "storageClassName": "ceph-bucket",
+                "objectStore": {"name": "ceph-objectstore", "namespace": "rook-ceph"},
+                "notifications": {
+                    "put": {
+                        "enabled": True,
+                        "filter": {"keyFilters": [{"name": "prefix", "value": "uploads/"}]},
+                    }
+                },
+            },
+        ),
     ),
 ]
 

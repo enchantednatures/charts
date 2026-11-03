@@ -10,6 +10,38 @@ are documented by the generated GitHub Release notes attached to each published
 OCI artifact, so a patch or prerelease does not need its own entry here. The
 `1.0.0` section below covers every chart that targets the `1.0.0` values API.
 
+## [1.2.0] - 2026-11-03
+
+### Added
+
+- `global.clusterDomain` (default `cluster.local`) controls generated managed
+  Kafka bootstrap addresses, Flagger k6 service URLs, and certificate SANs.
+- `flagger.loadTester.*` defines the load-tester namespace/service/scheme/port/
+  path; `services.<key>.flagger.loadTest.webhookUrl` now defaults to an empty
+  string and derives its value from it. New `smokePath`, `path`, `smokeTimeout`,
+  and `timeout` fields cover the generated k6 webhooks.
+- `kafka.bootstrapServers` sets the default bootstrap list for KafkaSources and
+  the Broker. `kafka.cluster.listeners.plainPort`/`tlsPort` configure managed
+  Kafka listener ports.
+- `postgres.monitoring.podMonitor.*` and `postgres.monitoring.prometheusRule.*`
+  expose discovery labels, scrape interval/timeout, path, scheme, and rule
+  evaluation interval.
+- Kafka source and trigger DLQs accept `dlq.port` and `dlq.env`.
+- `services.<key>.objectBuckets` binds an `objectBuckets` entry to an app via
+  `envFrom` or individual named environment variables. The claim Secret and
+  ConfigMap names can be overridden.
+- **Experimental:** `objectBuckets.<key>.notifications` publishes Ceph RGW
+  bucket events to the chart-managed Kafka cluster. Events are opt-in per key
+  (`put`, `post`, `copy`, `multipart`, `delete`, `delete-marker`) and create a
+  `CephBucketTopic`, `CephBucketNotification`, and Kafka topic. The current
+  release supports the plaintext, unauthenticated managed listener only;
+  authenticated/TLS notifications are tracked in issue #137.
+
+### Changed
+
+- The default `prometheus.io/port` annotation follows
+  `services.<key>.port` unless the annotation is set explicitly.
+
 ## [1.0.0] - 2026-11-02
 
 The first stable release of the multi-service library. Consumers moving from
@@ -71,4 +103,5 @@ breaking change with before/after values.
 - The chart no longer validates `maxUnavailable` against the replica count; the
   behavior is documented as intentional for percentage and integer inputs.
 
+[1.2.0]: https://github.com/enchantednatures/charts/releases/tag/ksvc-v1.2.0
 [1.0.0]: https://github.com/enchantednatures/charts/releases/tag/ksvc-v1.0.0

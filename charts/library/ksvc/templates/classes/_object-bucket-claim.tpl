@@ -14,6 +14,14 @@ metadata:
   labels:
     {{- include "ksvc.labels" .root | nindent 4 }}
     app.kubernetes.io/component: object-bucket
+    {{- $root := .root }}
+    {{- $bucketKey := .key }}
+    {{- $notifications := .bucket.notifications | default dict }}
+    {{- range $eventKey, $notification := $notifications }}
+    {{- if $notification.enabled }}
+    bucket-notification-{{ $eventKey }}: {{ include "ksvc.objectBucketNotificationName" (dict "root" $root "bucketKey" $bucketKey "eventKey" $eventKey) | quote }}
+    {{- end }}
+    {{- end }}
   {{- $globalAnnotations := include "ksvc.annotations" .root -}}
   {{- with $globalAnnotations }}
   annotations:

@@ -1,0 +1,262 @@
+suite: object bucket application binding tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  objectBuckets.uploads.storageClassName: ceph-bucket
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should not inject bucket env when the service has no binding
+    asserts:
+      - isNull:
+          path: spec.template.spec.containers[0].envFrom
+      - isNull:
+          path: spec.template.spec.containers[0].env
+
+  - it: should inject the claim Secret and ConfigMap via envFrom by default
+    set:
+      services.api.objectBuckets.uploads: {}
+    documentSelector:
+      path: metadata.name
+      value: test-release-api
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: test-release-uploads
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].configMapRef.name
+          value: test-release-uploads
+
+  - it: should honor configMapName and secretName overrides in envFrom mode
+    set:
+      services.api.objectBuckets.uploads:
+        mode: envFrom
+        configMapName: custom-bucket-config
+        secretName: custom-bucket-secret
+    documentSelector:
+      path: metadata.name
+      value: test-release-api
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: custom-bucket-secret
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].configMapRef.name
+          value: custom-bucket-config
+
+  - it: should inject individual env vars with custom names in env mode
+    set:
+      services.api.objectBuckets.uploads:
+        mode: env
+        envNames:
+          bucketName: S3_BUCKET
+          bucketHost: S3_HOST
+          bucketPort: S3_PORT
+          accessKeyId: S3_ACCESS_KEY_ID
+          secretAccessKey: S3_SECRET_ACCESS_KEY
+    documentSelector:
+      path: metadata.name
+      value: test-release-api
+    asserts:
+      - isNull:
+          path: spec.template.spec.containers[0].envFrom
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: S3_HOST
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.configMapKeyRef.name
+          value: test-release-uploads
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.configMapKeyRef.key
+          value: BUCKET_HOST
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: S3_BUCKET
+      - equal:
+          path: spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.key
+          value: BUCKET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: S3_PORT
+      - equal:
+          path: spec.template.spec.containers[0].env[2].valueFrom.configMapKeyRef.key
+          value: BUCKET_PORT
+      - equal:
+          path: spec.template.spec.containers[0].env[3].name
+          value: S3_ACCESS_KEY_ID
+      - equal:
+          path: spec.template.spec.containers[0].env[3].valueFrom.secretKeyRef.name
+          value: test-release-uploads
+      - equal:
+          path: spec.template.spec.containers[0].env[3].valueFrom.secretKeyRef.key
+          value: AWS_ACCESS_KEY_ID
+      - equal:
+          path: spec.template.spec.containers[0].env[4].name
+          value: S3_SECRET_ACCESS_KEY
+      - equal:
+          path: spec.template.spec.containers[0].env[4].valueFrom.secretKeyRef.key
+          value: AWS_SECRET_ACCESS_KEY
+
+  - it: should use the standard key names in env mode when envNames is omitted
+    set:
+      services.api.objectBuckets.uploads:
+        mode: env
+    documentSelector:
+      path: metadata.name
+      value: test-release-api
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: BUCKET_HOST
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: BUCKET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: BUCKET_PORT
+      - equal:
+          path: spec.template.spec.containers[0].env[3].name
+          value: AWS_ACCESS_KEY_ID
+      - equal:
+          path: spec.template.spec.containers[0].env[4].name
+          value: AWS_SECRET_ACCESS_KEY
+
+  - it: should skip env vars whose target name is empty
+    set:
+      services.api.objectBuckets.uploads:
+        mode: env
+        envNames:
+          bucketName: S3_BUCKET
+          bucketHost: ""
+          bucketPort: ""
+          accessKeyId: S3_ACCESS_KEY_ID
+          secretAccessKey: ""
+    documentSelector:
+      path: metadata.name
+      value: test-release-api
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: S3_BUCKET
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: S3_ACCESS_KEY_ID
+      - lengthEqual:
+          path: spec.template.spec.containers[0].env
+          count: 2
+
+  - it: should not duplicate an existing envFrom reference
+    set:
+      services.api.envFrom:
+        - secretRef:
+            name: test-release-uploads
+        - configMapRef:
+            name: test-release-uploads
+      services.api.objectBuckets.uploads: {}
+    documentSelector:
+      path: metadata.name
+      value: test-release-api
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers[0].envFrom
+          count: 2
+
+  - it: should not inject an env var that the service already defines
+    set:
+      services.api.env:
+        - name: S3_BUCKET
+          value: existing
+      services.api.objectBuckets.uploads:
+        mode: env
+        envNames:
+          bucketName: S3_BUCKET
+          bucketHost: ""
+          bucketPort: ""
+          accessKeyId: ""
+          secretAccessKey: ""
+    documentSelector:
+      path: metadata.name
+      value: test-release-api
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers[0].env
+          count: 1
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: existing
+
+  - it: should fail when the binding references a missing bucket
+    set:
+      services.api.objectBuckets.missing: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.objectBuckets.missing references a bucket that is not defined in objectBuckets"
+
+  - it: should fail for an invalid binding mode
+    set:
+      services.api.objectBuckets.uploads:
+        mode: volume
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.objectBuckets.uploads.mode must be one of envFrom, env (got volume)"
+
+  - it: should fail for an invalid environment variable name
+    set:
+      services.api.objectBuckets.uploads:
+        mode: env
+        envNames:
+          bucketName: "S3-BUCKET"
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.objectBuckets.uploads.envNames.bucketName must be a valid environment variable name (got S3-BUCKET)"
+
+  - it: should fail for duplicate target environment variable names
+    set:
+      services.api.objectBuckets.uploads:
+        mode: env
+        envNames:
+          bucketName: S3_VALUE
+          bucketHost: S3_VALUE
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.objectBuckets.uploads.envNames contains duplicate target S3_VALUE"
+
+  - it: should fail when env mode has no target names
+    set:
+      services.api.objectBuckets.uploads:
+        mode: env
+        envNames:
+          bucketName: ""
+          bucketHost: ""
+          bucketPort: ""
+          accessKeyId: ""
+          secretAccessKey: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "services.api.objectBuckets.uploads.envNames must set at least one variable name when mode=env"
+
+  - it: should inject into a Deployment workload
+    set:
+      services.api.workload.type: Deployment
+      services.api.objectBuckets.uploads:
+        mode: env
+        envNames:
+          bucketName: S3_BUCKET
+          bucketHost: ""
+          bucketPort: ""
+          accessKeyId: ""
+          secretAccessKey: ""
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: S3_BUCKET
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.configMapKeyRef.name
+          value: test-release-uploads

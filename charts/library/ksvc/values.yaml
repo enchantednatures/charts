@@ -9,6 +9,10 @@ global:
   # (defaults to `<release>-<chart>`).
   fullnameOverride: ""
 
+  # -- Kubernetes cluster DNS domain used for generated service FQDNs
+  # (managed Kafka bootstrap addresses, Flagger k6 URLs, and certificate SANs).
+  clusterDomain: cluster.local
+
   # -- Labels added to every rendered resource.
   labels: {}
 
@@ -31,9 +35,9 @@ global:
 # Object Buckets — Map of ObjectBucketClaim entries (Ceph RGW / any S3 store)
 #
 # Each key renders one ObjectBucketClaim named <release>-<key> and can be
-# referenced by postgres.backup.objectStore.bucketRef and/or
-# dragonfly.snapshot.bucketRef (postgres and dragonfly may use different buckets
-# in the same release).
+# referenced by postgres.backup.objectStore.bucketRef,
+# dragonfly.snapshot.bucketRef, and/or services.<key>.objectBuckets (postgres,
+# dragonfly, and applications may use different buckets in the same release).
 #
 # Per entry:
 #   storageClassName: REQUIRED — the name of an EXISTING bucket StorageClass
@@ -43,19 +47,61 @@ global:
 #   endpointURL: optional full URL (e.g. http://rgw.example:80). CNPG uses it
 #     literally; Dragonfly derives the host:port and --s3_use_https from it.
 #   region: optional — injected as AWS_REGION for Dragonfly S3 snapshots.
+#   objectStore: optional Rook CephObjectStore identity used by bucket
+#     notifications. name and namespace are required when notifications are
+#     enabled.
+#   notifications: optional map of bucket notifications keyed by S3 event:
+#     put, post, copy, multipart, delete, or delete-marker. Each entry is
+#     opt-in with `enabled: true`, supports `filter`, and creates a Kafka
+#     topic on the chart-managed cluster. This feature is Experimental:
+#     notifications currently require kafka.cluster.enabled=true,
+#     kafka.cluster.auth.type=none, and kafka.cluster.tls.enabled=false.
+#     See issue #137 for authenticated and TLS notification support.
 #
 # Prerequisites (NOT created by this chart): the ObjectBucketClaim CRDs
-# (lib-bucket-provisioner) and a bucket StorageClass must already exist.
+# (lib-bucket-provisioner), a bucket StorageClass, and — for notifications —
+# the Rook CephBucketTopic/CephBucketNotification CRDs.
 # Example:
 #   objectBuckets:
-#     backups:
+#     uploads:
 #       storageClassName: ceph-bucket
 #       endpointURL: http://rgw.example:80
+#       objectStore:
+#         name: ceph-objectstore
+#         namespace: rook-ceph
+#       notifications:
+#         put:
+#           enabled: true
+#           filter:
+#             keyFilters:
+#               - name: prefix
+#                 value: uploads/
 # =============================================================================
 # -- Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each
 # key renders an ObjectBucketClaim named `<release>-<key>`; see the
 # Object Buckets section for the per-entry schema.
 objectBuckets: {}
+
+# =============================================================================
+# Flagger (global defaults)
+#
+# The per-service `services.<key>.flagger.loadTest.webhookUrl` is derived from
+# these values when it is left empty. Set it explicitly to point a service at a
+# different load tester.
+# =============================================================================
+flagger:
+  loadTester:
+    # -- Namespace of the k6 load-tester service. Empty renders just
+    # `<serviceName>` (same namespace).
+    namespace: flagger-system
+    # -- Name of the k6 load-tester service.
+    serviceName: k6-loadtester
+    # -- URL scheme for the load-tester webhook.
+    scheme: http
+    # -- Service port. Port 80 is omitted from the generated URL.
+    port: 80
+    # -- Path of the k6 launch endpoint.
+    path: /launch-test
 
 # =============================================================================
 # Services — Map of Knative Services (one or more)
@@ -174,6 +220,27 @@ services:
     # -- envFrom sources (Secrets/ConfigMaps) for the container.
     envFrom: []
 
+    # -- Object buckets to expose to this service. Keys must exist in the
+    # top-level `objectBuckets` map. Each binding supports:
+    #   mode: envFrom (default) injects the claim Secret and ConfigMap;
+    #         env injects individual variables with names from `envNames`.
+    #   configMapName / secretName: override the provisioner-generated names
+    #         (default `<release>-<bucket-key>`).
+    #   envNames: target variable names when mode is env. The source keys are
+    #         BUCKET_NAME, BUCKET_HOST, BUCKET_PORT, AWS_ACCESS_KEY_ID, and
+    #         AWS_SECRET_ACCESS_KEY; set a target to "" to skip it.
+    # Example:
+    #   objectBuckets:
+    #     uploads:
+    #       mode: env
+    #       envNames:
+    #         bucketName: S3_BUCKET
+    #         bucketHost: S3_HOST
+    #         bucketPort: S3_PORT
+    #         accessKeyId: S3_ACCESS_KEY_ID
+    #         secretAccessKey: S3_SECRET_ACCESS_KEY
+    objectBuckets: {}
+
     # -- Container security context (non-root, read-only root fs, drops all
     # capabilities).
     # @default -- see `values.yaml`
@@ -195,7 +262,7 @@ services:
     volumes: []
 
     # -- Annotations added to the pod template (Prometheus scraping enabled by
-    # default).
+    # default). `prometheus.io/port` follows `port` unless overridden here.
     # @default -- see `values.yaml`
     podAnnotations:
       prometheus.io/scrape: "true"
@@ -203,7 +270,7 @@ services:
       prometheus.io/path: "/metrics"
 
     # -- Annotations added to the Knative Service (Prometheus scraping enabled
-    # by default).
+    # by default). `prometheus.io/port` follows `port` unless overridden here.
     # @default -- see `values.yaml`
     annotations:
       prometheus.io/scrape: "true"
@@ -276,8 +343,17 @@ services:
       loadTest:
         # -- Enable k6 load testing during canary analysis.
         enabled: true
-        # -- URL of the k6 webhook service that starts load tests.
-        webhookUrl: http://k6-loadtester.flagger-system/launch-test
+        # -- Full URL of the k6 webhook service that starts load tests. Empty
+        # derives from `flagger.loadTester`.
+        webhookUrl: ""
+        # -- Path used by the pre-rollout smoke test (k6 script default).
+        smokePath: /health/live
+        # -- Path used by the rollout load test (k6 script default).
+        path: /
+        # -- Timeout for the smoke-test webhook (Go duration).
+        smokeTimeout: 1m
+        # -- Timeout for the load-test webhook (Go duration).
+        timeout: 5m
         # -- Number of virtual users for the k6 load test.
         vus: 10
         # -- Duration of the k6 load test.
@@ -427,6 +503,28 @@ postgres:
   monitoring:
     # -- Enable the PodMonitor and Prometheus alert rules.
     enabled: true
+    # PodMonitor discovery and scrape settings.
+    podMonitor:
+      # -- Extra labels for the PodMonitor, merged over the chart labels. Set
+      # this to match the Prometheus Operator's podMonitorSelector.
+      labels:
+        release: prometheus
+      # -- Scrape interval.
+      interval: 30s
+      # -- Scrape timeout.
+      scrapeTimeout: 10s
+      # -- Metrics path exposed by the CNPG instance manager.
+      path: /metrics
+      # -- Metrics endpoint scheme (`http` or `https`).
+      scheme: http
+    # PrometheusRule discovery and evaluation settings.
+    prometheusRule:
+      # -- Extra labels for the PrometheusRule, merged over the chart labels.
+      # Set this to match the Prometheus Operator's ruleSelector.
+      labels:
+        prometheus: kube-prometheus
+      # -- Evaluation interval for the PostgreSQL rule group.
+      interval: 30s
     # -- Alert thresholds for the Prometheus rules.
     # @default -- see `values.yaml`
     alerts:
@@ -483,6 +581,12 @@ postgres:
 #             passwordSecret: kafka-auth
 # =============================================================================
 kafka:
+  # Default bootstrap servers for KafkaSources and the Broker when an entry
+  # does not set its own list. The default matches a Strimzi `Kafka` named
+  # `kafka` in namespace `kafka`.
+  # @default -- `[kafka.kafka.svc.cluster.local:9092]`
+  bootstrapServers:
+    - kafka.kafka.svc.cluster.local:9092
   # Managed Kafka cluster (opt-in). When enabled, the chart renders a Strimzi
   # or Redpanda cluster and derives KafkaSource/Broker connection details.
   cluster:
@@ -494,6 +598,11 @@ kafka:
     name: ""
     # -- Broker/controller replicas (1-16).
     replicas: 3
+    listeners:
+      # -- Strimzi plaintext internal listener port.
+      plainPort: 9092
+      # -- Strimzi TLS internal listener port; also the Redpanda Kafka API port.
+      tlsPort: 9093
     storage:
       # -- Persistent volume size per broker.
       size: "20Gi"
@@ -555,9 +664,6 @@ kafka:
     # -- Annotations added to the Broker.
     annotations: {}
     config:
-      # -- Kafka bootstrap servers used by the broker.
-      bootstrapServers:
-        - kafka.kafka.svc.cluster.local:9092
       # -- Default partition count for broker-created topics.
       topicPartitions: 10
       # -- Default replication factor for broker-created topics.

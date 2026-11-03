@@ -125,6 +125,26 @@ tests:
           path: spec.delivery.deadLetterSink.ref.name
           value: test-release-order-events-trigger-dlq
 
+  - it: should honor a custom trigger DLQ port and env
+    set:
+      kafka.triggers.order-events.dlq.enabled: true
+      kafka.triggers.order-events.dlq.port: 9090
+      kafka.triggers.order-events.dlq.env:
+        - name: CUSTOM
+          value: "yes"
+    documentIndex: 4
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9090
+      - lengthEqual:
+          path: spec.template.spec.containers[0].env
+          count: 1
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: CUSTOM
+
+
   - it: should render the subscriber URI
     set:
       kafka.triggers.order-events.subscriberUri: /v1/events

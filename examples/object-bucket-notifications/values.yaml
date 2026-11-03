@@ -1,0 +1,47 @@
+services:
+  api:
+    image:
+      repository: ghcr.io/example-org/api-service
+      tag: "v1.0.0"
+    objectBuckets:
+      uploads:
+        mode: envFrom
+
+  worker:
+    image:
+      repository: ghcr.io/example-org/worker
+      tag: "v1.0.0"
+    objectBuckets:
+      uploads:
+        mode: env
+        envNames:
+          bucketName: S3_BUCKET
+          bucketHost: S3_HOST
+          bucketPort: S3_PORT
+          accessKeyId: S3_ACCESS_KEY_ID
+          secretAccessKey: S3_SECRET_ACCESS_KEY
+
+objectBuckets:
+  uploads:
+    storageClassName: ceph-bucket
+    endpointURL: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+    objectStore:
+      name: ceph-objectstore
+      namespace: rook-ceph
+    notifications:
+      put:
+        enabled: true
+        filter:
+          keyFilters:
+            - name: prefix
+              value: uploads/
+      delete:
+        enabled: true
+
+kafka:
+  cluster:
+    enabled: true
+    provider: strimzi
+    topics:
+      create: true
+      partitions: 3

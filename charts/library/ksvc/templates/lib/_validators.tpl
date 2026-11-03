@@ -139,6 +139,119 @@ Call this from the loader to catch misconfigurations early.
     {{- end -}}
   {{- end -}}
 
+  {{/* object bucket notification validation */}}
+  {{- $notificationTopics := dict -}}
+  {{- if .Values.objectBuckets -}}
+    {{- range $key, $bucket := .Values.objectBuckets -}}
+      {{- $notifications := $bucket.notifications | default dict -}}
+      {{- if kindIs "map" $notifications -}}
+        {{- range $eventKey, $notification := $notifications -}}
+          {{- if not (kindIs "map" $notification) -}}
+            {{- fail (printf "objectBuckets.%s.notifications.%s must be a map" $key $eventKey) -}}
+          {{- end -}}
+          {{- if not (has $eventKey (list "put" "post" "copy" "multipart" "delete" "delete-marker")) -}}
+            {{- fail (printf "objectBuckets.%s.notifications.%s is not a supported event (use put, post, copy, multipart, delete, or delete-marker)" $key $eventKey) -}}
+          {{- end -}}
+          {{- if $notification.enabled -}}
+            {{- if not $bucket.objectStore -}}
+              {{- fail (printf "objectBuckets.%s.objectStore is required when notifications are enabled" $key) -}}
+            {{- end -}}
+            {{- if not $bucket.objectStore.name -}}
+              {{- fail (printf "objectBuckets.%s.objectStore.name is required when notifications are enabled" $key) -}}
+            {{- end -}}
+            {{- if not $bucket.objectStore.namespace -}}
+              {{- fail (printf "objectBuckets.%s.objectStore.namespace is required when notifications are enabled" $key) -}}
+            {{- end -}}
+            {{- if not $.Values.kafka.cluster.enabled -}}
+              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.enabled=true; notifications currently support only the chart-managed Kafka cluster (see issue #137)" $key $eventKey) -}}
+            {{- end -}}
+            {{- if ne $.Values.kafka.cluster.auth.type "none" -}}
+              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.auth.type=none; authenticated Kafka notifications are tracked in issue #137" $key $eventKey) -}}
+            {{- end -}}
+            {{- if $.Values.kafka.cluster.tls.enabled -}}
+              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.tls.enabled=false; TLS Kafka notifications are tracked in issue #137" $key $eventKey) -}}
+            {{- end -}}
+            {{- if not $.Values.kafka.cluster.topics.create -}}
+              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.topics.create=true so the chart can create the Kafka topic" $key $eventKey) -}}
+            {{- end -}}
+            {{- if $notification.topicName -}}
+              {{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $notification.topicName) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.%s.topicName must be a DNS-1123 label" $key $eventKey) -}}
+              {{- end -}}
+            {{- end -}}
+            {{- $topicName := include "ksvc.objectBucketNotificationTopicName" (dict "root" $ "bucketKey" $key "eventKey" $eventKey) -}}
+            {{- if hasKey $notificationTopics $topicName -}}
+              {{- fail (printf "objectBuckets.%s.notifications.%s derives Kafka topic %s, which is already used by another notification" $key $eventKey $topicName) -}}
+            {{- end -}}
+            {{- $_ := set $notificationTopics $topicName true -}}
+            {{- $filter := $notification.filter | default dict -}}
+            {{- $keyFilters := $filter.keyFilters | default list -}}
+            {{- $seenKeyFilters := dict -}}
+            {{- range $keyFilter := $keyFilters -}}
+              {{- if not (kindIs "map" $keyFilter) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.%s.filter.keyFilters entries must be maps" $key $eventKey) -}}
+              {{- end -}}
+              {{- if not (has $keyFilter.name (list "prefix" "suffix" "regex")) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.%s.filter.keyFilters.name must be one of prefix, suffix, regex (got %v)" $key $eventKey $keyFilter.name) -}}
+              {{- end -}}
+              {{- if hasKey $seenKeyFilters $keyFilter.name -}}
+                {{- fail (printf "objectBuckets.%s.notifications.%s.filter.keyFilters contains duplicate name %s" $key $eventKey $keyFilter.name) -}}
+              {{- end -}}
+              {{- $_ := set $seenKeyFilters $keyFilter.name true -}}
+            {{- end -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{/* object bucket app binding validation */}}
+  {{- range $svcKey, $svc := .Values.services -}}
+    {{- $bindings := $svc.objectBuckets | default dict -}}
+    {{- if kindIs "map" $bindings -}}
+      {{- range $bucketKey, $binding := $bindings -}}
+        {{- if not (kindIs "map" $binding) -}}
+          {{- fail (printf "services.%s.objectBuckets.%s must be a map" $svcKey $bucketKey) -}}
+        {{- end -}}
+        {{- if not (hasKey $.Values.objectBuckets $bucketKey) -}}
+          {{- fail (printf "services.%s.objectBuckets.%s references a bucket that is not defined in objectBuckets" $svcKey $bucketKey) -}}
+        {{- end -}}
+        {{- $mode := $binding.mode | default "envFrom" -}}
+        {{- if not (has $mode (list "envFrom" "env")) -}}
+          {{- fail (printf "services.%s.objectBuckets.%s.mode must be one of envFrom, env (got %v)" $svcKey $bucketKey $mode) -}}
+        {{- end -}}
+        {{- if $binding.configMapName -}}
+          {{- if not (regexMatch "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" $binding.configMapName) -}}
+            {{- fail (printf "services.%s.objectBuckets.%s.configMapName must be a valid Kubernetes name" $svcKey $bucketKey) -}}
+          {{- end -}}
+        {{- end -}}
+        {{- if $binding.secretName -}}
+          {{- if not (regexMatch "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" $binding.secretName) -}}
+            {{- fail (printf "services.%s.objectBuckets.%s.secretName must be a valid Kubernetes name" $svcKey $bucketKey) -}}
+          {{- end -}}
+        {{- end -}}
+        {{- $envNames := $binding.envNames | default dict -}}
+        {{- $targets := 0 -}}
+        {{- $seenTargets := dict -}}
+        {{- range $field, $target := $envNames -}}
+          {{- if $target -}}
+            {{- $targets = add $targets 1 -}}
+            {{- if not (regexMatch "^[A-Za-z_][A-Za-z0-9_]*$" $target) -}}
+              {{- fail (printf "services.%s.objectBuckets.%s.envNames.%s must be a valid environment variable name (got %v)" $svcKey $bucketKey $field $target) -}}
+            {{- end -}}
+            {{- if hasKey $seenTargets $target -}}
+              {{- fail (printf "services.%s.objectBuckets.%s.envNames contains duplicate target %s" $svcKey $bucketKey $target) -}}
+            {{- end -}}
+            {{- $_ := set $seenTargets $target true -}}
+          {{- end -}}
+        {{- end -}}
+        {{- if and (eq $mode "env") (eq $targets 0) -}}
+          {{- fail (printf "services.%s.objectBuckets.%s.envNames must set at least one variable name when mode=env" $svcKey $bucketKey) -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
   {{/* postgres backup validation */}}
   {{- if and .Values.postgres.enabled .Values.postgres.backup.enabled (not .Values.postgres.backup.objectStore.destinationPath) -}}
     {{- fail "postgres.backup.objectStore.destinationPath is required when postgres backup is enabled" -}}

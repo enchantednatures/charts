@@ -6,7 +6,7 @@ description: >-
   managed Strimzi or Redpanda Kafka clusters, Knative Broker/Trigger,
   DragonflyDB cache clusters, and Flagger canary releases.
 type: library
-version: 1.0.0
+version: 1.2.0
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
 icon: https://raw.githubusercontent.com/enchantednatures/charts/main/docs/icon.svg
@@ -29,6 +29,18 @@ annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT
   artifacthub.io/changes: |
+    - kind: added
+      description: global.clusterDomain for generated Kafka, Flagger, and certificate DNS names
+    - kind: added
+      description: Configurable Flagger load-tester URL, k6 paths/timeouts, and top-level kafka.bootstrapServers
+    - kind: added
+      description: Configurable Prometheus PodMonitor/PrometheusRule labels and scrape settings, Kafka listener ports, and DLQ port/env
+    - kind: added
+      description: Prometheus scrape annotations follow services.<key>.port unless explicitly overridden
+    - kind: added
+      description: services.<key>.objectBuckets app bindings with envFrom or named env vars
+    - kind: added
+      description: Ceph RGW bucket notifications to the chart-managed Kafka cluster, opt-in per S3 event (Experimental; plaintext/no-auth managed Kafka only)
     - kind: added
       description: Multi-service services map with per-service Knative Services, Deployments, and Flagger canaries
     - kind: added

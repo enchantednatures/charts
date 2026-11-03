@@ -16,10 +16,13 @@
 {{- $nodePoolExtra := $cluster.strimzi.nodePoolExtraSpec | default dict -}}
 {{- $nodePoolSpec = mustMergeOverwrite (deepCopy $nodePoolSpec) $nodePoolExtra -}}
 {{- $authType := $cluster.auth.type | default "none" -}}
-{{- $plain := dict "name" "plain" "port" 9092 "type" "internal" "tls" false -}}
+{{- $listenersCfg := $cluster.listeners | default dict -}}
+{{- $plainPort := int ($listenersCfg.plainPort | default 9092) -}}
+{{- $tlsPort := int ($listenersCfg.tlsPort | default 9093) -}}
+{{- $plain := dict "name" "plain" "port" $plainPort "type" "internal" "tls" false -}}
 {{- $listeners := list $plain -}}
 {{- if $cluster.tls.enabled -}}
-{{- $tlsListener := dict "name" "tls" "port" 9093 "type" "internal" "tls" true -}}
+{{- $tlsListener := dict "name" "tls" "port" $tlsPort "type" "internal" "tls" true -}}
 {{- $listeners = append $listeners $tlsListener -}}
 {{- end -}}
 {{- if eq $authType "scram" -}}

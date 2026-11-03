@@ -16,6 +16,10 @@
         "fullnameOverride": {
           "type": "string"
         },
+        "clusterDomain": {
+          "type": "string",
+          "description": "Kubernetes cluster DNS domain used for generated service FQDNs."
+        },
         "labels": {
           "type": "object"
         },
@@ -28,6 +32,40 @@
           "properties": {
             "issuerRef": {
               "$ref": "#/$defs/issuerRef"
+            }
+          }
+        }
+      }
+    },
+    "flagger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loadTester": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {
+              "type": "string"
+            },
+            "serviceName": {
+              "type": "string"
+            },
+            "scheme": {
+              "type": "string",
+              "enum": [
+                "http",
+                "https"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^/"
             }
           }
         }
@@ -56,6 +94,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "bootstrapServers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
         "cluster": {
           "type": "object",
           "additionalProperties": false,
@@ -79,6 +124,22 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 16
+            },
+            "listeners": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "plainPort": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "tlsPort": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
             },
             "storage": {
               "type": "object",
@@ -483,6 +544,44 @@
             "enabled": {
               "type": "boolean"
             },
+            "podMonitor": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "labels": {
+                  "type": "object"
+                },
+                "interval": {
+                  "type": "string"
+                },
+                "scrapeTimeout": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "scheme": {
+                  "type": "string",
+                  "enum": [
+                    "http",
+                    "https"
+                  ]
+                }
+              }
+            },
+            "prometheusRule": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "labels": {
+                  "type": "object"
+                },
+                "interval": {
+                  "type": "string"
+                }
+              }
+            },
             "alerts": {
               "type": "object",
               "additionalProperties": false,
@@ -776,6 +875,173 @@
         "region": {
           "type": "string",
           "description": "AWS region injected as AWS_REGION for Dragonfly S3 snapshots"
+        },
+        "objectStore": {
+          "type": "object",
+          "description": "Rook CephObjectStore identity required by bucket notifications.",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "namespace": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "notifications": {
+          "type": "object",
+          "description": "Bucket notifications keyed by S3 event. Each entry is opt-in.",
+          "propertyNames": {
+            "enum": [
+              "put",
+              "post",
+              "copy",
+              "multipart",
+              "delete",
+              "delete-marker"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/objectBucketNotification"
+          }
+        }
+      }
+    },
+    "objectBucketBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "envFrom",
+            "env"
+          ],
+          "default": "envFrom"
+        },
+        "configMapName": {
+          "type": "string"
+        },
+        "secretName": {
+          "type": "string"
+        },
+        "envNames": {
+          "$ref": "#/$defs/objectBucketEnvNames"
+        }
+      }
+    },
+    "objectBucketEnvNames": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bucketName": {
+          "type": "string"
+        },
+        "bucketHost": {
+          "type": "string"
+        },
+        "bucketPort": {
+          "type": "string"
+        },
+        "accessKeyId": {
+          "type": "string"
+        },
+        "secretAccessKey": {
+          "type": "string"
+        }
+      }
+    },
+    "objectBucketNotification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "topicName": {
+          "type": "string",
+          "maxLength": 63,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        },
+        "persistent": {
+          "type": "boolean"
+        },
+        "opaqueData": {
+          "type": "string"
+        },
+        "ackLevel": {
+          "type": "string",
+          "enum": [
+            "none",
+            "broker"
+          ]
+        },
+        "filter": {
+          "$ref": "#/$defs/objectBucketNotificationFilter"
+        }
+      }
+    },
+    "objectBucketNotificationFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keyFilters": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "value"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "enum": [
+                  "prefix",
+                  "suffix",
+                  "regex"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "metadataFilters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/objectBucketNotificationFilterRule"
+          }
+        },
+        "tagFilters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/objectBucketNotificationFilterRule"
+          }
+        }
+      }
+    },
+    "objectBucketNotificationFilterRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string"
         }
       }
     },
@@ -1062,6 +1328,13 @@
         "envFrom": {
           "type": "array"
         },
+        "objectBuckets": {
+          "type": "object",
+          "description": "Map of objectBuckets entries to expose to this service. Keys must exist in the top-level objectBuckets map.",
+          "additionalProperties": {
+            "$ref": "#/$defs/objectBucketBinding"
+          }
+        },
         "securityContext": {
           "type": "object",
           "additionalProperties": false,
@@ -1196,6 +1469,20 @@
                   "type": "boolean"
                 },
                 "webhookUrl": {
+                  "type": "string"
+                },
+                "smokePath": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "smokeTimeout": {
+                  "type": "string"
+                },
+                "timeout": {
                   "type": "string"
                 },
                 "vus": {
@@ -1358,6 +1645,14 @@
                 }
               }
             },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "env": {
+              "type": "array"
+            },
             "scaling": {
               "type": "object",
               "additionalProperties": false,
@@ -1445,6 +1740,14 @@
                   "type": "string"
                 }
               }
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "env": {
+              "type": "array"
             },
             "scaling": {
               "type": "object",

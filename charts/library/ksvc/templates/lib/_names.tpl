@@ -74,6 +74,50 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- printf "%s-%s" (include "ksvc.fullname" .root) .key | trunc 63 | trimSuffix "-" | replace "_" "-" }}
 {{- end }}
 
+{{/*
+ksvc.objectBucketNotificationTopicName — Kafka topic and CephBucketTopic name
+for one bucket notification. Defaults to <fullname>-<bucket-key>-<event-key>;
+objectBuckets.<key>.notifications.<event>.topicName overrides it.
+Expects context: dict with "root", "bucketKey", and "eventKey".
+*/}}
+{{- define "ksvc.objectBucketNotificationTopicName" -}}
+{{- $buckets := .root.Values.objectBuckets | default dict -}}
+{{- $bucket := index $buckets .bucketKey | default dict -}}
+{{- $notifications := $bucket.notifications | default dict -}}
+{{- $notification := index $notifications .eventKey | default dict -}}
+{{- $override := $notification.topicName | default "" -}}
+{{- if $override -}}
+{{- $override | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- else -}}
+{{- printf "%s-%s-%s" (include "ksvc.fullname" .root) .bucketKey .eventKey | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+ksvc.objectBucketNotificationName — CephBucketNotification name (also the
+notification label value on the ObjectBucketClaim). It is always derived from
+the release/bucket/event so it stays a valid label value even when topicName is
+overridden.
+*/}}
+{{- define "ksvc.objectBucketNotificationName" -}}
+{{- printf "%s-%s-%s" (include "ksvc.fullname" .root) .bucketKey .eventKey | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- end }}
+
+{{/*
+ksvc.hasObjectBucketNotifications — "true" when at least one enabled bucket
+notification exists. Used to decide whether to render Kafka topic resources.
+*/}}
+{{- define "ksvc.hasObjectBucketNotifications" -}}
+{{- $found := false -}}
+{{- range $bucketKey, $bucket := .Values.objectBuckets -}}
+{{- $notifications := $bucket.notifications | default dict -}}
+{{- range $eventKey, $notification := $notifications -}}
+{{- if $notification.enabled -}}{{- $found = true -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $found -}}true{{- end -}}
+{{- end }}
+
 {{- define "ksvc.postgresName" -}}
 {{- printf "%s-postgres" (include "ksvc.fullname" .) }}
 {{- end }}
@@ -168,17 +212,27 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{- . | lower | replace "_" "-" | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
+{{- define "ksvc.clusterDomain" -}}
+{{- $global := .Values.global | default dict -}}
+{{- $domain := $global.clusterDomain | default "cluster.local" | toString -}}
+{{- $domain | trimSuffix "." -}}
+{{- end }}
+
 {{- define "ksvc.kafkaBootstrapServers" -}}
 {{- $cluster := .Values.kafka.cluster | default dict -}}
 {{- $name := include "ksvc.kafkaClusterName" . -}}
 {{- $ns := .Release.Namespace | default "default" -}}
+{{- $domain := include "ksvc.clusterDomain" . -}}
+{{- $listeners := $cluster.listeners | default dict -}}
+{{- $plainPort := int ($listeners.plainPort | default 9092) -}}
+{{- $tlsPort := int ($listeners.tlsPort | default 9093) -}}
 {{- if eq ($cluster.provider | default "strimzi") "redpanda" -}}
-{{- printf "%s.%s.svc.cluster.local:9093" $name $ns -}}
+{{- printf "%s.%s.svc.%s:%d" $name $ns $domain $tlsPort -}}
 {{- else -}}
 {{- if and $cluster.tls $cluster.tls.enabled -}}
-{{- printf "%s-kafka-bootstrap.%s.svc.cluster.local:9093" $name $ns -}}
+{{- printf "%s-kafka-bootstrap.%s.svc.%s:%d" $name $ns $domain $tlsPort -}}
 {{- else -}}
-{{- printf "%s-kafka-bootstrap.%s.svc.cluster.local:9092" $name $ns -}}
+{{- printf "%s-kafka-bootstrap.%s.svc.%s:%d" $name $ns $domain $plainPort -}}
 {{- end -}}
 {{- end -}}
 {{- end }}

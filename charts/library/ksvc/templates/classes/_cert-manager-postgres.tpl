@@ -8,6 +8,7 @@
 {{- $pgName := include "ksvc.postgresName" . -}}
 {{- $serverSecretName := include "ksvc.postgresServerTLSSecret" . -}}
 {{- $clientSecretName := include "ksvc.postgresClientTLSSecret" . -}}
+{{- $domain := include "ksvc.clusterDomain" . -}}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -34,12 +35,15 @@ spec:
     - {{ $pgName }}-rw
     - {{ $pgName }}-rw.{{ .Release.Namespace }}
     - {{ $pgName }}-rw.{{ .Release.Namespace }}.svc
+    - {{ $pgName }}-rw.{{ .Release.Namespace }}.svc.{{ $domain }}
     - {{ $pgName }}-r
     - {{ $pgName }}-r.{{ .Release.Namespace }}
     - {{ $pgName }}-r.{{ .Release.Namespace }}.svc
+    - {{ $pgName }}-r.{{ .Release.Namespace }}.svc.{{ $domain }}
     - {{ $pgName }}-ro
     - {{ $pgName }}-ro.{{ .Release.Namespace }}
     - {{ $pgName }}-ro.{{ .Release.Namespace }}.svc
+    - {{ $pgName }}-ro.{{ .Release.Namespace }}.svc.{{ $domain }}
   issuerRef:
     name: {{ $issuerName }}
     kind: {{ $issuerKind }}

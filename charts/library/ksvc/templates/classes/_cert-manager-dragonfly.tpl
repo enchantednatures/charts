@@ -7,6 +7,7 @@
 {{- $issuerGroup := $cm.issuerRef.group | default $globalCM.issuerRef.group -}}
 {{- $dfName := include "ksvc.dragonflyName" . -}}
 {{- $secretName := include "ksvc.dragonflyServerTLSSecret" . -}}
+{{- $domain := include "ksvc.clusterDomain" . -}}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -38,7 +39,7 @@ spec:
     - {{ $dfName }}
     - {{ $dfName }}.{{ .Release.Namespace }}
     - {{ $dfName }}.{{ .Release.Namespace }}.svc
-    - {{ $dfName }}.{{ .Release.Namespace }}.svc.cluster.local
+    - {{ $dfName }}.{{ .Release.Namespace }}.svc.{{ $domain }}
   issuerRef:
     name: {{ $issuerName }}
     kind: {{ $issuerKind }}

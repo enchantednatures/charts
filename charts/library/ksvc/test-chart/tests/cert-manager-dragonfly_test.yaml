@@ -132,3 +132,12 @@ tests:
       - equal:
           path: spec.renewBefore
           value: "120h"
+
+  - it: should use global.clusterDomain in the certificate SANs
+    set:
+      global.clusterDomain: example.internal
+    documentIndex: 3
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: test-release-dragonfly.test-ns.svc.example.internal

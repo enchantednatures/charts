@@ -1,0 +1,46 @@
+suite: prometheus scrape annotation tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: derives prometheus.io/port from the Knative service port
+    set:
+      services.api.port: 9090
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations["prometheus.io/port"]
+          value: "9090"
+      - equal:
+          path: spec.template.metadata.annotations["prometheus.io/port"]
+          value: "9090"
+
+  - it: lets explicit annotations override the derived port
+    set:
+      services.api.port: 9090
+      services.api.annotations:
+        prometheus.io/port: "9999"
+      services.api.podAnnotations:
+        prometheus.io/port: "9998"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations["prometheus.io/port"]
+          value: "9999"
+      - equal:
+          path: spec.template.metadata.annotations["prometheus.io/port"]
+          value: "9998"
+
+  - it: derives the Deployment pod annotation from the service port
+    set:
+      services.api.workload.type: Deployment
+      services.api.port: 9090
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["prometheus.io/port"]
+          value: "9090"

@@ -63,6 +63,18 @@ tests:
           path: data["security.protocol"]
           value: SASL_SSL
 
+  - it: should inherit top-level bootstrapServers when the broker does not set them
+    set:
+      kafka.bootstrapServers:
+        - shared-kafka-1:9092
+        - shared-kafka-2:9092
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: data["bootstrap.servers"]
+          value: "shared-kafka-1:9092,shared-kafka-2:9092"
+
+
   - it: should render the Broker
     documentIndex: 2
     asserts:

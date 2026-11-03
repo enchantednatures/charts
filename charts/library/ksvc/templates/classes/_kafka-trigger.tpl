@@ -100,16 +100,11 @@ spec:
         - name: dlq-handler
           image: {{ $dlq.image.repository }}:{{ $dlq.image.tag }}
           ports:
-            - containerPort: 8080
+            - containerPort: {{ $dlq.port | default 8080 }}
+          {{- with $dlq.env }}
           env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml $dlq.resources | nindent 12 }}
 {{- end }}

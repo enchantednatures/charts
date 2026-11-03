@@ -25,7 +25,9 @@ chart-level `kafka.cluster.redpanda.extraClusterSpec` is merged into
 {{- $_ := set $persistentVolume "storageClass" $cluster.storage.storageClassName -}}
 {{- end -}}
 
-{{- $kafkaListener := dict "port" 9093 "tls" (dict "enabled" $cluster.tls.enabled) -}}
+{{- $listenersCfg := $cluster.listeners | default dict -}}
+{{- $tlsPort := int ($listenersCfg.tlsPort | default 9093) -}}
+{{- $kafkaListener := dict "port" $tlsPort "tls" (dict "enabled" $cluster.tls.enabled) -}}
 {{- if eq $cluster.auth.type "scram" -}}
 {{- $_ := set $kafkaListener "authenticationMethod" "sasl" -}}
 {{- end -}}
@@ -48,7 +50,7 @@ chart-level `kafka.cluster.redpanda.extraClusterSpec` is merged into
 {{- $_ := set $clusterSpec "auth" (dict "sasl" $sasl) -}}
 {{- end -}}
 {{- if ge $replicas 3 -}}
-{{- $_ := set $clusterSpec "config" (dict "cluster" (dict "default_topic_replications" 3)) -}}
+{{- $_ := set $clusterSpec "config" (dict "cluster" (dict "default_topic_replications" (int (include "ksvc.kafkaTopicReplicationFactor" .)))) -}}
 {{- end -}}
 {{- $_ := set $clusterSpec "external" (dict "enabled" false) -}}
 

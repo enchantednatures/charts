@@ -19,9 +19,10 @@ Consumer Chart
               ├── Validators (sink refs, required fields)
               ├── Per-service loop (services map)
               │     ├── Knative Service (default)
+              │     │     ├── Object-bucket env/envFrom binding (opt-in)
               │     │     └── Flagger Canary (opt-in)
               │     └── Deployment workload (workload.type: Deployment, opt-in)
-              │           ├── apps/v1 Deployment
+              │           ├── apps/v1 Deployment (object-bucket binding, opt-in)
               │           ├── core/v1 Service
               │           └── PodDisruptionBudget (opt-in)
               ├── Kafka Broker (kafka.broker.enabled, opt-in)
@@ -37,6 +38,8 @@ Consumer Chart
               │     └── PingSource
               └── Global resources
                     ├── ObjectBucketClaim (per objectBuckets entry, opt-in)
+                    ├── CephBucketTopic + CephBucketNotification (per enabled event, opt-in)
+                    ├── KafkaTopic for bucket notifications (managed Kafka, opt-in)
                     ├── CNPG Cluster, Pooler, Backup, ObjectStore, PodMonitor, Alerts
                     └── Dragonfly
 ```
@@ -60,6 +63,8 @@ Consumer Chart
 | CNPG Cluster | `<release>` (global) |
 | Dragonfly | `<release>` (global) |
 | ObjectBucketClaim | `<release>-<key>` (per `objectBuckets` entry) |
+| CephBucketTopic / Kafka topic | `<release>-<bucket-key>-<event-key>` (per enabled notification; `topicName` overrides) |
+| CephBucketNotification | `<release>-<bucket-key>-<event-key>` |
 
 In Deployment mode the Deployment, the core/v1 Service, and any PodDisruptionBudget all share the `<release>-<service-key>` name. Sharing a name across kinds is legal in Kubernetes; the resources are linked by selectors, not by name.
 
@@ -79,7 +84,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 1.0.0
+        version: 1.2.0
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -118,6 +123,8 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
 | **PostgreSQL** | Cluster, Pooler, ObjectStore, ScheduledBackup, PodMonitor, PrometheusRule | Global |
 | **DragonflyDB** | Dragonfly | Global |
 | **Object Buckets (opt-in)** | ObjectBucketClaim (per entry in `objectBuckets`) | Global |
+| **App bucket access (opt-in)** | Env/envFrom entries on the referenced Knative Service or Deployment | Per-service |
+| **Bucket notifications (opt-in)** | CephBucketTopic + CephBucketNotification + KafkaTopic/Topic (per enabled event) | Global |
 | **Kyverno (opt-in)** | NamespacedValidatingPolicy (3x: Knative scaling, CNPG instances, Dragonfly replicas/PDB) | Namespace |
 
 ## Feature maturity
@@ -133,6 +140,8 @@ Feature maturity follows the [versioning and deprecation policy](../../../CONTRI
 | Dragonfly | Stable | Follows the versioning policy. |
 | Flagger canary | Stable | Follows the versioning policy. |
 | Object buckets (`objectBuckets`) | Stable | Follows the versioning policy. |
+| App bucket access (`services.<key>.objectBuckets`) | Stable | Follows the versioning policy. |
+| Bucket notifications (`objectBuckets.<key>.notifications`) | Experimental | Plaintext, unauthenticated managed Kafka only; auth/TLS tracked in issue #137. |
 | PingSource | Stable | Follows the versioning policy. |
 | KafkaSource and DLQ | Stable | Follows the versioning policy. |
 | cert-manager integration | Stable | Follows the versioning policy. |
@@ -201,16 +210,22 @@ sections following the table.
 | dragonfly.tls.secretName | string | `""` | Secret containing `tls.crt`/`tls.key`. Ignored when `tls.certManager.enabled` is true. |
 | dragonfly.tolerations | list | `[]` | Pod tolerations. |
 | dragonfly.topologySpreadConstraints | list | `[]` | Pod topology spread constraints. |
+| flagger.loadTester.namespace | string | `"flagger-system"` | Namespace of the k6 load-tester service. Empty renders just `<serviceName>` (same namespace). |
+| flagger.loadTester.path | string | `"/launch-test"` | Path of the k6 launch endpoint. |
+| flagger.loadTester.port | int | `80` | Service port. Port 80 is omitted from the generated URL. |
+| flagger.loadTester.scheme | string | `"http"` | URL scheme for the load-tester webhook. |
+| flagger.loadTester.serviceName | string | `"k6-loadtester"` | Name of the k6 load-tester service. |
 | global.annotations | object | `{}` | Annotations added to every rendered resource. |
 | global.certManager.issuerRef.group | string | `"cert-manager.io"` | API group of the default cert-manager issuer. |
 | global.certManager.issuerRef.kind | string | `"ClusterIssuer"` | Kind of the default cert-manager issuer (`Issuer` or `ClusterIssuer`). |
 | global.certManager.issuerRef.name | string | `""` | Name of the default cert-manager Issuer/ClusterIssuer. |
+| global.clusterDomain | string | `"cluster.local"` | Kubernetes cluster DNS domain used for generated service FQDNs (managed Kafka bootstrap addresses, Flagger k6 URLs, and certificate SANs). |
 | global.fullnameOverride | string | `""` | Override the fully qualified release name used for resource names (defaults to `<release>-<chart>`). |
 | global.labels | object | `{}` | Labels added to every rendered resource. |
 | global.nameOverride | string | `""` | Override the `app.kubernetes.io/name` label for release-wide resources (defaults to the release fullname). Does not change resource names. |
+| kafka.bootstrapServers[0] | string | `"kafka.kafka.svc.cluster.local:9092"` |  |
 | kafka.broker.annotations | object | `{}` | Annotations added to the Broker. |
 | kafka.broker.config.authSecretName | string | `""` | Secret containing the broker's Kafka auth credentials. |
-| kafka.broker.config.bootstrapServers | list | `["kafka.kafka.svc.cluster.local:9092"]` | Kafka bootstrap servers used by the broker. |
 | kafka.broker.config.extra | object | `{}` | Extra ConfigMap entries for the broker. |
 | kafka.broker.config.topicPartitions | int | `10` | Default partition count for broker-created topics. |
 | kafka.broker.config.topicReplicationFactor | int | `3` | Default replication factor for broker-created topics. |
@@ -227,6 +242,8 @@ sections following the table.
 | kafka.cluster.auth.type | string | `"none"` | Managed authentication type (`none` or `scram`). |
 | kafka.cluster.auth.username | string | `""` | Managed username. Defaults to `<fullname>-kafka-user`. |
 | kafka.cluster.enabled | bool | `false` | Enable a chart-managed Kafka cluster. |
+| kafka.cluster.listeners.plainPort | int | `9092` | Strimzi plaintext internal listener port. |
+| kafka.cluster.listeners.tlsPort | int | `9093` | Strimzi TLS internal listener port; also the Redpanda Kafka API port. |
 | kafka.cluster.name | string | `""` | Cluster name. Defaults to `<fullname>-kafka`; max 47 characters. |
 | kafka.cluster.provider | string | `"strimzi"` | Managed Kafka provider (`strimzi` or `redpanda`). |
 | kafka.cluster.redpanda.extraClusterSpec | object | `{}` | Extra fields merged into the Redpanda `spec.clusterSpec`. |
@@ -276,6 +293,13 @@ sections following the table.
 | postgres.instances | int | `3` | Number of PostgreSQL instances (1–16). |
 | postgres.monitoring.alerts | object | see `values.yaml` | Alert thresholds for the Prometheus rules. |
 | postgres.monitoring.enabled | bool | `true` | Enable the PodMonitor and Prometheus alert rules. |
+| postgres.monitoring.podMonitor.interval | string | `"30s"` | Scrape interval. |
+| postgres.monitoring.podMonitor.labels | object | `{"release":"prometheus"}` | Extra labels for the PodMonitor, merged over the chart labels. Set this to match the Prometheus Operator's podMonitorSelector. |
+| postgres.monitoring.podMonitor.path | string | `"/metrics"` | Metrics path exposed by the CNPG instance manager. |
+| postgres.monitoring.podMonitor.scheme | string | `"http"` | Metrics endpoint scheme (`http` or `https`). |
+| postgres.monitoring.podMonitor.scrapeTimeout | string | `"10s"` | Scrape timeout. |
+| postgres.monitoring.prometheusRule.interval | string | `"30s"` | Evaluation interval for the PostgreSQL rule group. |
+| postgres.monitoring.prometheusRule.labels | object | `{"prometheus":"kube-prometheus"}` | Extra labels for the PrometheusRule, merged over the chart labels. Set this to match the Prometheus Operator's ruleSelector. |
 | postgres.parameters | object | see `values.yaml` | PostgreSQL server configuration parameters (TLS 1.3, buffers, synchronous replication, ...). |
 | postgres.pooler.enabled | bool | `true` | Enable the PgBouncer pooler. |
 | postgres.pooler.instances | int | `3` | Number of pooler replicas (>= 1). |
@@ -289,7 +313,7 @@ sections following the table.
 | postgres.storage.size | string | `"200Gi"` | Persistent volume size per instance. |
 | postgres.storage.storageClassName | string | `"standard"` | StorageClass for the instance volumes. |
 | postgres.version | string | `"16"` | PostgreSQL major version. |
-| services.api.annotations | object | see `values.yaml` | Annotations added to the Knative Service (Prometheus scraping enabled by default). |
+| services.api.annotations | object | see `values.yaml` | Annotations added to the Knative Service (Prometheus scraping enabled by default). `prometheus.io/port` follows `port` unless overridden here. |
 | services.api.env | list | `[]` | Environment variables for the container. |
 | services.api.envFrom | list | `[]` | envFrom sources (Secrets/ConfigMaps) for the container. |
 | services.api.flagger.analysis.interval | string | `"1m"` | Interval between canary analysis checks (Go duration, e.g. `1m`). |
@@ -302,9 +326,13 @@ sections following the table.
 | services.api.flagger.loadTest.enabled | bool | `true` | Enable k6 load testing during canary analysis. |
 | services.api.flagger.loadTest.errorRateThreshold | float | `0.01` | Maximum error rate (fraction) tolerated by the load test. |
 | services.api.flagger.loadTest.p95ThresholdMs | int | `500` | p95 latency threshold (ms) for the load test. |
+| services.api.flagger.loadTest.path | string | `"/"` | Path used by the rollout load test (k6 script default). |
 | services.api.flagger.loadTest.script | string | `""` | Override the entire k6 load-test script. |
+| services.api.flagger.loadTest.smokePath | string | `"/health/live"` | Path used by the pre-rollout smoke test (k6 script default). |
+| services.api.flagger.loadTest.smokeTimeout | string | `"1m"` | Timeout for the smoke-test webhook (Go duration). |
+| services.api.flagger.loadTest.timeout | string | `"5m"` | Timeout for the load-test webhook (Go duration). |
 | services.api.flagger.loadTest.vus | int | `10` | Number of virtual users for the k6 load test. |
-| services.api.flagger.loadTest.webhookUrl | string | `"http://k6-loadtester.flagger-system/launch-test"` | URL of the k6 webhook service that starts load tests. |
+| services.api.flagger.loadTest.webhookUrl | string | `""` | Full URL of the k6 webhook service that starts load tests. Empty derives from `flagger.loadTester`. |
 | services.api.flagger.metrics.latencyP99ThresholdMs | int | `500` | Maximum p99 latency (ms) allowed during analysis. |
 | services.api.flagger.metrics.successRateThreshold | int | `99` | Minimum success rate (%) required to promote the canary. |
 | services.api.image.fluxImagePolicy | string | `""` | Flux image policy annotation. |
@@ -313,7 +341,8 @@ sections following the table.
 | services.api.image.repository | string | `""` | Container image repository. |
 | services.api.image.tag | string | `"latest"` | Container image tag. |
 | services.api.labels | object | `{}` | Additional labels for the Knative Service. |
-| services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default). |
+| services.api.objectBuckets | object | `{}` | Object buckets to expose to this service. Keys must exist in the top-level `objectBuckets` map. Each binding supports:   mode: envFrom (default) injects the claim Secret and ConfigMap;         env injects individual variables with names from `envNames`.   configMapName / secretName: override the provisioner-generated names         (default `<release>-<bucket-key>`).   envNames: target variable names when mode is env. The source keys are         BUCKET_NAME, BUCKET_HOST, BUCKET_PORT, AWS_ACCESS_KEY_ID, and         AWS_SECRET_ACCESS_KEY; set a target to "" to skip it. Example:   objectBuckets:     uploads:       mode: env       envNames:         bucketName: S3_BUCKET         bucketHost: S3_HOST         bucketPort: S3_PORT         accessKeyId: S3_ACCESS_KEY_ID         secretAccessKey: S3_SECRET_ACCESS_KEY |
+| services.api.podAnnotations | object | see `values.yaml` | Annotations added to the pod template (Prometheus scraping enabled by default). `prometheus.io/port` follows `port` unless overridden here. |
 | services.api.podDisruptionBudget.enabled | bool | `false` | Render a PodDisruptionBudget for this service. |
 | services.api.podDisruptionBudget.maxUnavailable | int | `0` | Maximum unavailable pods (integer or percent string). |
 | services.api.podDisruptionBudget.minAvailable | int | `0` | Minimum available pods (integer or percent string). |
@@ -344,6 +373,48 @@ sections following the table.
 | services.api.workload.strategy.maxUnavailable | int | `0` | Maximum unavailable pods during a rolling update (integer or percent string). |
 | services.api.workload.terminationGracePeriodSeconds | int | `300` | Seconds the kubelet allows the pod to terminate (Deployment mode only). |
 | services.api.workload.type | string | `"Knative"` | Workload kind: `Knative` or `Deployment`. |
+
+## Global Settings
+
+`global.clusterDomain` (default `cluster.local`) is the DNS domain used for generated service FQDNs. Set it on clusters that use a custom Kubernetes cluster domain; it affects managed Kafka bootstrap addresses, Flagger k6 service URLs, and the DNS SANs on chart-generated certificates.
+
+```yaml
+global:
+  clusterDomain: example.internal
+```
+
+`global.labels`, `global.annotations`, `global.nameOverride`, `global.fullnameOverride`, and `global.certManager.issuerRef` are documented in the generated values table above.
+
+## Flagger Canaries
+
+Set `services.<key>.flagger.enabled: true` to render a Flagger `Canary` for a Knative service. The canary requires a Flagger installation configured with the Knative provider and a metrics provider.
+
+The load-test webhook URL defaults to `flagger.loadTester`, so the k6 namespace is no longer baked into each service:
+
+```yaml
+flagger:
+  loadTester:
+    namespace: flagger-system
+    serviceName: k6-loadtester
+    scheme: http
+    port: 80
+    path: /launch-test
+
+services:
+  api:
+    flagger:
+      enabled: true
+      loadTest:
+        enabled: true
+        # Empty derives from flagger.loadTester; set it to override per service.
+        webhookUrl: ""
+        smokePath: /health/live
+        path: /
+        smokeTimeout: 1m
+        timeout: 5m
+```
+
+The generated k6 scripts call the canary service through `<service>-canary.<namespace>.svc.<global.clusterDomain>`. Override `loadTest.script` to replace the entire script.
 
 ## Long-Running Services (Deployment Workload)
 
@@ -427,7 +498,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.topic` | Kafka topic name. Optional; defaults to `events` when omitted | `"events"` |
 | `kafka.sources.<key>.sink` | **Required unless `kafka.broker.enabled` is true.** Key from the `services` map, or omit to sink to the Broker | — |
 | `kafka.sources.<key>.consumerGroup` | Consumer group (defaults to source name) | `""` |
-| `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers | `[kafka.kafka.svc:9092]` |
+| `kafka.sources.<key>.bootstrapServers` | List of bootstrap servers (overrides `kafka.bootstrapServers`) | `[kafka.kafka.svc.cluster.local:9092]` |
 | `kafka.sources.<key>.consumers` | Concurrent consumers per replica | `3` |
 | `kafka.sources.<key>.initialOffset` | `latest` or `earliest` | `latest` |
 | `kafka.sources.<key>.delivery.retry` | Delivery retry count | `5` |
@@ -435,6 +506,8 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.delivery.backoffDelay` | Backoff delay (ISO 8601) | `PT1S` |
 | `kafka.sources.<key>.dlq.enabled` | Enable Dead Letter Queue service | `true` |
 | `kafka.sources.<key>.dlq.image` | DLQ container image | `event_display` |
+| `kafka.sources.<key>.dlq.port` | DLQ container port | `8080` |
+| `kafka.sources.<key>.dlq.env` | DLQ container environment (replaces the default `POD_NAME` / `POD_NAMESPACE` entries) | `POD_NAME`, `POD_NAMESPACE` |
 | `kafka.sources.<key>.net.tls.enabled` | Enable TLS for the KafkaSource connection | `false` |
 | `kafka.sources.<key>.net.tls.caCertSecret` | Secret containing the broker CA certificate | `""` |
 | `kafka.sources.<key>.net.tls.caCertKey` | CA certificate key within the Secret | `ca.crt` |
@@ -450,6 +523,8 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 | `kafka.sources.<key>.net.sasl.passwordKey` | Password key within the Secret | `password` |
 
 `kafka.sources.<key>.topic` is optional. When it is omitted the loader defaults the source to the `events` topic, so a minimal source only needs `sink` (or `kafka.broker.enabled: true`). An explicit `topic` always wins.
+
+`kafka.bootstrapServers` sets the default list for every `KafkaSource` and the Broker. A per-source `bootstrapServers` list, or `kafka.broker.config.bootstrapServers`, overrides it. Managed clusters ignore both and derive the bootstrap endpoint from the cluster (see below).
 
 ### TLS and SASL
 
@@ -475,7 +550,7 @@ Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: r
 
 *   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32. `kafka.cluster.name` must be a DNS-1123 label of at most 47 characters so derived Service names stay within 63.
 *   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
-*   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.cluster.local:9092|9093`; Redpanda `<cluster>.<namespace>.svc.cluster.local:9093`.
+*   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.<global.clusterDomain>:<plainPort|tlsPort>`; Redpanda `<cluster>.<namespace>.svc.<global.clusterDomain>:<tlsPort>`. The defaults are `9092` (plain) and `9093` (TLS), configurable through `kafka.cluster.listeners`.
 *   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`). Redpanda TLS requires cert-manager. Every source must set `net.tls.enabled: true` when `kafka.cluster.tls.enabled` is true; otherwise rendering fails.
 *   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret. Enabling SASL while `auth.type: none` fails rendering rather than producing dangling references.
 *   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
@@ -516,13 +591,14 @@ pingsources:
 
 ## Object Buckets (Ceph RGW)
 
-The chart can provision S3 buckets on Ceph RGW (or any object store fronted by `lib-bucket-provisioner`) so Postgres backups and Dragonfly snapshots land on object storage with no hand-created credential Secrets. Declare buckets in a top-level `objectBuckets` map; the chart renders one `ObjectBucketClaim` per entry and wires any consumer that references it. The feature is off by default: leave `objectBuckets` empty and rendering is unchanged.
+The chart can provision S3 buckets on Ceph RGW (or any object store fronted by `lib-bucket-provisioner`) so applications, Postgres backups, and Dragonfly snapshots can share object storage with no hand-created credential Secrets. Declare buckets in a top-level `objectBuckets` map; the chart renders one `ObjectBucketClaim` per entry and wires any consumer that references it. The feature is off by default: leave `objectBuckets` empty and rendering is unchanged.
 
 The chart references an existing StorageClass by name. It never renders a StorageClass.
 
 ### Prerequisites
 
 *   The `lib-bucket-provisioner` CRDs. Install them with `make install-object-bucket` (the target installs the `ObjectBucketClaim` and `ObjectBucket` CRDs).
+*   For bucket notifications, the Rook notification CRDs. Install them with `make install-rook-crds` (the target installs the Rook CRD bundle, including `CephBucketTopic` and `CephBucketNotification`).
 *   An existing bucket StorageClass for your object store. For Rook/Ceph it looks like this:
 
     ```yaml
@@ -550,6 +626,9 @@ Each key under `objectBuckets` defines one bucket:
 | `objectBuckets.<key>.bucketName` | S3 bucket name. Immutable once the claim binds | `<release>-<key>` (sanitized) |
 | `objectBuckets.<key>.endpointURL` | Full endpoint URL. CNPG uses it literally; Dragonfly derives the host and `--s3_use_https` from the scheme | `""` |
 | `objectBuckets.<key>.region` | Injected as `AWS_REGION` for Dragonfly S3 snapshots; ignored on the Postgres path | `""` |
+| `objectBuckets.<key>.objectStore.name` | Rook `CephObjectStore` name. Required when notifications are enabled | `""` |
+| `objectBuckets.<key>.objectStore.namespace` | Namespace of the Rook `CephObjectStore`. Required when notifications are enabled | `""` |
+| `objectBuckets.<key>.notifications` | Map of bucket notifications keyed by `put`, `post`, `copy`, `multipart`, `delete`, or `delete-marker` | `{}` |
 
 ```yaml
 objectBuckets:
@@ -606,14 +685,53 @@ When `bucketRef` is set the chart derives:
 
 `bucketRef` and `existingPersistentVolumeClaimName` are mutually exclusive. User-supplied `dragonfly.env` entries and `dragonfly.args` flags are never duplicated: the chart appends a derived item only when no entry with the same name or flag is present.
 
-### Consuming a bucket from an app
+### Using a bucket from an application
 
 Each `ObjectBucketClaim` makes the provisioner create, in the release namespace, a Secret and a ConfigMap named after the claim (`<release>-<key>`):
 
 *   Secret keys: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
 *   ConfigMap keys: `BUCKET_HOST`, `BUCKET_PORT`, `BUCKET_NAME`
 
-Reach them through the existing per-service passthrough, with no new API:
+Bind a bucket to a service from `services.<key>.objectBuckets`. The default `envFrom` mode injects both the Secret and the ConfigMap:
+
+```yaml
+services:
+  api:
+    objectBuckets:
+      uploads: {}
+```
+
+Use `configMapName` and `secretName` to reference differently named objects (they must already exist):
+
+```yaml
+services:
+  api:
+    objectBuckets:
+      uploads:
+        mode: envFrom
+        configMapName: my-bucket-config
+        secretName: my-bucket-secret
+```
+
+Use `mode: env` to inject individual variables with names you choose. The source keys are fixed, and any target left empty is skipped:
+
+```yaml
+services:
+  api:
+    objectBuckets:
+      uploads:
+        mode: env
+        envNames:
+          bucketName: S3_BUCKET          # from BUCKET_NAME
+          bucketHost: S3_HOST            # from BUCKET_HOST
+          bucketPort: S3_PORT            # from BUCKET_PORT
+          accessKeyId: S3_ACCESS_KEY_ID  # from AWS_ACCESS_KEY_ID
+          secretAccessKey: S3_SECRET_ACCESS_KEY
+```
+
+The defaults are the source key names (`BUCKET_NAME`, `BUCKET_HOST`, `BUCKET_PORT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`). The binding only references the claim's Secret/ConfigMap; it does not create or copy credentials. Pods can remain in `CreateContainerConfigError` until the provisioner finishes creating the claim Secret/ConfigMap. A service's existing `env` entry wins when it uses the same target name as a generated entry.
+
+The existing `envFrom`/`volumes` passthrough remains available when you need a volume mount or a different composition:
 
 ```yaml
 services:
@@ -629,12 +747,85 @@ services:
           secretName: test-postgres-only-postgres-backups
 ```
 
+### Bucket notifications (Kafka)
+
+Bucket notifications publish S3 events to the chart-managed Kafka cluster. They are opt-in per event and currently require all of the following:
+
+*   `kafka.cluster.enabled: true`
+*   `kafka.cluster.auth.type: none`
+*   `kafka.cluster.tls.enabled: false`
+*   `kafka.cluster.topics.create: true`
+*   `objectBuckets.<key>.objectStore.name` and `.namespace`
+
+Authenticated and TLS notifications are tracked in [issue #137](https://github.com/enchantednatures/charts/issues/137).
+
+```yaml
+objectBuckets:
+  uploads:
+    storageClassName: ceph-bucket
+    endpointURL: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+    objectStore:
+      name: ceph-objectstore
+      namespace: rook-ceph
+    notifications:
+      put:
+        enabled: true
+        filter:
+          keyFilters:
+            - name: prefix
+              value: uploads/
+      delete:
+        enabled: true
+
+kafka:
+  cluster:
+    enabled: true
+    provider: strimzi
+```
+
+Each enabled event key maps to a Ceph/S3 event and creates its own `CephBucketTopic`, `CephBucketNotification`, and Kafka topic:
+
+| Key | S3 event |
+|-----|----------|
+| `put` | `s3:ObjectCreated:Put` |
+| `post` | `s3:ObjectCreated:Post` |
+| `copy` | `s3:ObjectCreated:Copy` |
+| `multipart` | `s3:ObjectCreated:CompleteMultipartUpload` |
+| `delete` | `s3:ObjectRemoved:Delete` |
+| `delete-marker` | `s3:ObjectRemoved:DeleteMarkerCreated` |
+
+The Kafka topic name defaults to `<release>-<bucket-key>-<event-key>` and can be overridden with `notifications.<key>.topicName`. The same name is used for the `CephBucketTopic` (Rook uses the topic name as the Kafka topic) and the `KafkaTopic`/`Topic` resource.
+
+The notification entry also supports `persistent` (Rook's asynchronous, retried delivery), `opaqueData`, `ackLevel` (`none` or `broker`), and Rook's `filter`:
+
+```yaml
+notifications:
+  put:
+    enabled: true
+    persistent: true
+    opaqueData: tenant-a
+    ackLevel: broker
+    filter:
+      keyFilters:
+        - name: suffix
+          value: .json
+      metadataFilters:
+        - name: x-amz-meta-color
+          value: blue
+      tagFilters:
+        - name: project
+          value: brown
+```
+
+Ceph RGW does not emit read/GET events, and overwriting an object is reported as `s3:ObjectCreated:Put` (the same event as a new write). Use `put` for both creates and overwrites.
+
 ### Warnings
 
 *   **Deletion risk.** The referenced StorageClass's `reclaimPolicy` governs the bucket. With `reclaimPolicy: Delete`, `helm uninstall` deletes the bucket and its backups. Prefer `Retain` for backup buckets.
 *   **Unique, immutable names.** Bucket names are unique per object store across all namespaces, and `bucketName` is immutable once the claim binds. Set an explicit `bucketName` when several releases share one object store.
 *   **Cost.** Provisioned buckets consume real RGW capacity and egress.
 *   **Secret scope.** The claim Secret is a plain namespaced Secret. Anyone who can read the namespace can read it, and there is no External Secrets Operator integration.
+*   **Separate app and backup buckets.** An app binding receives the bucket's full credentials. Use a dedicated bucket for application data instead of sharing a Postgres backup or Dragonfly snapshot bucket.
 
 ### Switching from minio/rustfs
 
@@ -678,6 +869,28 @@ postgres:
   monitoring:
     enabled: true
 ```
+
+## PostgreSQL Monitoring
+
+When `postgres.enabled` and `postgres.monitoring.enabled` are true, the chart renders a `PodMonitor` and a `PrometheusRule`. Their discovery labels and scrape settings are values so they can match the Prometheus Operator installation:
+
+```yaml
+postgres:
+  monitoring:
+    podMonitor:
+      labels:
+        release: prometheus       # must match podMonitorSelector
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      scheme: http
+    prometheusRule:
+      labels:
+        prometheus: kube-prometheus # must match ruleSelector
+      interval: 30s
+```
+
+The chart labels are always applied; entries under `labels` are merged over them.
 
 ## Kyverno Admission Policies (Opt-In)
 
@@ -774,6 +987,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **kafka-redpanda** — Managed Redpanda cluster with managed topics and a shared project topic.
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
 *   **longrunning-websocket** — Websocket gateway as a standard Deployment workload with a ClientIP core Service, a PodDisruptionBudget, and a preStop drain delay.
+*   **object-bucket-notifications** — App-accessible Ceph RGW bucket with `envFrom` and named-env bindings, plus managed Kafka bucket notifications.
 
 ## CI/CD
 

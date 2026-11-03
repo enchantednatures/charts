@@ -93,3 +93,64 @@ tests:
       - equal:
           path: spec.targetRef.name
           value: test-release
+
+  - it: derives both webhook URLs from flagger.loadTester
+    set:
+      flagger.loadTester.namespace: canary-system
+      flagger.loadTester.serviceName: loadtest
+      flagger.loadTester.port: 8080
+      flagger.loadTester.path: /run
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.analysis.webhooks[0].url
+          value: http://loadtest.canary-system:8080/run
+      - equal:
+          path: spec.analysis.webhooks[1].url
+          value: http://loadtest.canary-system:8080/run
+
+  - it: keeps a per-service webhookUrl override
+    set:
+      flagger.loadTester.namespace: canary-system
+      services.api.flagger.loadTest.webhookUrl: http://custom-loadtest/run
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.analysis.webhooks[0].url
+          value: http://custom-loadtest/run
+      - equal:
+          path: spec.analysis.webhooks[1].url
+          value: http://custom-loadtest/run
+
+  - it: renders custom smoke/load paths and timeouts
+    set:
+      services.api.flagger.loadTest.smokePath: /live
+      services.api.flagger.loadTest.path: /api
+      services.api.flagger.loadTest.smokeTimeout: 2m
+      services.api.flagger.loadTest.timeout: 10m
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.analysis.webhooks[0].timeout
+          value: 2m
+      - matchRegex:
+          path: spec.analysis.webhooks[0].metadata.script
+          pattern: "/live"
+      - equal:
+          path: spec.analysis.webhooks[1].timeout
+          value: 10m
+      - matchRegex:
+          path: spec.analysis.webhooks[1].metadata.script
+          pattern: "/api"
+
+  - it: uses global.clusterDomain in the k6 service URLs
+    set:
+      global.clusterDomain: example.internal
+    documentIndex: 1
+    asserts:
+      - matchRegex:
+          path: spec.analysis.webhooks[0].metadata.script
+          pattern: "svc\\.example\\.internal/health/live"
+      - matchRegex:
+          path: spec.analysis.webhooks[1].metadata.script
+          pattern: "svc\\.example\\.internal/"

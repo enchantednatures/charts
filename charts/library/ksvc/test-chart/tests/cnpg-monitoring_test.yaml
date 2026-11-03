@@ -144,3 +144,41 @@ tests:
       - isKind:
           of: Cluster
         documentIndex: 1
+
+  - it: honors custom PodMonitor labels and scrape settings
+    set:
+      postgres.monitoring.podMonitor.labels.release: custom-prometheus
+      postgres.monitoring.podMonitor.interval: 60s
+      postgres.monitoring.podMonitor.scrapeTimeout: 20s
+      postgres.monitoring.podMonitor.path: /custom-metrics
+      postgres.monitoring.podMonitor.scheme: https
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.labels.release
+          value: custom-prometheus
+      - equal:
+          path: spec.podMetricsEndpoints[0].interval
+          value: 60s
+      - equal:
+          path: spec.podMetricsEndpoints[0].scrapeTimeout
+          value: 20s
+      - equal:
+          path: spec.podMetricsEndpoints[0].path
+          value: /custom-metrics
+      - equal:
+          path: spec.podMetricsEndpoints[0].scheme
+          value: https
+
+  - it: honors custom PrometheusRule labels and interval
+    set:
+      postgres.monitoring.prometheusRule.labels.prometheus: custom-rules
+      postgres.monitoring.prometheusRule.interval: 45s
+    documentIndex: 3
+    asserts:
+      - equal:
+          path: metadata.labels.prometheus
+          value: custom-rules
+      - equal:
+          path: spec.groups[0].interval
+          value: 45s

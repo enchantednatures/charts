@@ -7,6 +7,7 @@ and "svc" (the merged service config dict containing flagger sub-config).
 {{- $serviceName := include "ksvc.serviceName" (dict "root" .root "key" .key "svc" .svc) -}}
 {{- $flagger := .svc.flagger -}}
 {{- $lt := $flagger.loadTest -}}
+{{- $domain := include "ksvc.clusterDomain" .root -}}
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -40,7 +41,7 @@ spec:
       - name: smoke-test
         type: pre-rollout
         url: {{ $lt.webhookUrl }}
-        timeout: 1m
+        timeout: {{ $lt.smokeTimeout }}
         metadata:
           type: cmd
           cmd: "k6 run --out json /dev/stdin"
@@ -62,7 +63,7 @@ spec:
 
             export default function () {
               const res = http.get(
-                'http://{{ $serviceName }}-canary.{{ .root.Release.Namespace }}.svc.cluster.local/health/live'
+                'http://{{ $serviceName }}-canary.{{ .root.Release.Namespace }}.svc.{{ $domain }}{{ $lt.smokePath }}'
               );
               check(res, {
                 'smoke: status is 200': (r) => r.status === 200,
@@ -73,7 +74,7 @@ spec:
       - name: load-test
         type: rollout
         url: {{ $lt.webhookUrl }}
-        timeout: 5m
+        timeout: {{ $lt.timeout }}
         metadata:
           {{- if $lt.script }}
           script: |
@@ -97,7 +98,7 @@ spec:
 
             export default function () {
               const res = http.get(
-                'http://{{ $serviceName }}-canary.{{ .root.Release.Namespace }}.svc.cluster.local/'
+                'http://{{ $serviceName }}-canary.{{ .root.Release.Namespace }}.svc.{{ $domain }}{{ $lt.path }}'
               );
               const ok = check(res, {
                 'status is 2xx': (r) => r.status >= 200 && r.status < 300,
