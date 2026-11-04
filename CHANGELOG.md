@@ -18,6 +18,9 @@ OCI artifact, so a patch or prerelease does not need its own entry here. The
   Rook applies the referenced `CephBucketNotification`. The previous
   `bucket-notification-<event>` key did not match Rook's label contract and
   notifications were silently ignored.
+- Truncate long derived notification names and append a short hash so the
+  `bucket-notification-<name>` label key stays within Kubernetes' 63-character
+  limit.
 
 ## [1.2.0] - 2026-11-03
 
