@@ -28,6 +28,13 @@ diagnostics() {
   kubectl get cephcluster,cephobjectstore,objectbucketclaim -A -o wide || true
   kubectl -n "$NAMESPACE" get kafka,kafkatopic,objectbucketclaim,pods -o wide || true
   kubectl -n rook-ceph get pods -o wide || true
+  for pod in $(kubectl -n rook-ceph get pods -l app=rook-ceph-osd-prepare -o name); do
+    kubectl -n rook-ceph logs "$pod" --tail=200 || true
+  done
+  mon="$(kubectl -n rook-ceph get pods -l app=rook-ceph-mon -o name | head -1)"
+  if [ -n "$mon" ]; then
+    kubectl -n rook-ceph exec "$mon" -- ceph -s || true
+  fi
   kubectl -n rook-ceph logs deploy/rook-ceph-operator --tail=120 || true
   kubectl -n "$NAMESPACE" get objectbucketclaim -o name | xargs -r -n1 kubectl -n "$NAMESPACE" describe || true
   if kubectl -n "$NAMESPACE" get pod s3-put >/dev/null 2>&1; then
