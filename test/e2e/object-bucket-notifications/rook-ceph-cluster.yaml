@@ -30,8 +30,6 @@ spec:
     config:
       databaseSizeMB: "1024"
       walSizeMB: "1024"
-      osd:
-        crushDeviceClass: "hdd"
   resources:
     mon:
       requests:
