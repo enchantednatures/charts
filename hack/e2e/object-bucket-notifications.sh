@@ -87,12 +87,13 @@ docker exec "$node" bash -c "
   echo \"loop device: \$loop\"
 "
 
-say "Installing Knative Serving and ObjectBucketClaim CRDs"
+say "Installing Knative Serving, Rook, and ObjectBucketClaim CRDs"
 # The example renders Knative Services, but the notification path does not
 # need the Serving controller; CRDs are enough for the install to apply.
-# Rook's CRDs are installed by the operator chart below (crds.enabled=true);
-# applying the raw bundle first would make Helm refuse to adopt them.
+# The Rook chart is installed with crds.enabled=false so it does not try to
+# adopt these raw-applied CRDs.
 make install-knative
+make install-rook-crds
 make install-object-bucket
 
 say "Installing the Rook operator ($ROOK_CHART_VERSION)"
@@ -102,6 +103,7 @@ helm upgrade --install rook-ceph rook-release/rook-ceph \
   --namespace rook-ceph \
   --create-namespace \
   --version "$ROOK_CHART_VERSION" \
+  --set crds.enabled=false \
   --wait \
   --timeout 10m
 kubectl -n rook-ceph rollout status deploy/rook-ceph-operator --timeout=300s
