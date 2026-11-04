@@ -31,6 +31,10 @@ diagnostics() {
   for pod in $(kubectl -n rook-ceph get pods -l app=rook-ceph-osd-prepare -o name); do
     kubectl -n rook-ceph logs "$pod" --tail=200 || true
   done
+  for pod in $(kubectl -n rook-ceph get pods -l app=rook-ceph-osd -o name); do
+    kubectl -n rook-ceph describe "$pod" | tail -60 || true
+    kubectl -n rook-ceph logs "$pod" --tail=200 || true
+  done
   mon="$(kubectl -n rook-ceph get pods -l app=rook-ceph-mon -o name | head -1)"
   if [ -n "$mon" ]; then
     kubectl -n rook-ceph exec "$mon" -- ceph -s || true
