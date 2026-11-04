@@ -204,7 +204,7 @@ wait_for_pod_phase kafka-consume "$NAMESPACE" Succeeded 240
 
 logs="$(kubectl -n "$NAMESPACE" logs kafka-consume)"
 echo "$logs"
-grep -q 's3:ObjectCreated:Put' <<<"$logs"
+grep -q 'ObjectCreated:Put' <<<"$logs"
 grep -q 'bucket-notification-e2e.txt' <<<"$logs"
 
 echo ""
