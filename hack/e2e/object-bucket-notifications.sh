@@ -29,7 +29,7 @@ diagnostics() {
   kubectl -n "$NAMESPACE" get kafka,kafkatopic,objectbucketclaim,pods -o wide || true
   kubectl -n rook-ceph get pods -o wide || true
   kubectl -n rook-ceph logs deploy/rook-ceph-operator --tail=120 || true
-  kubectl -n "$NAMESPACE" describe objectbucketclaim --all || true
+  kubectl -n "$NAMESPACE" get objectbucketclaim -o name | xargs -r -n1 kubectl -n "$NAMESPACE" describe || true
   if kubectl -n "$NAMESPACE" get pod s3-put >/dev/null 2>&1; then
     kubectl -n "$NAMESPACE" logs s3-put || true
   fi
@@ -87,11 +87,12 @@ docker exec "$node" bash -c "
   echo \"loop device: \$loop\"
 "
 
-say "Installing Knative Serving, Rook, and ObjectBucketClaim CRDs"
+say "Installing Knative Serving and ObjectBucketClaim CRDs"
 # The example renders Knative Services, but the notification path does not
 # need the Serving controller; CRDs are enough for the install to apply.
+# Rook's CRDs are installed by the operator chart below (crds.enabled=true);
+# applying the raw bundle first would make Helm refuse to adopt them.
 make install-knative
-make install-rook-crds
 make install-object-bucket
 
 say "Installing the Rook operator ($ROOK_CHART_VERSION)"
