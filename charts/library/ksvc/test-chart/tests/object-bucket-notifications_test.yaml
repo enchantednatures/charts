@@ -35,10 +35,10 @@ tests:
       value: ObjectBucketClaim
     asserts:
       - equal:
-          path: metadata.labels["bucket-notification-put"]
+          path: metadata.labels["bucket-notification-test-release-uploads-put"]
           value: test-release-uploads-put
       - equal:
-          path: metadata.labels["bucket-notification-delete"]
+          path: metadata.labels["bucket-notification-test-release-uploads-delete"]
           value: test-release-uploads-delete
 
   - it: should render a CephBucketTopic pointing at the managed Strimzi cluster
@@ -302,7 +302,7 @@ tests:
           path: kind
           value: KafkaTopic
       - equal:
-          path: metadata.labels["bucket-notification-put"]
+          path: metadata.labels["bucket-notification-test-release-uploads-put"]
           value: test-release-uploads-put
         documentSelector:
           path: kind

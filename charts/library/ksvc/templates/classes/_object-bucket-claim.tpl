@@ -19,7 +19,8 @@ metadata:
     {{- $notifications := .bucket.notifications | default dict }}
     {{- range $eventKey, $notification := $notifications }}
     {{- if $notification.enabled }}
-    bucket-notification-{{ $eventKey }}: {{ include "ksvc.objectBucketNotificationName" (dict "root" $root "bucketKey" $bucketKey "eventKey" $eventKey) | quote }}
+    {{- $notificationName := include "ksvc.objectBucketNotificationName" (dict "root" $root "bucketKey" $bucketKey "eventKey" $eventKey) }}
+    bucket-notification-{{ $notificationName }}: {{ $notificationName | quote }}
     {{- end }}
     {{- end }}
   {{- $globalAnnotations := include "ksvc.annotations" .root -}}

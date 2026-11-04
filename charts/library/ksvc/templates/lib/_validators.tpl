@@ -179,6 +179,10 @@ Call this from the loader to catch misconfigurations early.
                 {{- fail (printf "objectBuckets.%s.notifications.%s.topicName must be a DNS-1123 label" $key $eventKey) -}}
               {{- end -}}
             {{- end -}}
+            {{- $notificationName := include "ksvc.objectBucketNotificationName" (dict "root" $ "bucketKey" $key "eventKey" $eventKey) -}}
+            {{- if gt (len $notificationName) 43 -}}
+              {{- fail (printf "objectBuckets.%s.notifications.%s derives notification name %s (%d chars); Rook reads the OBC label key bucket-notification-<name>, whose name part must stay within 43 characters" $key $eventKey $notificationName (len $notificationName)) -}}
+            {{- end -}}
             {{- $topicName := include "ksvc.objectBucketNotificationTopicName" (dict "root" $ "bucketKey" $key "eventKey" $eventKey) -}}
             {{- if hasKey $notificationTopics $topicName -}}
               {{- fail (printf "objectBuckets.%s.notifications.%s derives Kafka topic %s, which is already used by another notification" $key $eventKey $topicName) -}}
