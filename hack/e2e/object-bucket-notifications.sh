@@ -28,6 +28,11 @@ diagnostics() {
   kubectl get cephcluster,cephobjectstore,cephbuckettopic,cephbucketnotification,objectbucketclaim -A -o wide || true
   kubectl -n "$NAMESPACE" get kafka,kafkatopic,objectbucketclaim,pods -o wide || true
   kubectl -n rook-ceph get pods -o wide || true
+  kubectl -n "$NAMESPACE" get cephbuckettopic,cephbucketnotification -o yaml || true
+  kubectl -n "$NAMESPACE" get objectbucketclaim -o yaml || true
+  for pod in $(kubectl -n rook-ceph get pods -l app=rook-ceph-rgw -o name); do
+    kubectl -n rook-ceph logs "$pod" --tail=200 || true
+  done
   for pod in $(kubectl -n rook-ceph get pods -l app=rook-ceph-osd-prepare -o name); do
     kubectl -n rook-ceph logs "$pod" --tail=200 || true
   done
@@ -161,6 +166,8 @@ wait_for_phase objectbucketclaim "$obc" "$NAMESPACE" Bound 600
 say "Waiting for Rook to provision the bucket topic and notification"
 wait_for_phase cephbuckettopic "${RELEASE}-uploads-put" "$NAMESPACE" Ready 300
 wait_for_phase cephbucketnotification "${RELEASE}-uploads-put" "$NAMESPACE" Ready 300
+# The RGW pod may need a beat to reload the bucket notification configuration.
+sleep 20
 
 access_key="$(kubectl -n "$NAMESPACE" get secret "$obc" -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)"
 secret_key="$(kubectl -n "$NAMESPACE" get secret "$obc" -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)"
