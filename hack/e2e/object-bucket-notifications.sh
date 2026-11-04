@@ -104,6 +104,7 @@ helm upgrade --install rook-ceph rook-release/rook-ceph \
   --create-namespace \
   --version "$ROOK_CHART_VERSION" \
   --set crds.enabled=false \
+  --set allowLoopDevices=true \
   --wait \
   --timeout 10m
 kubectl -n rook-ceph rollout status deploy/rook-ceph-operator --timeout=300s
