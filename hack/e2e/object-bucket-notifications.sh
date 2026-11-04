@@ -117,7 +117,10 @@ helm upgrade --install rook-ceph rook-release/rook-ceph \
 kubectl -n rook-ceph rollout status deploy/rook-ceph-operator --timeout=300s
 
 say "Creating the single-node CephCluster"
-kubectl apply -f test/e2e/object-bucket-notifications/rook-ceph-cluster.yaml
+loop_device="$(docker exec "$node" cat /tmp/ceph-loop)"
+# Rook can only use loop devices through the explicit `devices` list.
+sed "s|/dev/loop0|${loop_device}|g" \
+  test/e2e/object-bucket-notifications/rook-ceph-cluster.yaml | kubectl apply -f -
 wait_for_phase cephcluster rook-ceph rook-ceph Ready 1200
 
 say "Creating the CephObjectStore and bucket StorageClass"
