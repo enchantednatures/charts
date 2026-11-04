@@ -141,7 +141,7 @@ say "Installing the Strimzi operator"
 hack/install-strimzi-operator.sh
 
 say "Installing the object-bucket-notifications example"
-helm dependency build examples/object-bucket-notifications >/dev/null
+helm dependency update examples/object-bucket-notifications >/dev/null
 helm upgrade --install "$RELEASE" examples/object-bucket-notifications \
   --namespace "$NAMESPACE" \
   --create-namespace \
