@@ -1,0 +1,27 @@
+# A single-instance RGW backed by the single-OSD Ceph cluster. The example
+# chart points its ObjectBucketClaim at this service.
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStore
+metadata:
+  name: ceph-objectstore
+  namespace: rook-ceph
+spec:
+  metadataPool:
+    failureDomain: osd
+    replicated:
+      size: 1
+      requireSafeReplicaSize: false
+  dataPool:
+    failureDomain: osd
+    replicated:
+      size: 1
+      requireSafeReplicaSize: false
+  gateway:
+    port: 80
+    instances: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"

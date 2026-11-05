@@ -98,9 +98,20 @@ ksvc.objectBucketNotificationName — CephBucketNotification name (also the
 notification label value on the ObjectBucketClaim). It is always derived from
 the release/bucket/event so it stays a valid label value even when topicName is
 overridden.
+
+Rook reads the label key bucket-notification-<name>, whose name part is limited
+to 43 characters by Kubernetes' 63-character label-key limit. Longer names are
+truncated and suffixed with a short hash so distinct notifications cannot
+collide.
 */}}
 {{- define "ksvc.objectBucketNotificationName" -}}
-{{- printf "%s-%s-%s" (include "ksvc.fullname" .root) .bucketKey .eventKey | trunc 63 | trimSuffix "-" | replace "_" "-" }}
+{{- $base := printf "%s-%s-%s" (include "ksvc.fullname" .root) .bucketKey .eventKey | replace "_" "-" -}}
+{{- if gt (len $base) 43 -}}
+{{- $hash := sha256sum $base | trunc 8 -}}
+{{- printf "%s-%s" (trunc 34 $base | trimSuffix "-") $hash -}}
+{{- else -}}
+{{- $base -}}
+{{- end -}}
 {{- end }}
 
 {{/*

@@ -1,0 +1,59 @@
+# Single-node Ceph for the object-bucket-notifications e2e.
+#
+# The Kind node has no real disks. The workflow creates a loop device inside
+# the node (see hack/e2e/object-bucket-notifications.sh); deviceFilter picks it
+# up and Rook prepares it as the only OSD.
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
+metadata:
+  name: rook-ceph
+  namespace: rook-ceph
+spec:
+  cephVersion:
+    image: quay.io/ceph/ceph:v19.2.2
+    allowUnsupported: false
+  dataDirHostPath: /var/lib/rook
+  mon:
+    count: 1
+    allowMultiplePerNode: true
+  mgr:
+    count: 1
+  dashboard:
+    enabled: false
+  crashCollector:
+    disable: true
+  storage:
+    useAllNodes: true
+    useAllDevices: false
+    # Rook cannot select loop devices with deviceFilter; they must be listed
+    # explicitly by path. The e2e script substitutes the actual loop device.
+    devices:
+      - name: "/dev/loop0"
+    config:
+      databaseSizeMB: "1024"
+      walSizeMB: "1024"
+  resources:
+    mon:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"
+    mgr:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"
+    osd:
+      requests:
+        cpu: "200m"
+        memory: "1Gi"
+      limits:
+        memory: "2Gi"
+    prepareosd:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        memory: "256Mi"

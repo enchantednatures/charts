@@ -64,7 +64,7 @@ Consumer Chart
 | Dragonfly | `<release>` (global) |
 | ObjectBucketClaim | `<release>-<key>` (per `objectBuckets` entry) |
 | CephBucketTopic / Kafka topic | `<release>-<bucket-key>-<event-key>` (per enabled notification; `topicName` overrides) |
-| CephBucketNotification | `<release>-<bucket-key>-<event-key>` |
+| CephBucketNotification | `<release>-<bucket-key>-<event-key>` (hashed to 43 chars when longer; Rook's OBC label limit) |
 
 In Deployment mode the Deployment, the core/v1 Service, and any PodDisruptionBudget all share the `<release>-<service-key>` name. Sharing a name across kinds is legal in Kubernetes; the resources are linked by selectors, not by name.
 
@@ -84,7 +84,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 1.2.0
+        version: 1.2.1
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -795,6 +795,8 @@ Each enabled event key maps to a Ceph/S3 event and creates its own `CephBucketTo
 | `delete-marker` | `s3:ObjectRemoved:DeleteMarkerCreated` |
 
 The Kafka topic name defaults to `<release>-<bucket-key>-<event-key>` and can be overridden with `notifications.<key>.topicName`. The same name is used for the `CephBucketTopic` (Rook uses the topic name as the Kafka topic) and the `KafkaTopic`/`Topic` resource.
+
+The `CephBucketNotification` name follows the same pattern, but Rook associates it with the bucket through a `bucket-notification-<name>` label on the `ObjectBucketClaim`. Kubernetes limits that label key to 63 characters, leaving 43 for the name. When the derived name is longer, the chart truncates it and appends a short hash (for example `test-object-bucket-notifications-u-68da0a84`) so the label stays valid and notifications remain unique.
 
 The notification entry also supports `persistent` (Rook's asynchronous, retried delivery), `opaqueData`, `ackLevel` (`none` or `broker`), and Rook's `filter`:
 

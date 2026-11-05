@@ -10,6 +10,18 @@ are documented by the generated GitHub Release notes attached to each published
 OCI artifact, so a patch or prerelease does not need its own entry here. The
 `1.0.0` section below covers every chart that targets the `1.0.0` values API.
 
+## [1.2.1] - 2026-11-04
+
+### Fixed
+
+- Label `ObjectBucketClaim`s with `bucket-notification-<notification-name>` so
+  Rook applies the referenced `CephBucketNotification`. The previous
+  `bucket-notification-<event>` key did not match Rook's label contract and
+  notifications were silently ignored.
+- Truncate long derived notification names and append a short hash so the
+  `bucket-notification-<name>` label key stays within Kubernetes' 63-character
+  limit.
+
 ## [1.2.0] - 2026-11-03
 
 ### Added

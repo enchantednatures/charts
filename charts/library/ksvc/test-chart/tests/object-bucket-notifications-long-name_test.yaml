@@ -1,0 +1,49 @@
+suite: object bucket notification name truncation tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  kafka.cluster.enabled: true
+  objectBuckets.uploads.storageClassName: ceph-bucket
+  objectBuckets.uploads.objectStore.name: ceph-objectstore
+  objectBuckets.uploads.objectStore.namespace: rook-ceph
+  objectBuckets.uploads.notifications.put.enabled: true
+release:
+  name: test-object-bucket-notifications
+  namespace: test-ns
+tests:
+  - it: should keep the notification label key within the 63-character limit
+    documentSelector:
+      path: kind
+      value: ObjectBucketClaim
+    asserts:
+      - equal:
+          path: metadata.labels["bucket-notification-test-object-bucket-notifications-u-68da0a84"]
+          value: test-object-bucket-notifications-u-68da0a84
+
+  - it: should use the truncated notification name on the CephBucketNotification
+    documentSelector:
+      path: kind
+      value: CephBucketNotification
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-object-bucket-notifications-u-68da0a84
+      - equal:
+          path: spec.topic
+          value: test-object-bucket-notifications-uploads-put
+
+  - it: should keep the full topic name on the CephBucketTopic and KafkaTopic
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-object-bucket-notifications-uploads-put
+        documentSelector:
+          path: kind
+          value: CephBucketTopic
+      - equal:
+          path: metadata.name
+          value: test-object-bucket-notifications-uploads-put
+        documentSelector:
+          path: kind
+          value: KafkaTopic
