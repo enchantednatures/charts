@@ -339,7 +339,7 @@
     },
     "pingsources": {
       "type": "object",
-      "description": "Map of PingSource entries. Each key becomes: <release>-<key>-ping-source",
+      "description": "Map of PingSource entries. Each key becomes: <release>-<key>-ping-source. Entries sink to the Kafka Broker when kafka.broker.enabled is true; otherwise sink must reference a services key.",
       "propertyNames": {
         "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
       },
@@ -1773,9 +1773,6 @@
     "pingSourceEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "sink"
-      ],
       "properties": {
         "schedule": {
           "type": "string",
@@ -1794,7 +1791,7 @@
         "sink": {
           "type": "string",
           "minLength": 1,
-          "description": "Must reference a key in the services map"
+          "description": "Must reference a key in the services map. Must be omitted when kafka.broker.enabled is true"
         },
         "ceOverrides": {
           "type": "object",

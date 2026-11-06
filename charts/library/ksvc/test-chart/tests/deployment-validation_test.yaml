@@ -192,6 +192,14 @@ tests:
       - failedTemplate:
           errorMessage: "pingsources.scheduled.sink references 'api' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service"
 
+  - it: should fail when a ping source sets a sink while the broker is enabled
+    set:
+      kafka.broker.enabled: true
+      pingsources.scheduled.sink: api
+    asserts:
+      - failedTemplate:
+          errorMessage: "pingsources.scheduled.sink must not be set when kafka.broker.enabled=true — pingsources sink to the broker; remove sink or disable the broker"
+
   - it: should fail when a ping source schedule is empty
     set:
       pingsources.scheduled.sink: api
