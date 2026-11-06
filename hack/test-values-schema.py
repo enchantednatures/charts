@@ -127,9 +127,9 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
         "does not match",
     ),
     (
-        "ping source must define sink",
-        mutate(["pingsources", "nightly"], {"schedule": "0 * * * *"}),
-        "'sink' is a required property",
+        "ping source sink must be non-empty",
+        mutate(["pingsources", "nightly"], {"schedule": "0 * * * *", "sink": ""}),
+        "should be non-empty",
     ),
     (
         "unknown broker field",

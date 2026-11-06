@@ -475,15 +475,21 @@ Call this from the loader to catch misconfigurations early.
   {{/* pingsource validation: sink, schedule/timezone, ceOverrides, and map key */}}
   {{- if .Values.pingsources -}}
     {{- range $key, $source := .Values.pingsources -}}
-      {{- if not $source.sink -}}
-        {{- fail (printf "pingsources.%s.sink is required and must reference a key in the services map" $key) -}}
-      {{- end -}}
-      {{- if not (hasKey $.Values.services $source.sink) -}}
-        {{- fail (printf "pingsources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
-      {{- end -}}
-      {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a PingSource sink */}}
-      {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
-        {{- fail (printf "pingsources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
+      {{- if $hasBroker -}}
+        {{- if $source.sink -}}
+          {{- fail (printf "pingsources.%s.sink must not be set when kafka.broker.enabled=true — pingsources sink to the broker; remove sink or disable the broker" $key) -}}
+        {{- end -}}
+      {{- else -}}
+        {{- if not $source.sink -}}
+          {{- fail (printf "pingsources.%s.sink is required and must reference a key in the services map" $key) -}}
+        {{- end -}}
+        {{- if not (hasKey $.Values.services $source.sink) -}}
+          {{- fail (printf "pingsources.%s.sink references '%s' which does not exist in the services map" $key $source.sink) -}}
+        {{- end -}}
+        {{/* a Deployment-backed service exposes no Knative addressable, so it cannot be a PingSource sink */}}
+        {{- if eq (index $.Values.services $source.sink).workload.type "Deployment" -}}
+          {{- fail (printf "pingsources.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink; point the sink at a Knative service" $key $source.sink) -}}
+        {{- end -}}
       {{- end -}}
       {{- if not $source.schedule -}}
         {{- fail (printf "pingsources.%s.schedule is required" $key) -}}

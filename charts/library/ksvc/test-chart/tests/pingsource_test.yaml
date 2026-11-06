@@ -116,6 +116,27 @@ tests:
       - hasDocuments:
           count: 1
 
+  # With the broker enabled and no sources/triggers:
+  # doc 0 = Knative Service (api), doc 1 = Broker ConfigMap, doc 2 = Broker,
+  # doc 3 = PingSource (scheduled). The PingSource does not set a sink.
+  - it: should sink to the kafka broker when the broker is enabled
+    set:
+      kafka.broker.enabled: true
+      pingsources.scheduled.data: '{"hello":"world"}'
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: PingSource
+      - equal:
+          path: spec.sink.ref.apiVersion
+          value: eventing.knative.dev/v1
+      - equal:
+          path: spec.sink.ref.kind
+          value: Broker
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-kafka-broker
+
   # Combined fixture: Service 0, KafkaSource 1, DLQ Service 2, PingSource 3.
   # The ping source is rendered after the Kafka loop, so the pre-existing
   # KafkaSource/DLQ document indexes must remain unchanged.

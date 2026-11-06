@@ -37,3 +37,12 @@ kafka:
         backoffDelay: PT2S
       dlq:
         enabled: true
+
+# The Broker is enabled, so the PingSource sinks to the Broker (not directly to
+# a service). The all-events Trigger delivers each scheduled CloudEvent to the
+# event-handler service.
+pingsources:
+  scheduled:
+    schedule: "*/5 * * * *"
+    timezone: "UTC"
+    data: '{"source":"ping"}'

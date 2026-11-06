@@ -10,6 +10,20 @@ are documented by the generated GitHub Release notes attached to each published
 OCI artifact, so a patch or prerelease does not need its own entry here. The
 `1.0.0` section below covers every chart that targets the `1.0.0` values API.
 
+## [1.3.0] - 2026-11-06
+
+### Added
+
+- `pingsources` entries now sink to the chart's Kafka Broker when
+  `kafka.broker.enabled: true`, matching `kafka.sources`. The PingSource omits
+  `sink` in that mode and Triggers fan out the scheduled CloudEvents.
+
+### Changed
+
+- Setting `pingsources.<key>.sink` while `kafka.broker.enabled: true` now fails
+  rendering instead of bypassing the Broker. Remove `sink` to route scheduled
+  events through Kafka, or disable the Broker to keep a direct service sink.
+
 ## [1.2.1] - 2026-11-04
 
 ### Fixed

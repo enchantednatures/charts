@@ -2,13 +2,19 @@
 ksvc.class.pingSource — Render a PingSource for a specific source entry.
 Expects context: dict with "root" (top-level context), "key" (source map key),
 and "source" (the merged ping source config dict).
-The source.sink field must reference a valid key in .Values.services.
+When kafka.broker.enabled is true, the source sinks to the Kafka Broker and
+source.sink must be empty. Otherwise source.sink must reference a valid key in
+.Values.services.
 */}}
 {{- define "ksvc.class.pingSource" -}}
 {{- $source := .source -}}
+{{- $hasBroker := and .root.Values.kafka .root.Values.kafka.broker .root.Values.kafka.broker.enabled -}}
+{{- $sinkServiceName := "" -}}
+{{- if not $hasBroker -}}
 {{- /* Resolve the sink service name using the sink's own config (honours nameOverride). */ -}}
 {{- $sinkSvc := index .root.Values.services $source.sink -}}
-{{- $sinkServiceName := include "ksvc.serviceName" (dict "root" .root "key" $source.sink "svc" $sinkSvc) -}}
+{{- $sinkServiceName = include "ksvc.serviceName" (dict "root" .root "key" $source.sink "svc" $sinkSvc) -}}
+{{- end -}}
 {{- $sourceName := include "ksvc.pingSourceName" . -}}
 {{- $extensions := dict -}}
 {{- if and $source.ceOverrides $source.ceOverrides.extensions -}}
@@ -37,8 +43,15 @@ spec:
       {{- toYaml $extensions | nindent 6 }}
   {{- end }}
   sink:
+    {{- if $hasBroker }}
+    ref:
+      apiVersion: eventing.knative.dev/v1
+      kind: Broker
+      name: {{ include "ksvc.kafkaBrokerName" .root }}
+    {{- else }}
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
       name: {{ $sinkServiceName }}
+    {{- end }}
 {{- end }}

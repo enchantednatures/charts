@@ -84,7 +84,7 @@ ObjectBucketClaim names are sanitized the same way as the others: truncated to 6
     ```yaml
     dependencies:
       - name: ksvc
-        version: 1.2.1
+        version: 1.3.0
         repository: oci://ghcr.io/enchantednatures/charts
     ```
 
@@ -269,7 +269,7 @@ sections following the table.
 | kyverno.scaling.enabled | bool | `false` | Render the scaling/HA guardrail policies (Knative Service, CNPG instances, Dragonfly replicas/PDB). |
 | kyverno.scaling.validationActions | list | `["Deny"]` | Enforcement actions (`Deny` and/or `Audit`). |
 | objectBuckets | object | `{}` | Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each key renders an ObjectBucketClaim named `<release>-<key>`; see the Object Buckets section for the per-entry schema. |
-| pingsources | object | `{}` | Map of PingSource entries, keyed by source name. Each key renders a PingSource named `<release>-<key>-ping-source`; every entry's `sink` must reference a key in `services` (validated at render time). Per-entry fields: `schedule`, `timezone`, `data`, `contentType`, `ceOverrides.extensions` (custom extensions only, never `type`), and the required `sink`. |
+| pingsources | object | `{}` | Map of PingSource entries, keyed by source name. Each key renders a PingSource named `<release>-<key>-ping-source`. When `kafka.broker.enabled` is true, every PingSource sinks to the Kafka Broker and must omit `sink`; otherwise `sink` must reference a key in `services` (validated at render time). Per-entry fields: `schedule`, `timezone`, `data`, `contentType`, `ceOverrides.extensions` (custom extensions only, never `type`), and `sink`. |
 | postgres.backup.enabled | bool | `true` | Enable WAL archiving and scheduled backups. |
 | postgres.backup.objectStore.bucketRef | string | `""` | Key of an `objectBuckets` entry used to derive the CNPG ObjectStore destinationPath, endpointURL, and credentials. Empty disables derivation. |
 | postgres.backup.objectStore.data.compression | string | `"gzip"` | Compression algorithm for data backups (`snappy`, `gzip`, `bzip2` or `lz4`). |
@@ -538,7 +538,7 @@ Each key in `kafka.sources:` defines a KafkaSource. The `sink` field must refere
 
 ### Kafka Broker and Triggers (Opt-In)
 
-`kafka.broker.enabled: true` renders a `Broker` (`eventing.knative.dev/v1`, Kafka class) and a per-release `ConfigMap` containing `bootstrap.servers`, `default.topic.partitions`, and `default.topic.replication.factor`. Sources with no `sink` deliver to the Broker; setting `sink` while the broker is enabled fails rendering.
+`kafka.broker.enabled: true` renders a `Broker` (`eventing.knative.dev/v1`, Kafka class) and a per-release `ConfigMap` containing `bootstrap.servers`, `default.topic.partitions`, and `default.topic.replication.factor`. KafkaSources and PingSources with no `sink` deliver to the Broker; setting `sink` while the broker is enabled fails rendering.
 
 `kafka.triggers` maps trigger names to subscribers. Each entry requires `subscriber` (a key in `services`) and supports legacy `filter` attributes or modern `filters`, delivery settings, annotations, and an optional DLQ. The generated values table lists the `kafka.broker` surface; per-entry trigger fields are documented here because `kafka.triggers` ships empty.
 
@@ -559,7 +559,7 @@ Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: r
 
 ## PingSource Event Sources (Map)
 
-Each key in `pingsources:` defines a PingSource. The `sink` field must reference a valid key in the `services` map (validated at render time).
+Each key in `pingsources:` defines a PingSource. When `kafka.broker.enabled: true`, every PingSource sinks to the Kafka Broker and must omit `sink`; Triggers then route the events to services. Otherwise `sink` must reference a valid key in the `services` map (validated at render time).
 
 | Key | Description | Default |
 |-----|-------------|---------|
@@ -567,16 +567,17 @@ Each key in `pingsources:` defines a PingSource. The `sink` field must reference
 | `pingsources.<key>.timezone` | IANA time zone for the schedule | `"UTC"` |
 | `pingsources.<key>.data` | CloudEvent payload | `""` |
 | `pingsources.<key>.contentType` | Payload content type | `"application/json"` |
-| `pingsources.<key>.sink` | **Required.** Key from the `services` map | — |
+| `pingsources.<key>.sink` | Key from the `services` map. **Required unless `kafka.broker.enabled` is true**; must be omitted when the Broker is enabled | — |
 | `pingsources.<key>.ceOverrides.extensions` | Map of custom CloudEvent extension attributes (never `type`) | `{}` |
 
 Each entry renders a PingSource named `<release>-<key>-ping-source`. Every event has the fixed CloudEvent type `dev.knative.sources.ping`. `ceOverrides.extensions` can add or override extension attributes, but it cannot change `type`; the validator rejects a `type` key there.
 
 The chart defaults differ from the Knative API defaults: the chart uses `0 * * * *` (hourly) and `UTC`, while the Knative API defaults to `* * * * *` (every minute) and the cluster's system time zone. Set `schedule` and `timezone` explicitly if you depend on the API defaults.
 
-The sink is rendered as a Knative Service `ref` with no path, so events are delivered to the service's root path (`/`). There is no per-entry sink path option; serve the handler at `/` or route to it from there.
+Without a Broker, the sink is rendered as a Knative Service `ref` with no path, so events are delivered to the service's root path (`/`). There is no per-entry sink path option; serve the handler at `/` or route to it from there. With a Broker, the sink is the chart's Kafka Broker (`<release>-kafka-broker`) and events follow the same Broker/Trigger path as `kafka.sources`.
 
 ```yaml
+# Direct service sink (no Broker)
 pingsources:
   scheduled:
     schedule: "0 * * * *"
@@ -587,6 +588,23 @@ pingsources:
     ceOverrides:
       extensions:
         my-extension: value
+```
+
+```yaml
+# Kafka Broker sink: omit sink and route with a Trigger
+kafka:
+  broker:
+    enabled: true
+  triggers:
+    scheduled:
+      subscriber: api
+      filter:
+        type: dev.knative.sources.ping
+pingsources:
+  scheduled:
+    schedule: "0 * * * *"
+    timezone: "UTC"
+    data: '{"hello":"world"}'
 ```
 
 ## Object Buckets (Ceph RGW)
