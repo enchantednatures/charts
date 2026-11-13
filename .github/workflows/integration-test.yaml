@@ -397,7 +397,10 @@ jobs:
 
   object-bucket-notifications-e2e:
     name: Object Bucket Notifications E2E
-    runs-on: ubuntu-latest
+    # Rook/Ceph's mon becomes unhealthy on ubuntu-latest (26.04) as of the
+    # 2026-11-07 runner rollout. Keep this live storage test on 24.04 until the
+    # Rook/Ceph configuration is validated on the newer runner image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
