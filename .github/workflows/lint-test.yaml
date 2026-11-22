@@ -90,6 +90,24 @@ jobs:
       - name: Validate example values and negative schema cases
         run: python3 hack/test-values-schema.py
 
+  upgrade-dry-run:
+    name: Upgrade Dry-Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        helm-version: [v3.17.0, v4.3.0]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: ${{ matrix.helm-version }}
+
+      - name: Dry-run chart defaults and generated managed-Kafka values
+        run: make test-upgrade
+
   template-render:
     name: Template Rendering
     runs-on: ubuntu-latest

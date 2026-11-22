@@ -29,6 +29,8 @@ annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT
   artifacthub.io/changes: |
+    - kind: fixed
+      description: CI validates the chart's default values against values.schema.json and exercises helm upgrade --dry-run with chart defaults and generated managed-Kafka values
     - kind: added
       description: PingSources sink to the Kafka Broker when kafka.broker.enabled is true
     - kind: fixed

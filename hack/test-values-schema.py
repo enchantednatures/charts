@@ -21,6 +21,7 @@ from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / "charts" / "library" / "ksvc" / "values.schema.json"
+CHART_DEFAULTS = ROOT / "charts" / "library" / "ksvc" / "values.yaml"
 EXAMPLE_GLOB = str(ROOT / "examples" / "*" / "values.yaml")
 
 
@@ -330,6 +331,10 @@ NEGATIVE_CASES: list[tuple[str, dict, str]] = [
 
 # (description, values) pairs that must validate.
 POSITIVE_CASES: list[tuple[str, dict]] = [
+    (
+        "chart default values",
+        load_yaml(CHART_DEFAULTS),
+    ),
     (
         "object bucket key of exactly 53 characters",
         mutate(["objectBuckets", "a" * 53], {"storageClassName": "ceph-bucket"}),

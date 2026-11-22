@@ -1005,6 +1005,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 *   **kafka-source-net** — KafkaSource with TLS and SASL against an external Kafka cluster.
 *   **kafka-strimzi** — Managed Strimzi cluster with TLS, SCRAM, topics, users, and a shared project topic.
 *   **kafka-redpanda** — Managed Redpanda cluster with managed topics and a shared project topic.
+*   **generated-managed-kafka** — Values snapshot from a generated managed-Redpanda project with a Broker, Triggers, DLQ sources, and Ceph RGW bucket notifications.
 *   **dragonfly-cache** — Knative service with DragonflyDB caching, auth, TLS, and snapshots.
 *   **longrunning-websocket** — Websocket gateway as a standard Deployment workload with a ClientIP core Service, a PodDisruptionBudget, and a preStop drain delay.
 *   **object-bucket-notifications** — App-accessible Ceph RGW bucket with `envFrom` and named-env bindings, plus managed Kafka bucket notifications.
@@ -1013,7 +1014,7 @@ The [examples/](../../../examples/) directory contains reference implementations
 
 The repository uses GitHub Actions for automated quality assurance:
 
-*   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
+*   **Lint and Test**: Runs `helm lint`, validates `values.yaml` against a JSON schema, runs `helm upgrade --dry-run` with the chart defaults and a generated managed-Kafka project's values, renders templates for all examples, and executes unit tests. It also runs a PR-level Kyverno policy gate that renders the opt-in admission policies and checks the `test/kyverno/` fixtures with the Kyverno CLI, and a docs check that fails when this README is out of sync with `values.yaml`.
 *   **Release**: Triggers when a chart's `Chart.yaml` version changes on `main` (diff-detected on each push), packaging and pushing that chart to GHCR as an OCI artifact and tagging it `<chart>-v<version>` (for example `ksvc-v1.0.0`). Pushing a matching `<chart>-v<version>` tag also triggers a release.
 *   **Integration Test**: Nightly Kind cluster deployment that verifies CRD compatibility and server-side dry-runs for all example configurations. A `kyverno-guardrails-e2e` job installs Kyverno, applies the fixtures in `test/kyverno/`, and asserts the guardrail policies deny invalid scaling/replica specs while admitting compliant ones.
 

@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [minimal, full-stack, postgres-only, kafka-consumer, kafka-broker, kafka-source-net, kafka-strimzi, kafka-redpanda, dragonfly-cache, longrunning-websocket, object-bucket-notifications]
+        example: [minimal, full-stack, postgres-only, kafka-consumer, kafka-broker, kafka-source-net, kafka-strimzi, kafka-redpanda, generated-managed-kafka, dragonfly-cache, longrunning-websocket, object-bucket-notifications]
         include:
           - example: minimal
             install_cnpg_crds: false
@@ -114,6 +114,16 @@ jobs:
             install_dragonfly_crds: false
             install_monitoring_crds: false
             install_object_bucket_crds: false
+          - example: generated-managed-kafka
+            install_eventing_crds: true
+            install_kafka_crds: true
+            install_redpanda_crds: true
+            install_cnpg_crds: false
+            install_flagger_crds: false
+            install_dragonfly_crds: false
+            install_monitoring_crds: false
+            install_object_bucket_crds: true
+            install_rook_crds: true
           - example: object-bucket-notifications
             install_kafka_crds: false
             install_strimzi_crds: true
@@ -182,9 +192,9 @@ jobs:
       - name: Helm dependency build
         run: helm dependency build examples/${{ matrix.example }}
 
-      - name: Helm dry-run install
+      - name: Helm dry-run upgrade
         run: |
-          helm install test-release examples/${{ matrix.example }} \
+          helm upgrade --install test-release examples/${{ matrix.example }} \
             --namespace test-ns \
             --create-namespace \
             --dry-run=server \
@@ -220,9 +230,9 @@ jobs:
       - name: Resolve app chart dependency locally
         run: hack/lint-app.sh
 
-      - name: Helm dry-run install app chart
+      - name: Helm dry-run upgrade app chart
         run: |
-          helm install test-app charts/app/ksvc \
+          helm upgrade --install test-app charts/app/ksvc \
             --namespace test-ns \
             --create-namespace \
             --set services.api.image.repository=ghcr.io/test/app \
@@ -255,7 +265,7 @@ jobs:
 
       - name: Helm install minimal example
         run: |
-          helm install helm4-smoke examples/minimal \
+          helm upgrade --install helm4-smoke examples/minimal \
             --namespace test-ns \
             --create-namespace \
             --timeout 120s

@@ -56,6 +56,7 @@ fi
 required=(
   "Helm Lint"
   "Schema Validation"
+  "Upgrade Dry-Run"
   "Template Rendering"
   "Helm Unit Tests"
   "Kubernetes Schema Validation"

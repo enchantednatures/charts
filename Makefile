@@ -314,6 +314,10 @@ test-app: ## Run helm unit tests for the app chart
 test-schema: ## Validate values.schema.json with positive and negative cases
 	python3 hack/test-values-schema.py
 
+.PHONY: test-upgrade
+test-upgrade: ## Dry-run helm upgrade for chart defaults and generated managed-Kafka values
+	hack/test-upgrade-dry-run.sh
+
 .PHONY: test-kube-version
 test-kube-version: ## Verify examples and the app chart enforce kubeVersion >= 1.28
 	hack/check-kube-version.sh
