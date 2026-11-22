@@ -317,6 +317,21 @@ Call this from the loader to catch misconfigurations early.
     {{- if and (eq $cluster.provider "redpanda") (eq $cluster.auth.type "scram") (not $cluster.redpanda.sasl.secretRef) -}}
       {{- fail "kafka.cluster.redpanda.sasl.secretRef is required when kafka.cluster.auth.type=scram for Redpanda — provide a superuser Secret in users.txt format" -}}
     {{- end -}}
+    {{- if $cluster.topics.create -}}
+      {{- if eq $cluster.provider "redpanda" -}}
+        {{- $redpandaExtra := $cluster.redpanda.extraClusterSpec | default dict -}}
+        {{- $autoCreateTopics := dig "config" "cluster" "auto_create_topics_enabled" false $redpandaExtra -}}
+        {{- if eq (lower (toString $autoCreateTopics)) "true" -}}
+          {{- fail "kafka.cluster.redpanda.extraClusterSpec.config.cluster.auto_create_topics_enabled must not be true when kafka.cluster.topics.create=true — the chart owns the managed topic lifecycle. Remove the auto-create override (recommended), or set kafka.cluster.topics.create=false and manage topics outside the chart" -}}
+        {{- end -}}
+      {{- else -}}
+        {{- $strimziExtra := $cluster.strimzi.extraSpec | default dict -}}
+        {{- $autoCreateTopics := dig "kafka" "config" "auto.create.topics.enable" false $strimziExtra -}}
+        {{- if eq (lower (toString $autoCreateTopics)) "true" -}}
+          {{- fail "kafka.cluster.strimzi.extraSpec.kafka.config[\"auto.create.topics.enable\"] must not be true when kafka.cluster.topics.create=true — the chart owns the managed topic lifecycle. Remove the auto-create override (recommended), or set kafka.cluster.topics.create=false and manage topics outside the chart" -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
     {{- if and $hasBroker (or (eq $cluster.auth.type "scram") $cluster.tls.enabled) (not .Values.kafka.broker.config.authSecretName) -}}
       {{- fail "kafka.broker.config.authSecretName is required when kafka.broker.enabled=true and the managed cluster uses SCRAM or TLS — the Broker needs a Secret with sasl.mechanism, user, password, security.protocol (and ca.crt for TLS)" -}}
     {{- end -}}

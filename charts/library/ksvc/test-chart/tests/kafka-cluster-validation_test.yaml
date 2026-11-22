@@ -180,3 +180,65 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "kafka.broker.config.authSecretName is required when kafka.broker.enabled=true and the managed cluster uses SCRAM or TLS — the Broker needs a Secret with sasl.mechanism, user, password, security.protocol (and ca.crt for TLS)"
+
+  - it: should reject Redpanda auto-create while the chart manages topics
+    set:
+      kafka.cluster.provider: redpanda
+      kafka.cluster.redpanda.extraClusterSpec.config.cluster.auto_create_topics_enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.redpanda.extraClusterSpec.config.cluster.auto_create_topics_enabled must not be true when kafka.cluster.topics.create=true — the chart owns the managed topic lifecycle. Remove the auto-create override (recommended), or set kafka.cluster.topics.create=false and manage topics outside the chart"
+
+  - it: should reject string Redpanda auto-create while the chart manages topics
+    set:
+      kafka.cluster.provider: redpanda
+      kafka.cluster.redpanda.extraClusterSpec.config.cluster.auto_create_topics_enabled: "true"
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.redpanda.extraClusterSpec.config.cluster.auto_create_topics_enabled must not be true when kafka.cluster.topics.create=true — the chart owns the managed topic lifecycle. Remove the auto-create override (recommended), or set kafka.cluster.topics.create=false and manage topics outside the chart"
+
+  - it: should reject Strimzi auto-create while the chart manages topics
+    set:
+      kafka.cluster.strimzi.extraSpec.kafka.config:
+        auto.create.topics.enable: "true"
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.strimzi.extraSpec.kafka.config[\"auto.create.topics.enable\"] must not be true when kafka.cluster.topics.create=true — the chart owns the managed topic lifecycle. Remove the auto-create override (recommended), or set kafka.cluster.topics.create=false and manage topics outside the chart"
+
+  - it: should reject boolean Strimzi auto-create while the chart manages topics
+    set:
+      kafka.cluster.strimzi.extraSpec.kafka.config:
+        auto.create.topics.enable: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "kafka.cluster.strimzi.extraSpec.kafka.config[\"auto.create.topics.enable\"] must not be true when kafka.cluster.topics.create=true — the chart owns the managed topic lifecycle. Remove the auto-create override (recommended), or set kafka.cluster.topics.create=false and manage topics outside the chart"
+
+  - it: should allow Redpanda auto-create when chart topic creation is disabled
+    set:
+      kafka.cluster.provider: redpanda
+      kafka.cluster.topics.create: false
+      kafka.cluster.redpanda.extraClusterSpec.config.cluster.auto_create_topics_enabled: true
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.config.cluster.auto_create_topics_enabled
+          value: true
+
+  - it: should allow Strimzi auto-create when chart topic creation is disabled
+    set:
+      kafka.cluster.topics.create: false
+      kafka.cluster.strimzi.extraSpec.kafka.config:
+        auto.create.topics.enable: "true"
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: spec.kafka.config["auto.create.topics.enable"]
+          value: "true"

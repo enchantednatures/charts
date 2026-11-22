@@ -344,12 +344,39 @@ Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: r
 
 *   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32. `kafka.cluster.name` must be a DNS-1123 label of at most 47 characters so derived Service names stay within 63.
 *   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
+*   **Topic ownership:** when `topics.create: true` (default), the chart owns the managed cluster's topic lifecycle. Enabling provider auto-create (`kafka.cluster.redpanda.extraClusterSpec.config.cluster.auto_create_topics_enabled` or `kafka.cluster.strimzi.extraSpec.kafka.config["auto.create.topics.enable"]`) fails rendering because it creates a second, unowned topic path and a redundant readiness gate. Set `topics.create: false` only when topics are pre-created or managed outside the chart.
 *   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.<global.clusterDomain>:<plainPort|tlsPort>`; Redpanda `<cluster>.<namespace>.svc.<global.clusterDomain>:<tlsPort>`. The defaults are `9092` (plain) and `9093` (TLS), configurable through `kafka.cluster.listeners`.
 *   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`). Redpanda TLS requires cert-manager. Every source must set `net.tls.enabled: true` when `kafka.cluster.tls.enabled` is true; otherwise rendering fails.
 *   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret. Enabling SASL while `auth.type: none` fails rendering rather than producing dangling references.
 *   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
 *   **Replication:** topic/broker replication factors clamp to `min(replicas, 3)` for Strimzi and `1`/`3` for Redpanda.
 *   **Operators:** the chart never installs Strimzi, Redpanda, Knative, or their CRDs. `make install-strimzi-crds` and `make install-redpanda-crds` install CRDs only; `hack/install-strimzi-operator.sh` and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
+
+#### Managed Kafka install time and Helm wait surface
+
+Managed Kafka is readiness-heavy. A Flux `HelmRelease` health-checks every resource in the release through kstatus, including custom resources, so the release does not become Ready until each of these gates is met:
+
+| Resource | Rendered when | Readiness gate |
+|----------|---------------|----------------|
+| Redpanda or Kafka/KafkaNodePool | `kafka.cluster.enabled: true` | Cluster Ready |
+| Topic or KafkaTopic | `kafka.cluster.topics.create: true` | Topic Ready |
+| User or KafkaUser | `kafka.cluster.auth.type: scram` | User Ready |
+| Broker | `kafka.broker.enabled: true` | Broker Ready |
+| KafkaSource | Each `kafka.sources` entry | Source Ready |
+| Trigger | Each `kafka.triggers` entry | Trigger Ready |
+| Knative Service | Each `services` entry | Service Ready |
+
+A cold cluster commonly takes several minutes to start the managed cluster and the dependent resources. Set the HelmRelease install and upgrade timeouts to at least `10m`; the HelmRelease default of `5m` can time out on a first install:
+
+```yaml
+spec:
+  install:
+    timeout: 10m
+  upgrade:
+    timeout: 10m
+```
+
+Helm's `--wait` behavior differs from Flux and does not reliably gate on custom-resource readiness, so verify the CR conditions separately when using Helm directly. To shorten the wait surface, disable unused optional resources (`kafka.broker.enabled`, `kafka.triggers`, and SCRAM authentication), or run the managed Kafka stack in its own HelmRelease and point the application release at it through `kafka.bootstrapServers`.
 
 ## PingSource Event Sources (Map)
 

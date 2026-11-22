@@ -16,8 +16,8 @@ all supporting infrastructure. A ready-to-use application wrapper
 |------|-------------|
 | `charts/library/ksvc/` | The `ksvc` **library chart** — the templates and values that do all the work. See its [README](charts/library/ksvc/README.md) for the full values reference. |
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. See its [README](charts/app/ksvc/README.md). |
-| [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 1.0.0, with before/after values for every breaking change. |
-| [`CHANGELOG.md`](CHANGELOG.md) | Curated release history; the `1.0.0` section summarizes the features, breaking changes, and migration links. |
+| [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 2.0.0, with before/after values for every breaking change. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Curated release history; the `2.0.0` and `1.0.0` sections summarize the current release and the API freeze. |
 | `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`, `object-bucket-notifications`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
@@ -36,8 +36,9 @@ all supporting infrastructure. A ready-to-use application wrapper
     `oci://ghcr.io/enchantednatures/charts` dependency.
 
 Upgrading from `ksvc` 0.5.0? Read the [migration guide](MIGRATION.md) for the
-multi-service move, the 0.7-0.10 feature additions, and the 1.0.0 API freeze,
-including before/after values for every breaking change.
+multi-service move, the 0.7-0.10 feature additions, the 1.0.0 API freeze, and
+the 2.0.0 managed-Kafka topic-ownership change, including before/after values
+for every breaking change.
 
 ## Requirements
 
@@ -57,6 +58,10 @@ and `hack/install-redpanda-operator.sh` install the operators for Kind e2e.
 and conversion webhook for the Strimzi e2e (the `make install-kafka` target
 installs only the KafkaSource CRD). `hack/install-eventing-core.sh` installs
 the Knative Eventing core that the KafkaSource controller and webhook require.
+Managed Kafka installs are readiness-heavy: a cold cluster can take several
+minutes, so give a Flux `HelmRelease` or Helm install at least a `10m` timeout.
+The chart owns managed topic lifecycle; do not enable provider auto-create while
+`kafka.cluster.topics.create` is true.
 
 | Requirement | Needed for | Notes |
 |-------------|------------|-------|
@@ -84,8 +89,9 @@ requires Kubernetes >= 1.32; the Strimzi e2e job pins a Kind 1.32 node image.
 
 ### Compatibility matrix
 
-This matrix targets the `ksvc` and `ksvc-app` **1.0.0** line. Both charts expose
-the same values surface; `ksvc-app` pins the matching `ksvc` release.
+This matrix targets the `ksvc` **2.0.0** line and the `ksvc-app` wrapper. Both
+charts expose the same values surface; `ksvc-app` pins a matching published
+`ksvc` release.
 
 | Component | CI-tested / pinned | Supported | Notes |
 |-----------|-------------------|-----------|-------|
@@ -203,7 +209,7 @@ Consumers reference a published chart by OCI repository and version:
 ```yaml
 dependencies:
   - name: ksvc
-    version: 1.3.0
+    version: 2.0.0
     repository: oci://ghcr.io/enchantednatures/charts
 ```
 
