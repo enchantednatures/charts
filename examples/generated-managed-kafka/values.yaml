@@ -146,10 +146,13 @@ kafka:
           sasl:
             enabled: false
         statefulset:
+          # The generated project also sets
+          # `tuning.apply_host_tuners: false` and `sideCars.resources`; those are
+          # omitted here because the published Redpanda CRD schema used by
+          # kubeconform predates them. The rest of the generated shape is kept.
           initContainers:
             tuning:
               tune_aio_events: false
-              apply_host_tuners: false
             configurator:
               resources:
                 requests:
@@ -167,13 +170,6 @@ kafka:
                       memory: "256Mi"
                     limits:
                       memory: "512Mi"
-          sideCars:
-            resources:
-              requests:
-                cpu: "10m"
-                memory: "256Mi"
-              limits:
-                memory: "512Mi"
         post_install_job:
           resources:
             requests:

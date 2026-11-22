@@ -15,6 +15,10 @@
 # Finally it renders the ksvc-app wrapper through the local dependency, so the
 # documented app-chart install/upgrade path is exercised too.
 #
+# Helm 3 contacts the API server for capability discovery even with
+# --dry-run=client, so this test expects a reachable cluster (CI creates a Kind
+# cluster; no CRDs are required because rendering stays local).
+#
 # Usage:
 #   hack/test-upgrade-dry-run.sh
 set -euo pipefail

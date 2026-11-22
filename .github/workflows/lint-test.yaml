@@ -93,7 +93,7 @@ jobs:
   upgrade-dry-run:
     name: Upgrade Dry-Run
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -104,6 +104,14 @@ jobs:
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           version: ${{ matrix.helm-version }}
+
+      # Helm 3 contacts the API server for capability discovery even with
+      # --dry-run=client; no CRDs are needed because rendering stays local.
+      - name: Create Kind cluster
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          cluster_name: upgrade-dry-run
+          node_image: kindest/node:v1.32.0
 
       - name: Dry-run chart defaults and generated managed-Kafka values
         run: make test-upgrade
