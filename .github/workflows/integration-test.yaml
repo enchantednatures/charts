@@ -524,6 +524,11 @@ jobs:
           cluster_name: kafka-redpanda-e2e
           node_image: kindest/node:v1.32.0
 
+      - name: Tune kernel for Redpanda
+        run: |
+          sudo sysctl -w fs.aio-max-nr=1048576
+          sudo sysctl -w vm.max_map_count=262144
+
       - name: Install Knative Serving CRDs
         run: make install-knative
 
