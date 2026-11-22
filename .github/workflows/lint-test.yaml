@@ -90,6 +90,39 @@ jobs:
       - name: Validate example values and negative schema cases
         run: python3 hack/test-values-schema.py
 
+  upgrade-dry-run:
+    name: Upgrade Dry-Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        helm-version: [v3.17.0, v4.3.0]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: ${{ matrix.helm-version }}
+
+      # Helm contacts the API server even with --dry-run=client. Helm 3 also
+      # resolves the rendered GVKs against cluster discovery, so its lane needs
+      # the CRDs used by the defaults and generated-project fixtures.
+      - name: Create Kind cluster
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          cluster_name: upgrade-dry-run
+          node_image: kindest/node:v1.32.0
+
+      - name: Install fixture CRDs (Helm 3)
+        if: matrix.helm-version == 'v3.17.0'
+        run: >-
+          make install-knative install-kafka install-eventing
+          install-redpanda-crds install-object-bucket install-rook-crds
+
+      - name: Dry-run chart defaults and generated managed-Kafka values
+        run: make test-upgrade
+
   template-render:
     name: Template Rendering
     runs-on: ubuntu-latest

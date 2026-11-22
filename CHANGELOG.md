@@ -10,6 +10,15 @@ are documented by the generated GitHub Release notes attached to each published
 OCI artifact, so a patch or prerelease does not need its own entry here. The
 `1.0.0` section below covers every chart that targets the `1.0.0` values API.
 
+## [1.3.1] - 2026-11-22
+
+### Fixed
+
+- CI now validates the chart's default `values.yaml` against
+  `values.schema.json` and runs `helm upgrade --dry-run` for both the chart
+  defaults and values from a generated managed-Kafka project. This prevents the
+  values/schema drift that broke manual upgrades in issue #149.
+
 ## [1.3.0] - 2026-11-06
 
 ### Added

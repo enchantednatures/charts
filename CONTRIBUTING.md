@@ -45,6 +45,7 @@ make help                 # list every target
 make lint                 # helm lint library + app + all examples
 make test                 # helm-unittest suite
 make test-schema          # values.schema.json positive + negative cases
+make test-upgrade         # helm upgrade --dry-run for defaults + generated values
 make test-kube-version    # examples/app reject Kubernetes < 1.28
 make check-docs           # README requirements drift check
 make check-markdown-links # local Markdown link check

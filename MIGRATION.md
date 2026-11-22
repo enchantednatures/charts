@@ -498,6 +498,12 @@ Helm does not apply a library chart's `values.schema.json` to consumer values,
 so an unknown key still renders; it is ignored. Remove it anyway so schema
 validation and future upgrades stay clean.
 
+If a manual `helm upgrade --reuse-values` from `0.10.x` fails schema validation
+on `prometheusAddress`, delete the key from the reused values, or upgrade with
+`--reset-values` / the current HelmRelease values instead. Releases installed
+through Flux are unaffected because Flux renders the HelmRelease values, which
+do not include the removed key.
+
 ### KafkaSource `topic` is optional
 
 `kafka.sources.<key>.topic` is no longer required in the schema. When omitted,

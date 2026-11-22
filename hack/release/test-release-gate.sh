@@ -17,6 +17,7 @@ fail() {
 required=(
   "Helm Lint"
   "Schema Validation"
+  "Upgrade Dry-Run"
   "Template Rendering"
   "Helm Unit Tests"
   "Kubernetes Schema Validation"
@@ -30,6 +31,8 @@ names_json="$(jq -cn --args '$ARGS.positional' \
   "Helm Lint (v3.17.0)" \
   "Helm Lint (v4.3.0)" \
   "Schema Validation" \
+  "Upgrade Dry-Run (v3.17.0)" \
+  "Upgrade Dry-Run (v4.3.0)" \
   "Template Rendering (v3.17.0)" \
   "Template Rendering (v4.3.0)" \
   "Helm Unit Tests (v3.17.0)" \

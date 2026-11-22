@@ -18,7 +18,7 @@ all supporting infrastructure. A ready-to-use application wrapper
 | `charts/app/ksvc/` | `ksvc-app`, a thin **application chart** wrapper that depends on `ksvc` and is a starting point for consumers. See its [README](charts/app/ksvc/README.md). |
 | [`MIGRATION.md`](MIGRATION.md) | Upgrade guide from `ksvc` 0.5.0 to 1.0.0, with before/after values for every breaking change. |
 | [`CHANGELOG.md`](CHANGELOG.md) | Curated release history; the `1.0.0` section summarizes the features, breaking changes, and migration links. |
-| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `dragonfly-cache`, `longrunning-websocket`, `object-bucket-notifications`. |
+| `examples/` | Runnable reference configurations: `minimal`, `full-stack`, `postgres-only`, `kafka-consumer`, `kafka-broker`, `kafka-source-net`, `kafka-strimzi`, `kafka-redpanda`, `generated-managed-kafka`, `dragonfly-cache`, `longrunning-websocket`, `object-bucket-notifications`. |
 | `test/` | Shared test fixtures (currently the Kyverno guardrail fixtures under `test/kyverno/`). |
 | `flux/` | Self-referential Flux GitOps bootstrap that syncs this repo into a cluster — see [flux/README.md](flux/README.md). |
 | `hack/` | Repo automation scripts: the PR version gate, local app-chart resolution, release gating and reconciliation, lock consistency, and schema, Kubernetes-version, requirements-docs, and Markdown-link checks. |
@@ -232,6 +232,7 @@ make help                 # list every target
 make lint                 # helm lint library + app + all examples
 make test                 # helm-unittest suite
 make test-schema          # values.schema.json positive + negative cases
+make test-upgrade         # helm upgrade --dry-run for defaults + generated values
 make test-kube-version    # examples/app reject Kubernetes < 1.28
 make check-docs           # README requirements drift check
 make check-markdown-links # local Markdown link check
@@ -252,7 +253,8 @@ make install-flux-sync    # apply the flux/ GitOps bootstrap
 
 *   **Lint and Test** (`.github/workflows/lint-test.yaml`) — Helm 3.17 and
     Helm 4.3.0 lanes for `make lint`, `make test`, template rendering, and
-    kubeconform; positive and negative schema validation, Kubernetes-version
+    kubeconform; positive and negative schema validation, upgrade dry-runs for
+    chart defaults and a generated managed-Kafka project, Kubernetes-version
     enforcement, Kyverno policy tests, and the PR chart-version gate. Helm
     unit tests use helm-unittest 0.8.2 on Helm 3.17 and 1.0.3 on Helm 4.
     kubeconform is fail-closed against Kubernetes 1.28, 1.30, and 1.32 using
