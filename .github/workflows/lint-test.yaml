@@ -105,13 +105,20 @@ jobs:
         with:
           version: ${{ matrix.helm-version }}
 
-      # Helm 3 contacts the API server for capability discovery even with
-      # --dry-run=client; no CRDs are needed because rendering stays local.
+      # Helm contacts the API server even with --dry-run=client. Helm 3 also
+      # resolves the rendered GVKs against cluster discovery, so its lane needs
+      # the CRDs used by the defaults and generated-project fixtures.
       - name: Create Kind cluster
         uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
         with:
           cluster_name: upgrade-dry-run
           node_image: kindest/node:v1.32.0
+
+      - name: Install fixture CRDs (Helm 3)
+        if: matrix.helm-version == 'v3.17.0'
+        run: >-
+          make install-knative install-kafka install-eventing
+          install-redpanda-crds install-object-bucket install-rook-crds
 
       - name: Dry-run chart defaults and generated managed-Kafka values
         run: make test-upgrade
