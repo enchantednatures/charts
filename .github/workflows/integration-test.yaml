@@ -462,27 +462,35 @@ jobs:
       - name: Install Strimzi operator
         run: hack/install-strimzi-operator.sh
 
-      - name: Install the Strimzi example
+      - name: Deploy managed Strimzi and measure cold start
         run: |
+          set -euo pipefail
           helm dependency build examples/kafka-strimzi
+          start=$(date +%s)
           helm install kafka-e2e examples/kafka-strimzi \
             --namespace test-ns \
             --create-namespace \
             --set kafka.cluster.replicas=1 \
             --set kafka.cluster.storage.size=5Gi \
             --timeout 10m
-
-      - name: Wait for Kafka, topics, and users
-        run: |
           KAFKA=$(kubectl get kafka -n test-ns -o jsonpath='{.items[0].metadata.name}')
           test -n "$KAFKA"
           kubectl wait "kafka/$KAFKA" -n test-ns --for=condition=Ready --timeout=10m
+          cluster_seconds=$(( $(date +%s) - start ))
           if kubectl get kafkatopic -n test-ns -o name | grep -q .; then
             kubectl wait kafkatopic --all -n test-ns --for=condition=Ready --timeout=10m
           fi
           if kubectl get kafkauser -n test-ns -o name | grep -q .; then
             kubectl wait kafkauser --all -n test-ns --for=condition=Ready --timeout=10m
           fi
+          total_seconds=$(( $(date +%s) - start ))
+          {
+            echo "### Managed Kafka cold start (Strimzi, 1 replica)"
+            echo ""
+            echo "- Cluster Ready: ${cluster_seconds}s"
+            echo "- Cluster, topics, and users Ready: ${total_seconds}s"
+            echo "- Measured from the start of \`helm install\`; operator install is excluded."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assert the KafkaSource exists
         run: kubectl get kafkasource -n test-ns
@@ -498,3 +506,71 @@ jobs:
           kubectl logs -n knative-eventing deployment/kafka-webhook-eventing --tail=200 || true
           kubectl get events -n knative-eventing --sort-by=.lastTimestamp | tail -50 || true
           kubectl logs -n strimzi-system deployment/strimzi-cluster-operator --tail=200 || true
+
+  kafka-redpanda-e2e:
+    name: Kafka Redpanda E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v3.17.0
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          cluster_name: kafka-redpanda-e2e
+          node_image: kindest/node:v1.32.0
+
+      - name: Install Knative Serving CRDs
+        run: make install-knative
+
+      - name: Install Knative Eventing core
+        run: hack/install-eventing-core.sh
+
+      - name: Install KafkaSource controller and webhook
+        run: hack/install-kafka-source-controller.sh
+
+      - name: Install Redpanda operator
+        run: hack/install-redpanda-operator.sh
+
+      - name: Deploy managed Redpanda and measure cold start
+        run: |
+          set -euo pipefail
+          helm dependency build examples/kafka-redpanda
+          start=$(date +%s)
+          helm install kafka-e2e examples/kafka-redpanda \
+            --namespace test-ns \
+            --create-namespace \
+            --set kafka.cluster.replicas=1 \
+            --set kafka.cluster.storage.size=5Gi \
+            --set kafka.cluster.storage.storageClassName=standard \
+            --timeout 10m
+          REDPANDA=$(kubectl get redpanda -n test-ns -o jsonpath='{.items[0].metadata.name}')
+          test -n "$REDPANDA"
+          kubectl wait "redpanda/$REDPANDA" -n test-ns --for=condition=Ready --timeout=10m
+          cluster_seconds=$(( $(date +%s) - start ))
+          kubectl wait topic --all -n test-ns --for=condition=Ready --timeout=10m
+          total_seconds=$(( $(date +%s) - start ))
+          {
+            echo "### Managed Kafka cold start (Redpanda, 1 replica)"
+            echo ""
+            echo "- Cluster Ready: ${cluster_seconds}s"
+            echo "- Cluster and topics Ready: ${total_seconds}s"
+            echo "- Measured from the start of \`helm install\`; operator install is excluded."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert the KafkaSource exists
+        run: kubectl get kafkasource -n test-ns
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get redpanda,topic,kafkasource -n test-ns -o wide || true
+          kubectl describe redpanda,topic,kafkasource -n test-ns || true
+          kubectl get pods -n test-ns -o wide || true
+          kubectl get pods -n redpanda-system -o wide || true
+          kubectl logs -n redpanda-system deployment/redpanda-controller-operator --tail=200 || true
+          kubectl get events -n test-ns --sort-by=.lastTimestamp | tail -50 || true

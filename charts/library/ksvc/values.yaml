@@ -628,7 +628,11 @@ kafka:
       # -- Managed username. Defaults to `<fullname>-kafka-user`.
       username: ""
     topics:
-      # -- Create the source topics on the managed cluster.
+      # -- Create the source topics on the managed cluster. The chart owns the
+      # managed topic lifecycle: enabling provider auto-create (Redpanda
+      # `auto_create_topics_enabled` or Strimzi `auto.create.topics.enable`)
+      # while this is true fails rendering. Each topic adds a Topic/KafkaTopic
+      # readiness gate to the Helm release.
       create: true
       # -- Partition count for created topics.
       partitions: 3
@@ -637,12 +641,16 @@ kafka:
       version: ""
       # -- Kafka metadata version (empty uses the operator default).
       metadataVersion: ""
-      # -- Extra fields merged into the Kafka `spec`.
+      # -- Extra fields merged into the Kafka `spec`. Do not set
+      # `kafka.config["auto.create.topics.enable"]: true` while
+      # `topics.create` is true; the chart owns managed topic lifecycle.
       extraSpec: {}
       # -- Extra fields merged into the KafkaNodePool `spec`.
       nodePoolExtraSpec: {}
     redpanda:
-      # -- Extra fields merged into the Redpanda `spec.clusterSpec`.
+      # -- Extra fields merged into the Redpanda `spec.clusterSpec`. Do not set
+      # `config.cluster.auto_create_topics_enabled: true` while
+      # `topics.create` is true; the chart owns managed topic lifecycle.
       extraClusterSpec: {}
       sasl:
         # -- Superuser Secret for managed Redpanda SCRAM.

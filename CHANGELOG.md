@@ -10,6 +10,26 @@ are documented by the generated GitHub Release notes attached to each published
 OCI artifact, so a patch or prerelease does not need its own entry here. The
 `1.0.0` section below covers every chart that targets the `1.0.0` values API.
 
+## [2.0.0] - 2026-11-22
+
+### Added
+
+- A live Redpanda managed-Kafka cold-start e2e job. The Strimzi e2e now records
+  cluster and topic/user readiness timings in the workflow step summary.
+- Documented the managed Kafka Helm wait surface, including the resources Flux
+  health-checks through kstatus and the `10m` install/upgrade timeout requirement
+  for cold clusters.
+
+### Changed
+
+- **Breaking:** managed Kafka now fails rendering when provider auto-create is
+  enabled while `kafka.cluster.topics.create` is true. The chart owns managed
+  topic lifecycle, and auto-created topics bypass the chart's partition and
+  replication settings while adding a redundant readiness gate. Consumers that
+  set Redpanda `config.cluster.auto_create_topics_enabled` or Strimzi
+  `auto.create.topics.enable` must remove the override, or set
+  `kafka.cluster.topics.create: false` and manage topics outside the chart.
+
 ## [1.3.0] - 2026-11-06
 
 ### Added

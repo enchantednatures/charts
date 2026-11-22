@@ -1,9 +1,9 @@
-# Migrating ksvc from 0.5.0 to 1.0.0
+# Migrating ksvc from 0.5.0 to 2.0.0
 
 This guide covers the breaking and behavior-changing values changes between the
-multi-service `v0.5.0` tag and the `1.0.0` release. It is written for consumers
-of the `ksvc` **library** chart; the `ksvc-app` 1.0.0 wrapper exposes the same
-values surface.
+multi-service `v0.5.0` tag and the `2.0.0` release. It is written for consumers
+of the `ksvc` **library** chart; the `ksvc-app` wrapper exposes the same values
+surface.
 
 Every "After" example is rendered with `helm template` against the local chart
 source. "Before" examples target the release named in the section and are kept
@@ -20,6 +20,7 @@ to show the exact shape being replaced.
 | `0.9.0` | PingSource | Add `pingsources.<key>` entries; no change for existing services. |
 | `0.10.0` | Managed Kafka and eventing | Optionally enable `kafka.cluster`, `kafka.broker` / `kafka.triggers`, and `kafka.sources.<key>.net`. |
 | `1.0.0` | API freeze | Remove `services.<key>.flagger.metrics.prometheusAddress`; `kafka.sources.<key>.topic` is optional; review `global.nameOverride`; review `objectBuckets` key lengths and `bucketRef` defaults. |
+| `2.0.0` | Managed Kafka topic ownership | Remove provider auto-create overrides (`auto_create_topics_enabled` / `auto.create.topics.enable`) while `kafka.cluster.topics.create: true`; rendering now fails. |
 
 ## 0.5.0: multi-service values layout
 
@@ -655,6 +656,69 @@ When `dragonfly.snapshot.bucketRef` is set, the chart derives:
 `bucketRef` and `dragonfly.snapshot.existingPersistentVolumeClaimName` are
 mutually exclusive. Explicit user-provided `dragonfly.env` entries and
 `dragonfly.args` flags are never duplicated.
+
+## 2.0.0: managed Kafka topic ownership
+
+The chart owns the topic lifecycle for managed Kafka clusters when
+`kafka.cluster.topics.create: true` (the default). Starting in `2.0.0`, enabling
+provider auto-create while chart topic creation is enabled fails rendering
+instead of silently creating a second, unowned topic path.
+
+Remove the provider auto-create override:
+
+Redpanda before:
+
+```yaml
+kafka:
+  cluster:
+    provider: redpanda
+    redpanda:
+      extraClusterSpec:
+        config:
+          cluster:
+            auto_create_topics_enabled: true
+```
+
+Redpanda after:
+
+```yaml
+kafka:
+  cluster:
+    provider: redpanda
+    topics:
+      create: true
+```
+
+Strimzi before:
+
+```yaml
+kafka:
+  cluster:
+    strimzi:
+      extraSpec:
+        kafka:
+          config:
+            auto.create.topics.enable: "true"
+```
+
+Strimzi after:
+
+```yaml
+kafka:
+  cluster:
+    strimzi:
+      extraSpec: {}
+    topics:
+      create: true
+```
+
+If topics are managed outside the chart, set `kafka.cluster.topics.create: false`
+instead. In that mode the chart renders no `Topic` / `KafkaTopic` resources and
+does not validate provider auto-create settings.
+
+Managed Kafka installs are readiness-heavy. A cold cluster can take several
+minutes, so set the Flux `HelmRelease` (or Helm) install and upgrade timeouts to
+at least `10m`.
 
 ## Verifying a migration
 
