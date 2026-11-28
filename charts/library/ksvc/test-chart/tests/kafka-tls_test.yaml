@@ -1,0 +1,189 @@
+suite: managed Kafka TLS tests
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should render the cert-manager CA chain for a managed Strimzi cluster
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: strimzi
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.tls.certManager.enabled: true
+    asserts:
+      - equal:
+          path: spec
+          value:
+            selfSigned: {}
+        documentSelector:
+          path: metadata.name
+          value: test-release-kafka-selfsigned
+      - equal:
+          path: kind
+          value: Certificate
+        documentSelector:
+          path: metadata.name
+          value: test-release-kafka-ca
+      - equal:
+          path: spec.isCA
+          value: true
+        documentSelector:
+          path: metadata.name
+          value: test-release-kafka-ca
+      - equal:
+          path: spec.secretName
+          value: test-release-kafka-ca
+        documentSelector:
+          path: metadata.name
+          value: test-release-kafka-ca
+      - equal:
+          path: spec.ca.secretName
+          value: test-release-kafka-ca
+        documentSelector:
+          path: metadata.name
+          value: test-release-kafka-ca-issuer
+
+  - it: should wire the cert-manager CA into Strimzi
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: strimzi
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.tls.certManager.enabled: true
+    documentSelector:
+      path: kind
+      value: Kafka
+    asserts:
+      - equal:
+          path: spec.clusterCa.type
+          value: cert-manager
+      - equal:
+          path: spec.clusterCa.certManager.issuerRef.name
+          value: test-release-kafka-ca-issuer
+      - equal:
+          path: spec.clusterCa.certManager.issuerRef.kind
+          value: Issuer
+      - equal:
+          path: spec.clusterCa.certManager.caCertRef.secretName
+          value: test-release-kafka-ca
+      - equal:
+          path: spec.clusterCa.certManager.caCertRef.certificate
+          value: ca.crt
+      - contains:
+          path: spec.kafka.listeners
+          content:
+            name: tls
+            port: 9093
+            type: internal
+            tls: true
+
+  - it: should wire the cert-manager CA into Redpanda
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: redpanda
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.tls.certManager.enabled: true
+    documentSelector:
+      path: kind
+      value: Redpanda
+    asserts:
+      - equal:
+          path: spec.clusterSpec.tls.enabled
+          value: true
+      - equal:
+          path: spec.clusterSpec.tls.certs.default.issuerRef.name
+          value: test-release-kafka-ca-issuer
+      - equal:
+          path: spec.clusterSpec.tls.certs.default.issuerRef.kind
+          value: Issuer
+      - equal:
+          path: spec.clusterSpec.tls.certs.default.applyInternalDNSNames
+          value: true
+      - equal:
+          path: spec.clusterSpec.tls.certs.default.caEnabled
+          value: true
+      - equal:
+          path: spec.clusterSpec.listeners.kafka.port
+          value: 9093
+      - equal:
+          path: spec.clusterSpec.listeners.kafka.tls.enabled
+          value: true
+      - equal:
+          path: spec.clusterSpec.listeners.kafka.cert
+          value: default
+
+  - it: should leave Strimzi's native CA in place when cert-manager is disabled
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: strimzi
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.tls.certManager.enabled: false
+    asserts:
+      - notExists:
+          path: spec.clusterCa
+        documentSelector:
+          path: kind
+          value: Kafka
+      - hasDocuments:
+          count: 3
+
+  - it: should add the managed CA to KafkaSources when TLS is enabled
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.tls.certManager.enabled: true
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+      kafka.sources.events.net.tls.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: spec.net.tls.enable
+          value: true
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.name
+          value: test-release-kafka-ca
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.key
+          value: ca.crt
+
+  - it: should use the native CA Secret when cert-manager is disabled
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.provider: strimzi
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.tls.certManager.enabled: false
+      kafka.sources.events.topic: events
+      kafka.sources.events.sink: api
+      kafka.sources.events.net.tls.enabled: true
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.name
+          value: test-release-kafka-cluster-ca-cert
+
+  - it: should issue a client certificate when clientAuth is enabled
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.tls.enabled: true
+      kafka.cluster.tls.certManager.enabled: true
+      kafka.cluster.tls.certManager.clientAuth: true
+    documentSelector:
+      path: metadata.name
+      value: test-release-kafka-client
+    asserts:
+      - equal:
+          path: kind
+          value: Certificate
+      - equal:
+          path: spec.secretName
+          value: test-release-kafka-client-tls
+      - equal:
+          path: spec.issuerRef.name
+          value: test-release-kafka-ca-issuer

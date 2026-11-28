@@ -1,7 +1,8 @@
 {{/*
 ksvc.class.objectBucketNotification — Render a CephBucketTopic and
 CephBucketNotification for one enabled bucket notification. The corresponding
-Kafka topic is rendered by ksvc.class.kafkaTopics.
+Kafka topic and KafkaSource are rendered by ksvc.class.kafkaTopics and the
+synthetic kafka.sources entries built in ksvc.loader.applyDefaults.
 Expects context: dict with "root", "bucketKey", "eventKey", "bucket", and
 "notification".
 */}}
@@ -21,6 +22,18 @@ Expects context: dict with "root", "bucketKey", "eventKey", "bucket", and
 {{- $topicName := include "ksvc.objectBucketNotificationTopicName" (dict "root" $root "bucketKey" .bucketKey "eventKey" .eventKey) -}}
 {{- $notificationName := include "ksvc.objectBucketNotificationName" (dict "root" $root "bucketKey" .bucketKey "eventKey" .eventKey) -}}
 {{- $kafkaURI := printf "kafka://%s" (include "ksvc.kafkaBootstrapServers" $root) -}}
+{{- $tlsEnabled := $root.Values.kafka.cluster.tls.enabled -}}
+{{- $filter := $notification.filter | default dict -}}
+{{- $keyFilters := list -}}
+{{- if $notification.prefix -}}
+{{- $keyFilters = append $keyFilters (dict "name" "prefix" "value" $notification.prefix) -}}
+{{- end -}}
+{{- if $notification.suffix -}}
+{{- $keyFilters = append $keyFilters (dict "name" "suffix" "value" $notification.suffix) -}}
+{{- end -}}
+{{- range $keyFilter := ($filter.keyFilters | default list) -}}
+{{- $keyFilters = append $keyFilters $keyFilter -}}
+{{- end -}}
 apiVersion: ceph.rook.io/v1
 kind: CephBucketTopic
 metadata:
@@ -45,7 +58,10 @@ spec:
     kafka:
       uri: {{ $kafkaURI | quote }}
       ackLevel: {{ $notification.ackLevel | default "broker" | quote }}
-      useSSL: false
+      useSSL: {{ $tlsEnabled }}
+      {{- if $tlsEnabled }}
+      disableVerifySSL: true
+      {{- end }}
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephBucketNotification
@@ -64,10 +80,9 @@ spec:
   topic: {{ $topicName | quote }}
   events:
     - {{ $event | quote }}
-  {{- $filter := $notification.filter | default dict -}}
-  {{- if or $filter.keyFilters $filter.metadataFilters $filter.tagFilters }}
+  {{- if or $keyFilters $filter.metadataFilters $filter.tagFilters }}
   filter:
-    {{- with $filter.keyFilters }}
+    {{- with $keyFilters }}
     keyFilters:
       {{- toYaml . | nindent 6 }}
     {{- end }}

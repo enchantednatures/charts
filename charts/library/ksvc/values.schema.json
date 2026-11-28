@@ -162,6 +162,29 @@
               "properties": {
                 "enabled": {
                   "type": "boolean"
+                },
+                "certManager": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "issuerRef": {
+                      "$ref": "#/$defs/issuerRef"
+                    },
+                    "caSecretName": {
+                      "type": "string"
+                    },
+                    "caIssuerName": {
+                      "type": "string"
+                    },
+                    "clientAuth": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  }
                 }
               }
             },
@@ -377,7 +400,9 @@
               "minLength": 1
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         },
         "parameters": {
           "type": "object"
@@ -893,19 +918,70 @@
         },
         "notifications": {
           "type": "object",
-          "description": "Bucket notifications keyed by S3 event. Each entry is opt-in.",
-          "propertyNames": {
-            "enum": [
-              "put",
-              "post",
-              "copy",
-              "multipart",
-              "delete",
-              "delete-marker"
-            ]
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/objectBucketNotification"
+          "description": "Bucket notifications. Use events.<event> for per-event configuration; legacy top-level event keys are also accepted.",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "sink": {
+              "type": "string"
+            },
+            "topicNameTemplate": {
+              "type": "string"
+            },
+            "events": {
+              "type": "object",
+              "additionalProperties": false,
+              "propertyNames": {
+                "enum": [
+                  "put",
+                  "post",
+                  "copy",
+                  "multipart",
+                  "delete",
+                  "delete-marker"
+                ]
+              },
+              "properties": {
+                "put": {
+                  "$ref": "#/$defs/objectBucketNotification"
+                },
+                "post": {
+                  "$ref": "#/$defs/objectBucketNotification"
+                },
+                "copy": {
+                  "$ref": "#/$defs/objectBucketNotification"
+                },
+                "multipart": {
+                  "$ref": "#/$defs/objectBucketNotification"
+                },
+                "delete": {
+                  "$ref": "#/$defs/objectBucketNotification"
+                },
+                "delete-marker": {
+                  "$ref": "#/$defs/objectBucketNotification"
+                }
+              }
+            },
+            "put": {
+              "$ref": "#/$defs/objectBucketNotification"
+            },
+            "post": {
+              "$ref": "#/$defs/objectBucketNotification"
+            },
+            "copy": {
+              "$ref": "#/$defs/objectBucketNotification"
+            },
+            "multipart": {
+              "$ref": "#/$defs/objectBucketNotification"
+            },
+            "delete": {
+              "$ref": "#/$defs/objectBucketNotification"
+            },
+            "delete-marker": {
+              "$ref": "#/$defs/objectBucketNotification"
+            }
           }
         }
       }
@@ -982,6 +1058,33 @@
         },
         "filter": {
           "$ref": "#/$defs/objectBucketNotificationFilter"
+        },
+        "partitions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "suffix": {
+          "type": "string"
+        },
+        "sink": {
+          "type": "string"
+        },
+        "topicNameTemplate": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "consumers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "delivery": {
+          "type": "object"
+        },
+        "dlq": {
+          "type": "object"
         }
       }
     },
@@ -1671,6 +1774,11 @@
               "$ref": "#/$defs/resources"
             }
           }
+        },
+        "partitions": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Kafka topic partition count; defaults to kafka.cluster.topics.partitions."
         }
       }
     },

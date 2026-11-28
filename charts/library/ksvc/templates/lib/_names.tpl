@@ -77,19 +77,37 @@ Returns: <fullname>-<key>  (truncated to 63 chars, trailing dash trimmed)
 {{/*
 ksvc.objectBucketNotificationTopicName — Kafka topic and CephBucketTopic name
 for one bucket notification. Defaults to <fullname>-<bucket-key>-<event-key>;
-objectBuckets.<key>.notifications.<event>.topicName overrides it.
+objectBuckets.<key>.notifications.events.<event>.topicName overrides it. A
+topicNameTemplate supports {release}, {bucket}, {event}, and {namespace}.
 Expects context: dict with "root", "bucketKey", and "eventKey".
 */}}
 {{- define "ksvc.objectBucketNotificationTopicName" -}}
 {{- $buckets := .root.Values.objectBuckets | default dict -}}
 {{- $bucket := index $buckets .bucketKey | default dict -}}
 {{- $notifications := $bucket.notifications | default dict -}}
-{{- $notification := index $notifications .eventKey | default dict -}}
+{{- $events := $notifications.events | default dict -}}
+{{- $notification := index $events .eventKey | default dict -}}
 {{- $override := $notification.topicName | default "" -}}
+{{- if not $override -}}
+{{- /* Legacy payloads stored the event entry directly under notifications. */ -}}
+{{- if not $notification -}}
+{{- $notification = index $notifications .eventKey | default dict -}}
+{{- $override = $notification.topicName | default "" -}}
+{{- end -}}
+{{- end -}}
 {{- if $override -}}
-{{- $override | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- $override | lower | replace "_" "-" | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- printf "%s-%s-%s" (include "ksvc.fullname" .root) .bucketKey .eventKey | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- $template := $notification.topicNameTemplate | default "" -}}
+{{- if not $template -}}
+{{- $template = $notifications.topicNameTemplate | default "{release}-{bucket}-{event}" -}}
+{{- end -}}
+{{- $topic := $template -}}
+{{- $topic = replace "{release}" (include "ksvc.fullname" .root) $topic -}}
+{{- $topic = replace "{bucket}" .bucketKey $topic -}}
+{{- $topic = replace "{event}" .eventKey $topic -}}
+{{- $topic = replace "{namespace}" .root.Release.Namespace $topic -}}
+{{- $topic | lower | replace "_" "-" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- end }}
 
@@ -122,8 +140,12 @@ notification exists. Used to decide whether to render Kafka topic resources.
 {{- $found := false -}}
 {{- range $bucketKey, $bucket := .Values.objectBuckets -}}
 {{- $notifications := $bucket.notifications | default dict -}}
-{{- range $eventKey, $notification := $notifications -}}
-{{- if $notification.enabled -}}{{- $found = true -}}{{- end -}}
+{{- $events := $notifications.events | default dict -}}
+{{- if not $events -}}
+{{- $events = $notifications -}}
+{{- end -}}
+{{- range $eventKey, $notification := $events -}}
+{{- if and (kindIs "map" $notification) ($notification.enabled) -}}{{- $found = true -}}{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- if $found -}}true{{- end -}}
@@ -196,6 +218,60 @@ notification exists. Used to decide whether to render Kafka topic resources.
 {{- $name | trunc 47 | trimSuffix "-" | replace "_" "-" -}}
 {{- else -}}
 {{- printf "%s-kafka" (include "ksvc.fullname" .) | trunc 47 | trimSuffix "-" | replace "_" "-" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+ksvc.kafkaTLSIssuerName / ksvc.kafkaCASecretName / ksvc.kafkaCAIssuerName —
+cert-manager resources backing the chart-managed Kafka TLS chain.
+*/}}
+{{- define "ksvc.kafkaTLSIssuerName" -}}
+{{- printf "%s-kafka-selfsigned" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- end }}
+
+{{- define "ksvc.kafkaCASecretName" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- $tls := $cluster.tls | default dict -}}
+{{- $cm := $tls.certManager | default dict -}}
+{{- $override := $cm.caSecretName | default "" -}}
+{{- if $override -}}
+{{- $override -}}
+{{- else -}}
+{{- printf "%s-kafka-ca" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "ksvc.kafkaCAIssuerName" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- $tls := $cluster.tls | default dict -}}
+{{- $cm := $tls.certManager | default dict -}}
+{{- $override := $cm.caIssuerName | default "" -}}
+{{- if $override -}}
+{{- $override -}}
+{{- else -}}
+{{- printf "%s-kafka-ca-issuer" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "ksvc.kafkaClientTLSSecretName" -}}
+{{- printf "%s-kafka-client-tls" (include "ksvc.fullname" .) | trunc 63 | trimSuffix "-" | replace "_" "-" -}}
+{{- end }}
+
+{{/*
+ksvc.kafkaClientCASecretName — Secret holding the client trust anchor.
+cert-manager mode uses the chart CA Secret; native mode uses the provider's
+generated CA Secret.
+*/}}
+{{- define "ksvc.kafkaClientCASecretName" -}}
+{{- $cluster := .Values.kafka.cluster | default dict -}}
+{{- $tls := $cluster.tls | default dict -}}
+{{- $cm := $tls.certManager | default dict -}}
+{{- if $cm.enabled -}}
+{{- include "ksvc.kafkaCASecretName" . -}}
+{{- else if eq ($cluster.provider | default "strimzi") "redpanda" -}}
+{{- printf "%s-default-cert" (include "ksvc.kafkaClusterName" .) -}}
+{{- else -}}
+{{- printf "%s-cluster-ca-cert" (include "ksvc.kafkaClusterName" .) -}}
 {{- end -}}
 {{- end }}
 

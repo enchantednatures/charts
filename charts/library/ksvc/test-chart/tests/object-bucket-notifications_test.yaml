@@ -3,9 +3,12 @@ templates:
   - templates/common.yaml
 set:
   services.api.image.repository: test/image
+  services.worker.image.repository: test/image
   objectBuckets.uploads.storageClassName: ceph-bucket
   objectBuckets.uploads.objectStore.name: ceph-objectstore
   objectBuckets.uploads.objectStore.namespace: rook-ceph
+  objectBuckets.uploads.notifications.sink: api
+  objectBuckets.uploads.notifications.events.delete.enabled: false
 release:
   name: test-release
   namespace: test-ns
@@ -15,36 +18,145 @@ tests:
       kafka.cluster.enabled: true
     asserts:
       - hasDocuments:
-          count: 4
+          count: 5
 
-  - it: should render nothing for a disabled notification
+  - it: should render nothing for a disabled legacy notification
     set:
       kafka.cluster.enabled: true
       objectBuckets.uploads.notifications.put.enabled: false
     asserts:
       - hasDocuments:
-          count: 4
+          count: 5
 
-  - it: should label the ObjectBucketClaim for each enabled notification
+  - it: should render put and delete when both are enabled
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-      objectBuckets.uploads.notifications.delete.enabled: true
-    documentSelector:
-      path: kind
-      value: ObjectBucketClaim
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.sink: api
+      objectBuckets.uploads.notifications.events.delete.enabled: true
     asserts:
       - equal:
           path: metadata.labels["bucket-notification-test-release-uploads-put"]
           value: test-release-uploads-put
+        documentSelector:
+          path: kind
+          value: ObjectBucketClaim
       - equal:
           path: metadata.labels["bucket-notification-test-release-uploads-delete"]
           value: test-release-uploads-delete
+        documentSelector:
+          path: kind
+          value: ObjectBucketClaim
+      - notExists:
+          path: metadata.labels["bucket-notification-test-release-uploads-post"]
+        documentSelector:
+          path: kind
+          value: ObjectBucketClaim
+
+  - it: should keep legacy top-level notification entries working
+    set:
+      kafka.cluster.enabled: true
+      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.put.prefix: uploads/
+    documentSelector:
+      path: kind
+      value: CephBucketNotification
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-uploads-put
+      - equal:
+          path: spec.events[0]
+          value: s3:ObjectCreated:Put
+      - equal:
+          path: spec.filter.keyFilters[0].name
+          value: prefix
+      - equal:
+          path: spec.filter.keyFilters[0].value
+          value: uploads/
+
+  - it: should render one source per enabled event with its own partition count and filter
+    set:
+      kafka.cluster.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.partitions: 4
+      objectBuckets.uploads.notifications.events.put.prefix: uploads/
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.delete.enabled: true
+      objectBuckets.uploads.notifications.events.delete.partitions: 1
+      objectBuckets.uploads.notifications.events.delete.suffix: .log
+      objectBuckets.uploads.notifications.events.delete.sink: worker
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-release-uploads-put
+        documentSelector:
+          path: spec.partitions
+          value: 4
+      - equal:
+          path: spec.partitions
+          value: 4
+        documentSelector:
+          path: spec.partitions
+          value: 4
+      - equal:
+          path: metadata.name
+          value: test-release-uploads-delete
+        documentSelector:
+          path: spec.partitions
+          value: 1
+      - equal:
+          path: spec.partitions
+          value: 1
+        documentSelector:
+          path: spec.partitions
+          value: 1
+      - equal:
+          path: spec.filter.keyFilters[0].name
+          value: prefix
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-put
+      - equal:
+          path: spec.filter.keyFilters[0].name
+          value: suffix
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-delete
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-api
+        documentSelector:
+          path: metadata.name
+          value: test-release-s3-uploads-put-kafka-source
+      - equal:
+          path: spec.sink.ref.name
+          value: test-release-worker
+        documentSelector:
+          path: metadata.name
+          value: test-release-s3-uploads-delete-kafka-source
+
+  - it: should honour a per-event topicNameTemplate
+    set:
+      kafka.cluster.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.put.topicNameTemplate: "{namespace}-{bucket}-{event}-queue"
+    documentSelector:
+      path: kind
+      value: CephBucketTopic
+    asserts:
+      - equal:
+          path: metadata.name
+          value: test-ns-uploads-put-queue
 
   - it: should render a CephBucketTopic pointing at the managed Strimzi cluster
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
     documentSelector:
       path: kind
       value: CephBucketTopic
@@ -81,17 +193,62 @@ tests:
       - isNull:
           path: spec.endpoint.kafka.userSecretRef
 
+  - it: should set TLS flags on the CephBucketTopic when the managed cluster uses TLS
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.tls.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+    documentSelector:
+      path: kind
+      value: CephBucketTopic
+    asserts:
+      - equal:
+          path: spec.endpoint.kafka.uri
+          value: kafka://test-release-kafka-kafka-bootstrap.test-ns.svc.cluster.local:9093
+      - equal:
+          path: spec.endpoint.kafka.useSSL
+          value: true
+      - equal:
+          path: spec.endpoint.kafka.disableVerifySSL
+          value: true
+
+  - it: should add the CA Secret to notification KafkaSources when TLS is enabled
+    set:
+      kafka.cluster.enabled: true
+      kafka.cluster.tls.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+    documentSelector:
+      path: kind
+      value: KafkaSource
+    asserts:
+      - equal:
+          path: spec.net.tls.enable
+          value: true
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.name
+          value: test-release-kafka-ca
+      - equal:
+          path: spec.net.tls.caCert.secretKeyRef.key
+          value: ca.crt
+
   - it: should render a CephBucketNotification with the mapped event and filter
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-      objectBuckets.uploads.notifications.put.filter.keyFilters:
-        - name: prefix
-          value: uploads/
-      objectBuckets.uploads.notifications.put.filter.metadataFilters:
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.put.prefix: uploads/
+      objectBuckets.uploads.notifications.events.put.filter.keyFilters:
+        - name: regex
+          value: ".*\\.json$"
+      objectBuckets.uploads.notifications.events.put.filter.metadataFilters:
         - name: x-amz-meta-color
           value: blue
-      objectBuckets.uploads.notifications.put.filter.tagFilters:
+      objectBuckets.uploads.notifications.events.put.filter.tagFilters:
         - name: project
           value: brown
     documentSelector:
@@ -114,109 +271,73 @@ tests:
           path: spec.filter.keyFilters[0].value
           value: uploads/
       - equal:
+          path: spec.filter.keyFilters[1].name
+          value: regex
+      - equal:
           path: spec.filter.metadataFilters[0].name
           value: x-amz-meta-color
       - equal:
           path: spec.filter.tagFilters[0].name
           value: project
 
-  - it: should map the put event
+  - it: should map every supported event
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-    documentSelector:
-      path: kind
-      value: CephBucketNotification
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.sink: api
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.post.enabled: true
+      objectBuckets.uploads.notifications.events.copy.enabled: true
+      objectBuckets.uploads.notifications.events.multipart.enabled: true
+      objectBuckets.uploads.notifications.events.delete.enabled: true
+      objectBuckets.uploads.notifications.events.delete-marker.enabled: true
     asserts:
-      - equal:
-          path: metadata.name
-          value: test-release-uploads-put
       - equal:
           path: spec.events[0]
           value: s3:ObjectCreated:Put
-
-  - it: should map the post event
-    set:
-      kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.post.enabled: true
-    documentSelector:
-      path: kind
-      value: CephBucketNotification
-    asserts:
-      - equal:
-          path: metadata.name
-          value: test-release-uploads-post
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-put
       - equal:
           path: spec.events[0]
           value: s3:ObjectCreated:Post
-
-  - it: should map the copy event
-    set:
-      kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.copy.enabled: true
-    documentSelector:
-      path: kind
-      value: CephBucketNotification
-    asserts:
-      - equal:
-          path: metadata.name
-          value: test-release-uploads-copy
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-post
       - equal:
           path: spec.events[0]
           value: s3:ObjectCreated:Copy
-
-  - it: should map the multipart event
-    set:
-      kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.multipart.enabled: true
-    documentSelector:
-      path: kind
-      value: CephBucketNotification
-    asserts:
-      - equal:
-          path: metadata.name
-          value: test-release-uploads-multipart
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-copy
       - equal:
           path: spec.events[0]
           value: s3:ObjectCreated:CompleteMultipartUpload
-
-  - it: should map the delete event
-    set:
-      kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.delete.enabled: true
-    documentSelector:
-      path: kind
-      value: CephBucketNotification
-    asserts:
-      - equal:
-          path: metadata.name
-          value: test-release-uploads-delete
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-multipart
       - equal:
           path: spec.events[0]
           value: s3:ObjectRemoved:Delete
-
-  - it: should map the delete-marker event
-    set:
-      kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.delete-marker.enabled: true
-    documentSelector:
-      path: kind
-      value: CephBucketNotification
-    asserts:
-      - equal:
-          path: metadata.name
-          value: test-release-uploads-delete-marker
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-delete
       - equal:
           path: spec.events[0]
           value: s3:ObjectRemoved:DeleteMarkerCreated
+        documentSelector:
+          path: spec.topic
+          value: test-release-uploads-delete-marker
 
   - it: should render persistent, opaqueData, and ackLevel on the topic
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-      objectBuckets.uploads.notifications.put.persistent: true
-      objectBuckets.uploads.notifications.put.opaqueData: tenant-a
-      objectBuckets.uploads.notifications.put.ackLevel: none
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.put.persistent: true
+      objectBuckets.uploads.notifications.events.put.opaqueData: tenant-a
+      objectBuckets.uploads.notifications.events.put.ackLevel: none
     documentSelector:
       path: kind
       value: CephBucketTopic
@@ -231,10 +352,13 @@ tests:
           path: spec.endpoint.kafka.ackLevel
           value: none
 
-  - it: should render a KafkaTopic on the managed cluster
+  - it: should render a KafkaTopic with the event partition count
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.put.partitions: 6
     documentSelector:
       path: kind
       value: KafkaTopic
@@ -247,16 +371,16 @@ tests:
           value: test-release-kafka
       - equal:
           path: spec.partitions
-          value: 3
-      - equal:
-          path: spec.replicas
-          value: 3
+          value: 6
 
   - it: should render a Redpanda Topic on the managed Redpanda cluster
     set:
       kafka.cluster.enabled: true
       kafka.cluster.provider: redpanda
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.put.partitions: 2
     documentSelector:
       path: kind
       value: Topic
@@ -272,16 +396,15 @@ tests:
           value: test-release-kafka
       - equal:
           path: spec.partitions
-          value: 3
-      - equal:
-          path: spec.replicationFactor
-          value: 3
+          value: 2
 
   - it: should accept an explicit topicName override
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-      objectBuckets.uploads.notifications.put.topicName: custom-upload-events
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.put.topicName: custom-upload-events
     asserts:
       - equal:
           path: metadata.name
@@ -312,7 +435,9 @@ tests:
     set:
       kafka.cluster.enabled: true
       kafka.sources: {}
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
     documentSelector:
       path: kind
       value: KafkaTopic
@@ -321,11 +446,34 @@ tests:
           path: metadata.name
           value: test-release-uploads-put
 
+  - it: should fail when an enabled event has no sink
+    set:
+      kafka.cluster.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.sink: ""
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.delete.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "objectBuckets.uploads.notifications.events.put.sink is required when the event is enabled"
+
+  - it: should fail when the sink references an unknown service
+    set:
+      kafka.cluster.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: missing
+    asserts:
+      - failedTemplate:
+          errorMessage: "objectBuckets.uploads.notifications.events.put.sink references 'missing' which does not exist in the services map"
+
   - it: should fail when notifications are enabled without objectStore.name
     set:
       kafka.cluster.enabled: true
       objectBuckets.uploads.objectStore.name: ""
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
     asserts:
       - failedTemplate:
           errorMessage: "objectBuckets.uploads.objectStore.name is required when notifications are enabled"
@@ -334,7 +482,9 @@ tests:
     set:
       kafka.cluster.enabled: true
       objectBuckets.uploads.objectStore.namespace: ""
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
     asserts:
       - failedTemplate:
           errorMessage: "objectBuckets.uploads.objectStore.namespace is required when notifications are enabled"
@@ -342,57 +492,58 @@ tests:
   - it: should fail when the managed Kafka cluster is disabled
     set:
       kafka.cluster.enabled: false
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
     asserts:
       - failedTemplate:
-          errorMessage: "objectBuckets.uploads.notifications.put requires kafka.cluster.enabled=true; notifications currently support only the chart-managed Kafka cluster (see issue #137)"
+          errorMessage: "objectBuckets.uploads.notifications.events.put requires kafka.cluster.enabled=true; notifications currently support only the chart-managed Kafka cluster"
 
   - it: should fail when Kafka auth is enabled
     set:
       kafka.cluster.enabled: true
       kafka.cluster.auth.type: scram
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
     asserts:
       - failedTemplate:
-          errorMessage: "objectBuckets.uploads.notifications.put requires kafka.cluster.auth.type=none; authenticated Kafka notifications are tracked in issue #137"
-
-  - it: should fail when Kafka TLS is enabled
-    set:
-      kafka.cluster.enabled: true
-      kafka.cluster.tls.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "objectBuckets.uploads.notifications.put requires kafka.cluster.tls.enabled=false; TLS Kafka notifications are tracked in issue #137"
+          errorMessage: "objectBuckets.uploads.notifications.events.put requires kafka.cluster.auth.type=none; authenticated Kafka notifications are not supported yet"
 
   - it: should fail when topic creation is disabled
     set:
       kafka.cluster.enabled: true
       kafka.cluster.topics.create: false
-      objectBuckets.uploads.notifications.put.enabled: true
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
     asserts:
       - failedTemplate:
-          errorMessage: "objectBuckets.uploads.notifications.put requires kafka.cluster.topics.create=true so the chart can create the Kafka topic"
+          errorMessage: "objectBuckets.uploads.notifications.events.put requires kafka.cluster.topics.create=true so the chart can create the Kafka topic"
 
   - it: should fail for duplicate topic names
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-      objectBuckets.uploads.notifications.delete.enabled: true
-      objectBuckets.uploads.notifications.delete.topicName: test-release-uploads-put
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.delete.enabled: true
+      objectBuckets.uploads.notifications.events.delete.sink: api
+      objectBuckets.uploads.notifications.events.delete.topicName: test-release-uploads-put
     asserts:
       - failedTemplate:
-          errorMessage: "objectBuckets.uploads.notifications.put derives Kafka topic test-release-uploads-put, which is already used by another notification"
+          errorMessage: "objectBuckets.uploads.notifications.events.delete derives Kafka topic test-release-uploads-put, which is already used by another notification"
 
   - it: should fail for duplicate key filter names
     set:
       kafka.cluster.enabled: true
-      objectBuckets.uploads.notifications.put.enabled: true
-      objectBuckets.uploads.notifications.put.filter.keyFilters:
-        - name: prefix
-          value: a/
+      objectBuckets.uploads.notifications.enabled: true
+      objectBuckets.uploads.notifications.events.put.enabled: true
+      objectBuckets.uploads.notifications.events.put.sink: api
+      objectBuckets.uploads.notifications.events.put.prefix: a/
+      objectBuckets.uploads.notifications.events.put.filter.keyFilters:
         - name: prefix
           value: b/
     asserts:
       - failedTemplate:
-          errorMessage: "objectBuckets.uploads.notifications.put.filter.keyFilters contains duplicate name prefix"
+          errorMessage: "objectBuckets.uploads.notifications.events.put.filter.keyFilters contains duplicate name prefix (prefix/suffix shortcuts also count)"

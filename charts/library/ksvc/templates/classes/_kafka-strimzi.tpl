@@ -16,6 +16,7 @@
 {{- $nodePoolExtra := $cluster.strimzi.nodePoolExtraSpec | default dict -}}
 {{- $nodePoolSpec = mustMergeOverwrite (deepCopy $nodePoolSpec) $nodePoolExtra -}}
 {{- $authType := $cluster.auth.type | default "none" -}}
+{{- $cm := $cluster.tls.certManager | default dict -}}
 {{- $listenersCfg := $cluster.listeners | default dict -}}
 {{- $plainPort := int ($listenersCfg.plainPort | default 9092) -}}
 {{- $tlsPort := int ($listenersCfg.tlsPort | default 9093) -}}
@@ -23,6 +24,9 @@
 {{- $listeners := list $plain -}}
 {{- if $cluster.tls.enabled -}}
 {{- $tlsListener := dict "name" "tls" "port" $tlsPort "type" "internal" "tls" true -}}
+{{- if and $cm.clientAuth (ne $authType "scram") -}}
+{{- $_ := set $tlsListener "authentication" (dict "type" "tls") -}}
+{{- end -}}
 {{- $listeners = append $listeners $tlsListener -}}
 {{- end -}}
 {{- if eq $authType "scram" -}}
@@ -56,6 +60,16 @@
   "kafka" $kafkaSpec
   "entityOperator" (dict "topicOperator" (dict) "userOperator" (dict))
 -}}
+{{- if and $cluster.tls.enabled $cm.enabled -}}
+{{- $clusterCa := dict
+  "type" "cert-manager"
+  "certManager" (dict
+    "issuerRef" (dict "name" (include "ksvc.kafkaCAIssuerName" .) "kind" "Issuer")
+    "caCertRef" (dict "secretName" (include "ksvc.kafkaCASecretName" .) "certificate" "ca.crt")
+  )
+-}}
+{{- $_ := set $spec "clusterCa" $clusterCa -}}
+{{- end -}}
 {{- $extraSpec := $cluster.strimzi.extraSpec | default dict -}}
 {{- $spec = mustMergeOverwrite (deepCopy $spec) $extraSpec -}}
 apiVersion: kafka.strimzi.io/v1
@@ -94,7 +108,7 @@ metadata:
     {{- include "ksvc.labels" $root | nindent 4 }}
     strimzi.io/cluster: {{ include "ksvc.kafkaClusterName" $root }}
 spec:
-  partitions: {{ int $cluster.topics.partitions }}
+  partitions: {{ int (.partitions | default $cluster.topics.partitions) }}
   replicas: {{ int (include "ksvc.kafkaTopicReplicationFactor" $root) }}
   {{- if ne $topic $name }}
   topicName: {{ $topic }}

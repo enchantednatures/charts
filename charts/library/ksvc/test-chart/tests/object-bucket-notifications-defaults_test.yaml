@@ -1,0 +1,34 @@
+suite: object bucket notification default events
+templates:
+  - templates/common.yaml
+set:
+  services.api.image.repository: test/image
+  objectBuckets.uploads.storageClassName: ceph-bucket
+  objectBuckets.uploads.objectStore.name: ceph-objectstore
+  objectBuckets.uploads.objectStore.namespace: rook-ceph
+  objectBuckets.uploads.notifications.enabled: true
+  objectBuckets.uploads.notifications.sink: api
+  kafka.cluster.enabled: true
+release:
+  name: test-release
+  namespace: test-ns
+tests:
+  - it: should enable put and delete and leave the other events opt-in
+    documentSelector:
+      path: kind
+      value: ObjectBucketClaim
+    asserts:
+      - equal:
+          path: metadata.labels["bucket-notification-test-release-uploads-put"]
+          value: test-release-uploads-put
+      - equal:
+          path: metadata.labels["bucket-notification-test-release-uploads-delete"]
+          value: test-release-uploads-delete
+      - notExists:
+          path: metadata.labels["bucket-notification-test-release-uploads-post"]
+      - notExists:
+          path: metadata.labels["bucket-notification-test-release-uploads-copy"]
+      - notExists:
+          path: metadata.labels["bucket-notification-test-release-uploads-multipart"]
+      - notExists:
+          path: metadata.labels["bucket-notification-test-release-uploads-delete-marker"]

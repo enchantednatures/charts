@@ -7,7 +7,10 @@ set:
   objectBuckets.uploads.storageClassName: ceph-bucket
   objectBuckets.uploads.objectStore.name: ceph-objectstore
   objectBuckets.uploads.objectStore.namespace: rook-ceph
-  objectBuckets.uploads.notifications.put.enabled: true
+  objectBuckets.uploads.notifications.enabled: true
+  objectBuckets.uploads.notifications.sink: api
+  objectBuckets.uploads.notifications.events.put.enabled: true
+  objectBuckets.uploads.notifications.events.delete.enabled: false
 release:
   name: test-object-bucket-notifications
   namespace: test-ns

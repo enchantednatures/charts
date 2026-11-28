@@ -6,7 +6,7 @@ The source.sink field must reference a valid key in .Values.services.
 */}}
 {{- define "ksvc.class.kafkaSource" -}}
 {{- $source := .source -}}
-{{- $hasBroker := and .root.Values.kafka .root.Values.kafka.broker .root.Values.kafka.broker.enabled -}}
+{{- $hasBroker := and .root.Values.kafka .root.Values.kafka.broker .root.Values.kafka.broker.enabled (not $source.bypassBroker) -}}
 {{- $sinkServiceName := "" -}}
 {{- if not $hasBroker -}}
 {{- /* Resolve the sink service name using the sink's own config (honours nameOverride). */ -}}

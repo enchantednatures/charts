@@ -141,7 +141,7 @@ Feature maturity follows the [versioning and deprecation policy](../../../CONTRI
 | Flagger canary | Stable | Follows the versioning policy. |
 | Object buckets (`objectBuckets`) | Stable | Follows the versioning policy. |
 | App bucket access (`services.<key>.objectBuckets`) | Stable | Follows the versioning policy. |
-| Bucket notifications (`objectBuckets.<key>.notifications`) | Experimental | Plaintext, unauthenticated managed Kafka only; auth/TLS tracked in issue #137. |
+| Bucket notifications (`objectBuckets.<key>.notifications`) | Experimental | Per-event queues on the managed Kafka cluster with independent partitions, prefix/suffix filters, sink services, and topic name templates. TLS is supported; auth is not yet. |
 | PingSource | Stable | Follows the versioning policy. |
 | KafkaSource and DLQ | Stable | Follows the versioning policy. |
 | cert-manager integration | Stable | Follows the versioning policy. |
@@ -260,6 +260,9 @@ sections following the table.
 | kafka.cluster.strimzi.nodePoolExtraSpec | object | `{}` | Extra fields merged into the KafkaNodePool `spec`. |
 | kafka.cluster.strimzi.version | string | `""` | Strimzi Kafka version (empty uses the operator default). |
 | kafka.cluster.tls.enabled | bool | `false` | Enable the internal TLS listener. |
+| kafka.cluster.tls.certManager.enabled | bool | `true` | Generate the managed Kafka TLS chain (self-signed Issuer, CA Certificate, CA Issuer) with cert-manager. |
+| kafka.cluster.tls.certManager.issuerRef.name | string | `""` | Optional existing Issuer/ClusterIssuer used to sign the CA Certificate; empty creates a self-signed Issuer. |
+| kafka.cluster.tls.certManager.clientAuth | bool | `false` | Also issue a client certificate for mTLS. |
 | kafka.cluster.topics.create | bool | `true` | Create the source topics on the managed cluster. |
 | kafka.cluster.topics.partitions | int | `3` | Partition count for created topics. |
 | kafka.sources | object | `{}` | Map of KafkaSource entries, keyed by source name. Each key renders a KafkaSource named `<release>-<key>-kafka-source`; every entry's `sink` must reference a key in `services` (validated at render time). See the Kafka Event Sources section for the per-entry schema. |
@@ -551,7 +554,7 @@ Set `kafka.cluster.enabled: true` and choose `provider: strimzi` or `provider: r
 *   **Strimzi:** renders `KafkaNodePool` + `Kafka`, and `KafkaTopic` / `KafkaUser` when `topics.create` / `auth.type: scram` are enabled. Requires Strimzi >= 1.0 and Kubernetes >= 1.32. `kafka.cluster.name` must be a DNS-1123 label of at most 47 characters so derived Service names stay within 63.
 *   **Redpanda:** renders `Redpanda`, `Topic`, and `User`. Requires the Redpanda operator >= 26.2 and a user-supplied superuser Secret (`kafka.cluster.redpanda.sasl.secretRef`) for SCRAM.
 *   **Bootstrap:** Strimzi `<cluster>-kafka-bootstrap.<namespace>.svc.<global.clusterDomain>:<plainPort|tlsPort>`; Redpanda `<cluster>.<namespace>.svc.<global.clusterDomain>:<tlsPort>`. The defaults are `9092` (plain) and `9093` (TLS), configurable through `kafka.cluster.listeners`.
-*   **TLS:** managed Strimzi derives `<cluster>-cluster-ca-cert` (`ca.crt`); Redpanda derives `<cluster>-default-cert` (`ca.crt`). Redpanda TLS requires cert-manager. Every source must set `net.tls.enabled: true` when `kafka.cluster.tls.enabled` is true; otherwise rendering fails.
+*   **TLS:** with `kafka.cluster.tls.certManager.enabled: true` (default), the chart creates a self-signed Issuer, a CA Certificate, and a CA Issuer, then wires that issuer into Strimzi (`clusterCa.type: cert-manager`) or Redpanda (`tls.certs.default.issuerRef`). Clients trust `<fullname>-kafka-ca` (`ca.crt`). With cert-manager disabled, Strimzi uses `<cluster>-cluster-ca-cert` and Redpanda uses `<cluster>-default-cert`. Every source must set `net.tls.enabled: true` when `kafka.cluster.tls.enabled` is true; otherwise rendering fails.
 *   **SASL:** set `kafka.sources.<key>.net.sasl.enabled: true` when `auth.type: scram`. The chart derives the per-source SASL type Secret and the managed user password Secret. Enabling SASL while `auth.type: none` fails rendering rather than producing dangling references.
 *   **Explicit bootstrapServers:** setting a source or broker bootstrap server while the managed cluster is enabled fails rendering rather than silently overriding it.
 *   **Replication:** topic/broker replication factors clamp to `min(replicas, 3)` for Strimzi and `1`/`3` for Redpanda.
@@ -767,15 +770,20 @@ services:
 
 ### Bucket notifications (Kafka)
 
-Bucket notifications publish S3 events to the chart-managed Kafka cluster. They are opt-in per event and currently require all of the following:
+Bucket notifications publish S3 events to the chart-managed Kafka cluster. Set
+`notifications.enabled: true`; `put` and `delete` are enabled by default and the
+remaining events are opt-in.
+
+Requirements:
 
 *   `kafka.cluster.enabled: true`
 *   `kafka.cluster.auth.type: none`
-*   `kafka.cluster.tls.enabled: false`
 *   `kafka.cluster.topics.create: true`
 *   `objectBuckets.<key>.objectStore.name` and `.namespace`
 
-Authenticated and TLS notifications are tracked in [issue #137](https://github.com/enchantednatures/charts/issues/137).
+TLS is supported. Rook's `CephBucketTopic` Kafka endpoint has no CA field, so
+TLS notifications set `useSSL: true` and `disableVerifySSL: true`; the connection
+is encrypted but the RGW client does not verify the broker certificate.
 
 ```yaml
 objectBuckets:
@@ -786,14 +794,18 @@ objectBuckets:
       name: ceph-objectstore
       namespace: rook-ceph
     notifications:
-      put:
-        enabled: true
-        filter:
-          keyFilters:
-            - name: prefix
-              value: uploads/
-      delete:
-        enabled: true
+      enabled: true
+      events:
+        put:
+          enabled: true
+          partitions: 6
+          prefix: uploads/
+          sink: api
+        delete:
+          enabled: true
+          partitions: 1
+          suffix: .log
+          sink: audit
 
 kafka:
   cluster:
@@ -801,7 +813,20 @@ kafka:
     provider: strimzi
 ```
 
-Each enabled event key maps to a Ceph/S3 event and creates its own `CephBucketTopic`, `CephBucketNotification`, and Kafka topic:
+Each enabled event creates its own queue and consumer path:
+
+*   `partitions` — Kafka topic partitions (default `kafka.cluster.topics.partitions`).
+*   `prefix` / `suffix` — S3 key filters, mapped to `keyFilters`.
+*   `sink` — services key that receives the event (default `notifications.sink`).
+*   `topicNameTemplate` — supports `{release}`, `{bucket}`, `{event}`, and
+    `{namespace}`; defaults to `{release}-{bucket}-{event}`. `topicName` is a
+    literal override.
+*   `persistent`, `opaqueData`, `ackLevel` — passed to `CephBucketTopic`.
+*   `filter` — full Rook filter (`keyFilters`, `metadataFilters`, `tagFilters`).
+
+For every enabled event the chart creates a `CephBucketTopic`, a
+`CephBucketNotification`, a per-event Kafka topic, and a `KafkaSource` that sinks
+directly to `sink`:
 
 | Key | S3 event |
 |-----|----------|
@@ -812,30 +837,16 @@ Each enabled event key maps to a Ceph/S3 event and creates its own `CephBucketTo
 | `delete` | `s3:ObjectRemoved:Delete` |
 | `delete-marker` | `s3:ObjectRemoved:DeleteMarkerCreated` |
 
-The Kafka topic name defaults to `<release>-<bucket-key>-<event-key>` and can be overridden with `notifications.<key>.topicName`. The same name is used for the `CephBucketTopic` (Rook uses the topic name as the Kafka topic) and the `KafkaTopic`/`Topic` resource.
+The `CephBucketNotification` name follows `<release>-<bucket>-<event>`, but Rook
+associates it with the bucket through a `bucket-notification-<name>` label on the
+`ObjectBucketClaim`. Kubernetes limits that label key to 63 characters, leaving
+43 for the name. When the derived name is longer, the chart truncates it and
+appends a short hash (for example `test-object-bucket-notifications-u-68da0a84`)
+so the label stays valid and notifications remain unique. The topic name is not
+shortened by that label rule; `topicNameTemplate`/`topicName` control it.
 
-The `CephBucketNotification` name follows the same pattern, but Rook associates it with the bucket through a `bucket-notification-<name>` label on the `ObjectBucketClaim`. Kubernetes limits that label key to 63 characters, leaving 43 for the name. When the derived name is longer, the chart truncates it and appends a short hash (for example `test-object-bucket-notifications-u-68da0a84`) so the label stays valid and notifications remain unique.
-
-The notification entry also supports `persistent` (Rook's asynchronous, retried delivery), `opaqueData`, `ackLevel` (`none` or `broker`), and Rook's `filter`:
-
-```yaml
-notifications:
-  put:
-    enabled: true
-    persistent: true
-    opaqueData: tenant-a
-    ackLevel: broker
-    filter:
-      keyFilters:
-        - name: suffix
-          value: .json
-      metadataFilters:
-        - name: x-amz-meta-color
-          value: blue
-      tagFilters:
-        - name: project
-          value: brown
-```
+The legacy shape (`notifications.put.enabled: true` without `events`) is still
+accepted and is merged with `events`.
 
 Ceph RGW does not emit read/GET events, and overwriting an object is reported as `s3:ObjectCreated:Put` (the same event as a new write). Use `put` for both creates and overwrites.
 

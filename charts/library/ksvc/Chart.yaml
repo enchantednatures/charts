@@ -6,7 +6,7 @@ description: >-
   managed Strimzi or Redpanda Kafka clusters, Knative Broker/Trigger,
   DragonflyDB cache clusters, and Flagger canary releases.
 type: library
-version: 1.3.0
+version: 1.4.0
 appVersion: "1.0.0"
 kubeVersion: ">=1.28.0"
 icon: https://raw.githubusercontent.com/enchantednatures/charts/main/docs/icon.svg
@@ -29,6 +29,12 @@ annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT
   artifacthub.io/changes: |
+    - kind: added
+      description: cert-manager-backed TLS for chart-managed Kafka clusters (Strimzi and Redpanda), including a generated CA chain
+    - kind: added
+      description: Per-event bucket-notification queues with independent partitions, prefix/suffix filters, topic name templates, and sink services
+    - kind: added
+      description: Bucket notifications render one KafkaSource per enabled event and support TLS to the managed Kafka cluster
     - kind: added
       description: PingSources sink to the Kafka Broker when kafka.broker.enabled is true
     - kind: fixed

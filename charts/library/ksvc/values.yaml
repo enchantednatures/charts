@@ -50,13 +50,21 @@ global:
 #   objectStore: optional Rook CephObjectStore identity used by bucket
 #     notifications. name and namespace are required when notifications are
 #     enabled.
-#   notifications: optional map of bucket notifications keyed by S3 event:
-#     put, post, copy, multipart, delete, or delete-marker. Each entry is
-#     opt-in with `enabled: true`, supports `filter`, and creates a Kafka
-#     topic on the chart-managed cluster. This feature is Experimental:
-#     notifications currently require kafka.cluster.enabled=true,
-#     kafka.cluster.auth.type=none, and kafka.cluster.tls.enabled=false.
-#     See issue #137 for authenticated and TLS notification support.
+#   notifications: optional bucket notifications. Set `enabled: true` to turn
+#     them on; `put` and `delete` are then enabled by default and the other
+#     events are opt-in. Each event has its own queue settings:
+#       events.<event>.enabled     (bool)
+#       events.<event>.partitions  (default: kafka.cluster.topics.partitions)
+#       events.<event>.prefix      (S3 key prefix filter)
+#       events.<event>.suffix      (S3 key suffix filter)
+#       events.<event>.sink        (services key; defaults to notifications.sink)
+#       events.<event>.topicNameTemplate (default "{release}-{bucket}-{event}")
+#     Supported events: put, post, copy, multipart, delete, delete-marker.
+#     A KafkaSource per enabled event sinks the queue directly to `sink`.
+#     This feature requires kafka.cluster.enabled=true and
+#     kafka.cluster.auth.type=none. TLS is supported; Rook's CephBucketTopic
+#     has no CA field, so TLS notifications set useSSL=true and
+#     disableVerifySSL=true.
 #
 # Prerequisites (NOT created by this chart): the ObjectBucketClaim CRDs
 # (lib-bucket-provisioner), a bucket StorageClass, and — for notifications —
@@ -70,12 +78,17 @@ global:
 #         name: ceph-objectstore
 #         namespace: rook-ceph
 #       notifications:
-#         put:
-#           enabled: true
-#           filter:
-#             keyFilters:
-#               - name: prefix
-#                 value: uploads/
+#         enabled: true
+#         events:
+#           put:
+#             enabled: true
+#             partitions: 3
+#             prefix: uploads/
+#             sink: api
+#           delete:
+#             enabled: true
+#             suffix: .log
+#             sink: audit
 # =============================================================================
 # -- Map of ObjectBucketClaim entries, keyed by an arbitrary bucket name. Each
 # key renders an ObjectBucketClaim named `<release>-<key>`; see the
@@ -622,6 +635,29 @@ kafka:
     tls:
       # -- Enable the internal TLS listener.
       enabled: false
+      # cert-manager integration for the managed Kafka TLS chain. When
+      # enabled, the chart creates a self-signed Issuer, a CA Certificate, and
+      # a CA Issuer, then asks the provider to issue broker certificates from
+      # that CA. Requires cert-manager and (for Strimzi) a Strimzi version
+      # that supports clusterCa.type=cert-manager.
+      certManager:
+        # -- Generate the managed Kafka TLS chain with cert-manager.
+        enabled: true
+        # Optional pre-existing issuer for the CA certificate. When empty, the
+        # chart creates a self-signed Issuer.
+        issuerRef:
+          # -- Name of the cert-manager Issuer/ClusterIssuer for the CA.
+          name: ""
+          # -- Kind of the cert-manager issuer (`Issuer` or `ClusterIssuer`).
+          kind: ClusterIssuer
+          # -- API group of the cert-manager issuer.
+          group: cert-manager.io
+        # -- Override the generated CA Secret name (`<fullname>-kafka-ca`).
+        caSecretName: ""
+        # -- Override the generated CA Issuer name (`<fullname>-kafka-ca-issuer`).
+        caIssuerName: ""
+        # -- Also issue a client certificate for mTLS (KafkaSource and app).
+        clientAuth: false
     auth:
       # -- Managed authentication type (`none` or `scram`).
       type: none

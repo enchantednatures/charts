@@ -28,6 +28,13 @@ chart-level `kafka.cluster.redpanda.extraClusterSpec` is merged into
 {{- $listenersCfg := $cluster.listeners | default dict -}}
 {{- $tlsPort := int ($listenersCfg.tlsPort | default 9093) -}}
 {{- $kafkaListener := dict "port" $tlsPort "tls" (dict "enabled" $cluster.tls.enabled) -}}
+{{- $cm := $cluster.tls.certManager | default dict -}}
+{{- if $cluster.tls.enabled -}}
+{{- $_ := set $kafkaListener "cert" "default" -}}
+{{- if $cm.clientAuth -}}
+{{- $_ := set $kafkaListener "requireClientAuth" true -}}
+{{- end -}}
+{{- end -}}
 {{- if eq $cluster.auth.type "scram" -}}
 {{- $_ := set $kafkaListener "authenticationMethod" "sasl" -}}
 {{- end -}}
@@ -41,7 +48,16 @@ chart-level `kafka.cluster.redpanda.extraClusterSpec` is merged into
         "min" (toString $cluster.resources.requests.memory)
         "max" (toString $cluster.resources.limits.memory)))) -}}
 {{- $_ := set $clusterSpec "listeners" (dict "kafka" $kafkaListener) -}}
-{{- $_ := set $clusterSpec "tls" (dict "enabled" $cluster.tls.enabled) -}}
+{{- $tlsSpec := dict "enabled" $cluster.tls.enabled -}}
+{{- if and $cluster.tls.enabled $cm.enabled -}}
+{{- $certSpec := dict
+      "issuerRef" (dict "name" (include "ksvc.kafkaCAIssuerName" .) "kind" "Issuer")
+      "applyInternalDNSNames" true
+      "caEnabled" true
+-}}
+{{- $_ := set $tlsSpec "certs" (dict "default" $certSpec) -}}
+{{- end -}}
+{{- $_ := set $clusterSpec "tls" $tlsSpec -}}
 {{- if eq $cluster.auth.type "scram" -}}
 {{- $sasl := dict "enabled" true -}}
 {{- if $cluster.redpanda.sasl.secretRef -}}
@@ -90,7 +106,7 @@ spec:
   cluster:
     clusterRef:
       name: {{ include "ksvc.kafkaClusterName" $root }}
-  partitions: {{ int $cluster.topics.partitions }}
+  partitions: {{ int (.partitions | default $cluster.topics.partitions) }}
   replicationFactor: {{ int (include "ksvc.kafkaTopicReplicationFactor" $root) }}
 {{- end }}
 

@@ -56,8 +56,12 @@ merged. We must apply defaults explicitly before rendering.
 ---
   {{- include "ksvc.class.objectBucketClaim" (dict "root" $ "key" $key "bucket" $bucket) | nindent 0 }}
       {{- $notifications := $bucket.notifications | default dict }}
-      {{- range $eventKey, $notification := $notifications }}
-        {{- if $notification.enabled }}
+      {{- $events := $notifications.events | default dict }}
+      {{- if not $events }}
+      {{- $events = $notifications }}
+      {{- end }}
+      {{- range $eventKey, $notification := $events }}
+        {{- if and (kindIs "map" $notification) ($notification.enabled) }}
 ---
   {{- include "ksvc.class.objectBucketNotification" (dict "root" $ "bucketKey" $key "eventKey" $eventKey "bucket" $bucket "notification" $notification) | nindent 0 }}
         {{- end }}
@@ -94,6 +98,10 @@ merged. We must apply defaults explicitly before rendering.
   {{- end }}
 
   {{- if and .Values.kafka .Values.kafka.cluster .Values.kafka.cluster.enabled }}
+    {{- if and .Values.kafka.cluster.tls.enabled .Values.kafka.cluster.tls.certManager.enabled }}
+---
+  {{- include "ksvc.class.certManagerKafka" . | nindent 0 }}
+    {{- end }}
 ---
   {{- include "ksvc.class.kafkaCluster" . | nindent 0 }}
   {{- if and .Values.kafka.cluster.topics.create (or .Values.kafka.sources (include "ksvc.hasObjectBucketNotifications" .)) }}
@@ -394,7 +402,16 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
     "listeners" (dict "plainPort" 9092 "tlsPort" 9093)
     "storage" (dict "size" "20Gi" "storageClassName" "")
     "resources" (dict "requests" (dict "cpu" "500m" "memory" "1Gi") "limits" (dict "cpu" "2" "memory" "4Gi"))
-    "tls" (dict "enabled" false)
+    "tls" (dict
+      "enabled" false
+      "certManager" (dict
+        "enabled" true
+        "issuerRef" (dict "name" "" "kind" "ClusterIssuer" "group" "cert-manager.io")
+        "caSecretName" ""
+        "caIssuerName" ""
+        "clientAuth" false
+      )
+    )
     "auth" (dict "type" "none" "username" "")
     "topics" (dict "create" true "partitions" 3)
     "strimzi" (dict "version" "" "metadataVersion" "" "extraSpec" (dict) "nodePoolExtraSpec" (dict))
@@ -466,6 +483,114 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $_ := set $kafka "cluster" (mustMergeOverwrite (deepCopy $clusterDefaults) $cluster) -}}
   {{- $cluster = $kafka.cluster -}}
 
+  {{/* --- normalize bucket notifications and synthesize one KafkaSource per
+       enabled event. Notifications sink directly to their service so they do
+       not depend on the Knative Broker (whose TLS auth Secret cannot be
+       composed declaratively from a cert-manager Secret). --- */}}
+  {{- $eventOrder := list "put" "post" "copy" "multipart" "delete" "delete-marker" -}}
+  {{- $defaultEnabled := dict "put" true "delete" true "post" false "copy" false "multipart" false "delete-marker" false -}}
+  {{- $notificationDefaults := dict
+    "enabled" false
+    "partitions" 0
+    "prefix" ""
+    "suffix" ""
+    "sink" ""
+    "topicName" ""
+    "topicNameTemplate" ""
+    "persistent" false
+    "opaqueData" ""
+    "ackLevel" "broker"
+    "consumers" 1
+    "filter" (dict)
+    "delivery" (dict "retry" 5 "backoffPolicy" "exponential" "backoffDelay" "PT1S")
+    "dlq" (dict "enabled" false)
+  -}}
+  {{- $buckets := .Values.objectBuckets | default dict -}}
+  {{- if kindIs "map" $buckets -}}
+  {{- range $bucketKey, $bucket := $buckets -}}
+    {{- $raw := $bucket.notifications | default dict -}}
+    {{- if not (kindIs "map" $raw) -}}{{- $raw = dict -}}{{- end -}}
+    {{- $eventsRaw := dict -}}
+    {{- range $eventName, $eventRaw := $raw -}}
+      {{- if has $eventName $eventOrder -}}{{- $_ := set $eventsRaw $eventName $eventRaw -}}{{- end -}}
+    {{- end -}}
+    {{- if hasKey $raw "events" -}}
+      {{- range $eventName, $eventRaw := ($raw.events | default dict) -}}
+        {{- $_ := set $eventsRaw $eventName $eventRaw -}}
+      {{- end -}}
+    {{- end -}}
+    {{- $enabledAll := false -}}
+    {{- if hasKey $raw "enabled" -}}{{- $enabledAll = ($raw.enabled | default false) -}}{{- end -}}
+    {{- $events := dict -}}
+    {{- range $eventName := $eventOrder -}}
+      {{- $eventRaw := index $eventsRaw $eventName | default dict -}}
+      {{- if not (kindIs "map" $eventRaw) -}}{{- $eventRaw = dict -}}{{- end -}}
+      {{- $eventEnabled := false -}}
+      {{- if hasKey $eventRaw "enabled" -}}
+        {{- $eventEnabled = ($eventRaw.enabled | default false) -}}
+      {{- else if $enabledAll -}}
+        {{- $eventEnabled = (index $defaultEnabled $eventName) -}}
+      {{- end -}}
+      {{- $merged := mustMergeOverwrite (deepCopy $notificationDefaults) $eventRaw -}}
+      {{- $_ := set $merged "enabled" $eventEnabled -}}
+      {{- if not $merged.partitions -}}
+        {{- $_ := set $merged "partitions" (int $cluster.topics.partitions) -}}
+      {{- end -}}
+      {{- if not $merged.sink -}}
+        {{- $_ := set $merged "sink" ($raw.sink | default "") -}}
+      {{- end -}}
+      {{- if not $merged.topicNameTemplate -}}
+        {{- $_ := set $merged "topicNameTemplate" ($raw.topicNameTemplate | default "{release}-{bucket}-{event}") -}}
+      {{- end -}}
+      {{- $_ := set $events $eventName $merged -}}
+    {{- end -}}
+    {{- $_ := set $raw "enabled" $enabledAll -}}
+    {{- $_ := set $raw "events" $events -}}
+    {{- $_ := set $bucket "notifications" $raw -}}
+    {{- $_ := set $buckets $bucketKey $bucket -}}
+
+    {{- range $eventName, $event := $events -}}
+      {{- if $event.enabled -}}
+        {{- if not $event.sink -}}
+          {{- fail (printf "objectBuckets.%s.notifications.events.%s.sink is required when the event is enabled" $bucketKey $eventName) -}}
+        {{- end -}}
+        {{- $sourceKey := printf "s3-%s-%s" $bucketKey $eventName | lower | replace "_" "-" | trunc 63 | trimSuffix "-" -}}
+        {{- if hasKey $kafka.sources $sourceKey -}}
+          {{- fail (printf "objectBuckets.%s.notifications.events.%s derives KafkaSource key %s, which collides with kafka.sources.%s" $bucketKey $eventName $sourceKey $sourceKey) -}}
+        {{- end -}}
+        {{- $topicName := include "ksvc.objectBucketNotificationTopicName" (dict "root" $ "bucketKey" $bucketKey "eventKey" $eventName) -}}
+        {{- $net := dict "tls" (dict "enabled" false) "sasl" (dict "enabled" false) -}}
+        {{- if $cluster.tls.enabled -}}
+          {{- $netTLS := dict
+            "enabled" true
+            "caCertSecret" (include "ksvc.kafkaClientCASecretName" $)
+            "caCertKey" "ca.crt"
+          -}}
+          {{- if and $cluster.tls.certManager.enabled $cluster.tls.certManager.clientAuth -}}
+            {{- $clientSecret := include "ksvc.kafkaClientTLSSecretName" $ -}}
+            {{- $_ := set $netTLS "certSecret" $clientSecret "certKey" "tls.crt" "keySecret" $clientSecret "keyKey" "tls.key" -}}
+          {{- end -}}
+          {{- $_ := set $net "tls" $netTLS -}}
+        {{- end -}}
+        {{- $consumerGroup := printf "%s-s3-%s-%s-consumers" (include "ksvc.fullname" $) $bucketKey $eventName | lower | replace "_" "-" | trunc 63 | trimSuffix "-" -}}
+        {{- $source := dict
+          "topic" $topicName
+          "consumerGroup" $consumerGroup
+          "consumers" (int ($event.consumers | default 1))
+          "initialOffset" "latest"
+          "sink" $event.sink
+          "bypassBroker" true
+          "delivery" $event.delivery
+          "dlq" $event.dlq
+          "net" $net
+        -}}
+        {{- $_ := set $kafka.sources $sourceKey $source -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $_ := set .Values "objectBuckets" $buckets -}}
+  {{- end -}}
+
   {{- range $key, $source := $kafka.sources }}
     {{- $merged := mustMergeOverwrite (deepCopy $kafkaSourceDefaults) $source -}}
     {{- if $cluster.enabled -}}
@@ -490,11 +615,11 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
         {{- $sasl = dict -}}
       {{- end -}}
       {{- if and $tls.enabled (not $tls.caCertSecret) -}}
-        {{- if eq $cluster.provider "redpanda" -}}
-          {{- $_ := set $tls "caCertSecret" (printf "%s-default-cert" (include "ksvc.kafkaClusterName" $)) -}}
-        {{- else -}}
-          {{- $_ := set $tls "caCertSecret" (printf "%s-cluster-ca-cert" (include "ksvc.kafkaClusterName" $)) -}}
-        {{- end -}}
+        {{- $_ := set $tls "caCertSecret" (include "ksvc.kafkaClientCASecretName" $) -}}
+      {{- end -}}
+      {{- if and $tls.enabled $cluster.tls.certManager.enabled $cluster.tls.certManager.clientAuth (not $tls.certSecret) -}}
+        {{- $clientSecret := include "ksvc.kafkaClientTLSSecretName" $ -}}
+        {{- $_ := set $tls "certSecret" $clientSecret "certKey" "tls.crt" "keySecret" $clientSecret "keyKey" "tls.key" -}}
       {{- end -}}
       {{- if and $sasl.enabled (eq $cluster.auth.type "scram") (not $sasl.userSecret) -}}
         {{- $_ := set $sasl "userSecret" (include "ksvc.kafkaSourceSaslTypeSecretName" (dict "root" $ "key" $key)) -}}
@@ -560,19 +685,16 @@ Uses mustMergeOverwrite: consumer values take precedence over defaults.
   {{- $_ := set .Values "pingsources" $pingSources -}}
 
   {{/* --- object bucket defaults (applied to each entry in the objectBuckets map) --- */}}
-  {{- $notificationDefaults := dict "enabled" false "topicName" "" "persistent" false "opaqueData" "" "ackLevel" "broker" "filter" (dict) -}}
   {{- $bucketDefaults := dict "bucketName" "" "endpointURL" "" "region" "" "objectStore" (dict "name" "" "namespace" "") "notifications" (dict) -}}
   {{- $buckets := .Values.objectBuckets | default dict -}}
   {{- range $key, $bucket := $buckets }}
     {{- $merged := mustMergeOverwrite (deepCopy $bucketDefaults) $bucket -}}
     {{- $_ := set $merged "bucketName" (default (include "ksvc.objectBucketName" (dict "root" $ "key" $key)) $merged.bucketName) -}}
     {{- $notifications := $merged.notifications | default dict -}}
-    {{- if kindIs "map" $notifications -}}
-      {{- range $eventKey, $notification := $notifications }}
-        {{- $_ := set $notifications $eventKey (mustMergeOverwrite (deepCopy $notificationDefaults) ($notification | default dict)) -}}
-      {{- end -}}
-      {{- $_ := set $merged "notifications" $notifications -}}
+    {{- if not (kindIs "map" $notifications) -}}
+      {{- $notifications = dict -}}
     {{- end -}}
+    {{- $_ := set $merged "notifications" $notifications -}}
     {{- $_ := set $buckets $key $merged -}}
   {{- end -}}
   {{- $_ := set .Values "objectBuckets" $buckets -}}

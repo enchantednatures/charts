@@ -140,17 +140,28 @@ Call this from the loader to catch misconfigurations early.
   {{- end -}}
 
   {{/* object bucket notification validation */}}
+  {{- $eventOrder := list "put" "post" "copy" "multipart" "delete" "delete-marker" -}}
   {{- $notificationTopics := dict -}}
   {{- if .Values.objectBuckets -}}
     {{- range $key, $bucket := .Values.objectBuckets -}}
       {{- $notifications := $bucket.notifications | default dict -}}
-      {{- if kindIs "map" $notifications -}}
+      {{- $events := $notifications.events | default dict -}}
+      {{- if not $events -}}
+        {{- $events = dict -}}
         {{- range $eventKey, $notification := $notifications -}}
-          {{- if not (kindIs "map" $notification) -}}
-            {{- fail (printf "objectBuckets.%s.notifications.%s must be a map" $key $eventKey) -}}
+          {{- if has $eventKey $eventOrder -}}
+            {{- $_ := set $events $eventKey $notification -}}
           {{- end -}}
-          {{- if not (has $eventKey (list "put" "post" "copy" "multipart" "delete" "delete-marker")) -}}
-            {{- fail (printf "objectBuckets.%s.notifications.%s is not a supported event (use put, post, copy, multipart, delete, or delete-marker)" $key $eventKey) -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if kindIs "map" $events -}}
+        {{- range $eventKey := $eventOrder -}}
+          {{- $notification := index $events $eventKey | default dict -}}
+          {{- if not (has $eventKey $eventOrder) -}}
+            {{- fail (printf "objectBuckets.%s.notifications.events.%s is not a supported event (use put, post, copy, multipart, delete, or delete-marker)" $key $eventKey) -}}
+          {{- end -}}
+          {{- if not (kindIs "map" $notification) -}}
+            {{- fail (printf "objectBuckets.%s.notifications.events.%s must be a map" $key $eventKey) -}}
           {{- end -}}
           {{- if $notification.enabled -}}
             {{- if not $bucket.objectStore -}}
@@ -163,39 +174,68 @@ Call this from the loader to catch misconfigurations early.
               {{- fail (printf "objectBuckets.%s.objectStore.namespace is required when notifications are enabled" $key) -}}
             {{- end -}}
             {{- if not $.Values.kafka.cluster.enabled -}}
-              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.enabled=true; notifications currently support only the chart-managed Kafka cluster (see issue #137)" $key $eventKey) -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s requires kafka.cluster.enabled=true; notifications currently support only the chart-managed Kafka cluster" $key $eventKey) -}}
             {{- end -}}
             {{- if ne $.Values.kafka.cluster.auth.type "none" -}}
-              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.auth.type=none; authenticated Kafka notifications are tracked in issue #137" $key $eventKey) -}}
-            {{- end -}}
-            {{- if $.Values.kafka.cluster.tls.enabled -}}
-              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.tls.enabled=false; TLS Kafka notifications are tracked in issue #137" $key $eventKey) -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s requires kafka.cluster.auth.type=none; authenticated Kafka notifications are not supported yet" $key $eventKey) -}}
             {{- end -}}
             {{- if not $.Values.kafka.cluster.topics.create -}}
-              {{- fail (printf "objectBuckets.%s.notifications.%s requires kafka.cluster.topics.create=true so the chart can create the Kafka topic" $key $eventKey) -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s requires kafka.cluster.topics.create=true so the chart can create the Kafka topic" $key $eventKey) -}}
+            {{- end -}}
+            {{- if and $.Values.kafka.cluster.tls.enabled $.Values.kafka.cluster.tls.certManager.clientAuth -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s is not supported with kafka.cluster.tls.certManager.clientAuth=true; RGW needs a client certificate for mTLS" $key $eventKey) -}}
+            {{- end -}}
+            {{- if not $notification.sink -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s.sink is required when the event is enabled" $key $eventKey) -}}
+            {{- end -}}
+            {{- $sinkSvc := index $.Values.services $notification.sink -}}
+            {{- if not $sinkSvc -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s.sink references '%s' which does not exist in the services map" $key $eventKey $notification.sink) -}}
+            {{- end -}}
+            {{- if eq $sinkSvc.workload.type "Deployment" -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s.sink references '%s' which uses workload.type: Deployment — a plain Kubernetes Service is not a Knative-addressable sink" $key $eventKey $notification.sink) -}}
+            {{- end -}}
+            {{- $partitions := int ($notification.partitions | default 0) -}}
+            {{- if lt $partitions 1 -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s.partitions must be >= 1 (got %d)" $key $eventKey $partitions) -}}
             {{- end -}}
             {{- if $notification.topicName -}}
               {{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $notification.topicName) -}}
-                {{- fail (printf "objectBuckets.%s.notifications.%s.topicName must be a DNS-1123 label" $key $eventKey) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.events.%s.topicName must be a DNS-1123 label" $key $eventKey) -}}
               {{- end -}}
             {{- end -}}
             {{- $topicName := include "ksvc.objectBucketNotificationTopicName" (dict "root" $ "bucketKey" $key "eventKey" $eventKey) -}}
+            {{- if contains "{" $topicName -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s.topicNameTemplate contains an unknown placeholder (resolved: %s)" $key $eventKey $topicName) -}}
+            {{- end -}}
             {{- if hasKey $notificationTopics $topicName -}}
-              {{- fail (printf "objectBuckets.%s.notifications.%s derives Kafka topic %s, which is already used by another notification" $key $eventKey $topicName) -}}
+              {{- fail (printf "objectBuckets.%s.notifications.events.%s derives Kafka topic %s, which is already used by another notification" $key $eventKey $topicName) -}}
             {{- end -}}
             {{- $_ := set $notificationTopics $topicName true -}}
             {{- $filter := $notification.filter | default dict -}}
             {{- $keyFilters := $filter.keyFilters | default list -}}
             {{- $seenKeyFilters := dict -}}
+            {{- if $notification.prefix -}}
+              {{- if not (kindIs "string" $notification.prefix) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.events.%s.prefix must be a string" $key $eventKey) -}}
+              {{- end -}}
+              {{- $_ := set $seenKeyFilters "prefix" true -}}
+            {{- end -}}
+            {{- if $notification.suffix -}}
+              {{- if not (kindIs "string" $notification.suffix) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.events.%s.suffix must be a string" $key $eventKey) -}}
+              {{- end -}}
+              {{- $_ := set $seenKeyFilters "suffix" true -}}
+            {{- end -}}
             {{- range $keyFilter := $keyFilters -}}
               {{- if not (kindIs "map" $keyFilter) -}}
-                {{- fail (printf "objectBuckets.%s.notifications.%s.filter.keyFilters entries must be maps" $key $eventKey) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.events.%s.filter.keyFilters entries must be maps" $key $eventKey) -}}
               {{- end -}}
               {{- if not (has $keyFilter.name (list "prefix" "suffix" "regex")) -}}
-                {{- fail (printf "objectBuckets.%s.notifications.%s.filter.keyFilters.name must be one of prefix, suffix, regex (got %v)" $key $eventKey $keyFilter.name) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.events.%s.filter.keyFilters.name must be one of prefix, suffix, regex (got %v)" $key $eventKey $keyFilter.name) -}}
               {{- end -}}
               {{- if hasKey $seenKeyFilters $keyFilter.name -}}
-                {{- fail (printf "objectBuckets.%s.notifications.%s.filter.keyFilters contains duplicate name %s" $key $eventKey $keyFilter.name) -}}
+                {{- fail (printf "objectBuckets.%s.notifications.events.%s.filter.keyFilters contains duplicate name %s (prefix/suffix shortcuts also count)" $key $eventKey $keyFilter.name) -}}
               {{- end -}}
               {{- $_ := set $seenKeyFilters $keyFilter.name true -}}
             {{- end -}}
@@ -355,7 +395,8 @@ Call this from the loader to catch misconfigurations early.
   {{- /* kafka source sink validation */ -}}
   {{- if and .Values.kafka .Values.kafka.sources -}}
     {{- range $key, $source := .Values.kafka.sources -}}
-      {{- if $hasBroker -}}
+      {{- $sourceHasBroker := and $hasBroker (not $source.bypassBroker) -}}
+      {{- if $sourceHasBroker -}}
         {{- if $source.sink -}}
           {{- fail (printf "kafka.sources.%s.sink must not be set when kafka.broker.enabled=true — sources sink to the broker; remove sink or disable the broker" $key) -}}
         {{- end -}}
@@ -410,13 +451,8 @@ Call this from the loader to catch misconfigurations early.
         {{- if and (not $tls.caCertSecret) (not $managed) -}}
           {{- fail (printf "kafka.sources.%s.net.tls.caCertSecret is required when net.tls.enabled=true and kafka.cluster is not enabled" $key) -}}
         {{- end -}}
-        {{- if not $sasl.enabled -}}
-          {{- if not $tls.certSecret -}}
-            {{- fail (printf "kafka.sources.%s.net.tls.certSecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret" $key) -}}
-          {{- end -}}
-          {{- if not $tls.keySecret -}}
-            {{- fail (printf "kafka.sources.%s.net.tls.keySecret is required for TLS-only (mTLS) KafkaSource; set net.sasl.enabled=true for SASL_SSL or provide certSecret/keySecret" $key) -}}
-          {{- end -}}
+        {{- if or (and $tls.certSecret (not $tls.keySecret)) (and $tls.keySecret (not $tls.certSecret)) -}}
+          {{- fail (printf "kafka.sources.%s.net.tls requires both certSecret and keySecret for mTLS, or neither for server-authenticated TLS" $key) -}}
         {{- end -}}
       {{- end -}}
       {{- if $sasl.enabled -}}
